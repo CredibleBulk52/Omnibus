@@ -166,6 +166,8 @@ omnibus.yourdomain.com {
 
 **What file formats work?** CBZ, CBR, CB7 and CBT. A `.cbr` that is really a ZIP is detected and read anyway.
 
+**Omnibus finds no comics (Windows).** Docker Desktop can't see folders on a mapped network drive: the container gets an empty `/comics`. Check with `docker exec omnibus ls /comics`. Point `COMICS_HOST_PATH` at a local disk, or run Omnibus on the machine that holds the comics.
+
 **Is it safe to put on the internet?** Change the admin password first, serve it over HTTPS through a reverse proxy, and keep `JWT_SECRET` and `OMNIBUS_SECRET` private.
 
 ---
