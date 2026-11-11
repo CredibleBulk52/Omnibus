@@ -46,6 +46,16 @@ Shown with public-domain comics from the 1940s and 1950s (Bulletman, Captain Sci
 
 ---
 
+## Before you install
+
+- **It's a hobby project, and it was vibe coded.** One person built Omnibus for their own household, mostly by working with AI coding assistants, and it was a lot of fun to make. It has over 1,000 automated tests, but it has mainly run on one install (Windows with Docker Desktop, a library of about 2,300 series). Expect rough edges, and please report what you find.
+- **The AI is optional, and you pay for what you use.** Reading, the library, lists, Essentials, Top Shelf, the Timeline and downloads all work without it. Comic Book Guy, recaps and the generators call Anthropic, OpenAI or Google Gemini with your own API key, billed by them. Most questions cost a fraction of a cent; admins see the cost of every request.
+- **Back up your comics first.** Omnibus can write metadata into your archives and file downloads into your folders. Try it on a copy of your library before pointing it at the real one.
+- **Comic Vine is slow on purpose.** Matching uses the free Comic Vine API, which limits how often you can ask. The first pass over a large library can take hours, and Omnibus paces itself to stay within the limit.
+- **It comes with no comics.** The download features only connect to services you set up yourself. What you download is your responsibility; follow the law where you live.
+- **Keep it private, or put it behind HTTPS.** No one has done a security audit. Change the admin password, use a reverse proxy with HTTPS if it's reachable from outside your home, and keep `JWT_SECRET` and `OMNIBUS_SECRET` private.
+- **Support is best effort.** Issues and suggestions are welcome. It's MIT-licensed and comes with no warranty.
+
 ## Quick start
 
 You need Docker with Docker Compose, and a folder of comics. Back up your comics first: Omnibus can write metadata into archives and file new downloads into your folders.
