@@ -1,0 +1,47 @@
+/* Offline library (2026-10-28): app colours and the comic card look, no inline styles. */
+.offline-page { min-height: 100vh; padding-bottom: 80px; color: var(--text-secondary); }
+.offline-content { padding-top: 20px; }
+
+.offline-storage {
+  margin: 0 0 22px; padding: 12px 16px;
+  background: var(--bg-surface); border: 2px solid #000; box-shadow: 4px 4px 0 #000;
+}
+.offline-storage-label {
+  display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px;
+  font: 1rem 'Boogaloo', cursive; letter-spacing: .03em; color: var(--text-secondary);
+}
+.offline-storage-track { height: 8px; background: var(--bg-elevated); border: 1px solid #000; overflow: hidden; }
+.offline-storage-fill { height: 100%; background: var(--td-yellow); transition: width .3s; }
+.offline-storage-fill.is-full { background: var(--td-red); }
+
+.offline-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px; }
+.offline-card {
+  display: flex; flex-direction: column; min-width: 0;
+  background: var(--bg-surface); border: 2px solid #000; box-shadow: 4px 4px 0 #000;
+  transition: transform var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+}
+.offline-card:hover { transform: translate(-2px, -2px); box-shadow: 6px 6px 0 #000; }
+.offline-cover {
+  display: block; aspect-ratio: 2 / 3; padding: 0; border: 0; border-bottom: 2px solid #000;
+  background: var(--bg-elevated); overflow: hidden; cursor: pointer;
+}
+.offline-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.offline-cover-blank { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 36px; opacity: .4; }
+.offline-card-body { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; }
+.offline-card-title {
+  font: 1rem/1.15 'Boogaloo', cursive; letter-spacing: .02em; color: var(--text-primary);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.offline-card-meta { font-size: 11px; color: var(--text-muted); }
+.offline-card-actions { display: flex; gap: 6px; padding: 0 10px 10px; }
+.offline-read {
+  flex: 1; padding: 6px 0; border: 2px solid #000; background: var(--td-yellow); color: #000;
+  font: 1rem 'Bangers', cursive; letter-spacing: .08em; cursor: pointer; box-shadow: 2px 2px 0 #000;
+}
+.offline-read:hover { background: color-mix(in srgb, var(--td-yellow) 80%, white); }
+.offline-remove {
+  padding: 5px 9px; border: 2px solid #000; background: var(--bg-elevated); color: var(--text-secondary);
+  cursor: pointer; font-size: 12px;
+}
+.offline-remove:hover:not(:disabled) { background: var(--td-red); color: var(--om-text); }
+.offline-remove:disabled { opacity: .5; cursor: default; }

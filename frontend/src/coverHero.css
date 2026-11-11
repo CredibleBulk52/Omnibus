@@ -1,0 +1,27 @@
+.cover-stack { position: relative; flex: 0 0 262px; width: 262px; height: 270px; isolation: isolate; }
+.cover-stack img { position: absolute; width: 156px; height: 234px; object-fit: contain; background: #09090d; border: 3px solid #050508; box-shadow: 5px 7px 0 #0009; top: 18px; left: 46px; }
+.cover-stack img:nth-child(1) { transform: translate(39px, 4px) rotate(12deg); }
+.cover-stack img:nth-child(2) { transform: translate(-28px, 2px) rotate(-9deg); }
+.cover-stack img:nth-child(3), .cover-stack-1 img, .cover-stack-2 img:last-child { transform: rotate(-2deg); }
+.cover-stack-empty { display: flex; height: 100%; align-items: center; justify-content: center; color: var(--text-muted); font-family: 'Comic Neue', cursive; }
+.rl-hero.hero-with-stack { align-items: center; gap: 26px; padding-left: 12px; }
+.hero-with-stack .rl-hero-art { width: 280px; min-height: 292px; display: flex; align-items: center; justify-content: center; align-self: stretch; background: transparent; border: 0; overflow: visible; }
+.hero-with-stack .rl-hero-art .cover-stack { z-index: 1; }
+.hero-with-stack .rl-hero-actions { align-self: flex-start; }
+.cover-coloured-hero {
+  background: radial-gradient(rgba(var(--cover-rgb), .08) 1px, transparent 1px) 0 0/6px 6px, linear-gradient(110deg, rgba(var(--cover-rgb), .21), transparent 80%), var(--om-base) !important;
+  border-top: 3px solid rgb(var(--cover-rgb)) !important;
+}
+.cover-coloured-hero .rl-progress-read { background: rgb(var(--cover-rgb)) !important; }
+.cover-coloured-hero .rl-progress-owned { background: rgba(var(--cover-rgb), .28); }
+.cover-coloured-hero .rl-hero-actions .btn-primary { background: rgb(var(--cover-rgb)); color: #08090c; }
+@media (max-width: 650px) {
+  .rl-hero.hero-with-stack { padding: 0; gap: 0; }
+  .hero-with-stack .rl-hero-art { width: 100%; min-height: 285px; }
+  .hero-with-stack .rl-hero-body { min-width: 0; flex-basis: 100%; }
+  .cover-stack { flex-basis: auto; margin: auto; }
+}
+
+@media (max-width: 650px) {
+  .hero-with-stack .rl-hero-actions { width: 100%; min-width: 0; box-sizing: border-box; flex-shrink: 1; }
+}

@@ -1,0 +1,15 @@
+frontend/node_modules
+frontend/build
+backend/node_modules
+**/.env
+**/npm-debug.log
+.git
+_backups
+logs
+docs
+Claude outputs
+**/__pycache__
+**/*.bak
+# Local secrets: the app writes its own enricher configs at run time; never ship this file
+scripts/config.yaml
+_work

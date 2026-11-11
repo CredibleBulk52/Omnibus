@@ -1,0 +1,37 @@
+services:
+  omnibus:
+    image: bulk88/omnibus:latest
+    container_name: omnibus
+    ports:
+      - "${PORT:-9810}:${PORT:-9810}"
+    env_file:
+      - .env
+    volumes:
+      - omnibus-data:/appdata
+      # Nightly database backups land here on the host (see BACKUP.md)
+      - "${DB_BACKUP_HOST_PATH:-./_backups/db}:/backups"
+      # Optional second backup folder (another drive or a NAS). Set BACKUP_COPY_HOST_PATH in .env,
+      # then Settings › Backups › Second copy: /backup-copy
+      - "${BACKUP_COPY_HOST_PATH:-./_backups/db-copy}:/backup-copy"
+      # Daily log files, kept 14 days
+      - "${LOG_HOST_PATH:-./logs}:/logs"
+      - "${COMICS_HOST_PATH}:/comics"
+      - "${DOWNLOADS_HOST_PATH}:/downloads"
+    networks:
+      - omnibus-net
+    restart: unless-stopped
+    # Match the server's 120-second write-drain deadline, with time to close HTTP.
+    stop_grace_period: 150s
+    # Cap Docker's own copy of the console output (default is unlimited)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  omnibus-data:
+
+networks:
+  omnibus-net:
+    external: true

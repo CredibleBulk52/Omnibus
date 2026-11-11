@@ -1,0 +1,17 @@
+/* New entry button and dialog (components/NewEntry.jsx), shared by the curated pages. */
+.new-entry-dialog .new-entry-tabs { display: flex; flex-shrink: 0; border-bottom: 2px solid #000; background: var(--bg-elevated); }
+.new-entry-dialog .new-entry-tabs button {
+  flex: 1; padding: 11px 16px; background: transparent; border: none; border-bottom: 3px solid transparent;
+  color: var(--text-secondary); font: 15px 'Boogaloo', cursive; letter-spacing: .03em; cursor: pointer;
+}
+.new-entry-dialog .new-entry-tabs button.on { color: var(--td-yellow); border-bottom-color: var(--td-yellow); }
+.new-entry-dialog .new-entry-tabs button:focus-visible { outline: 2px solid var(--td-yellow); outline-offset: -4px; }
+.new-entry-dialog .new-entry-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.new-entry-dialog .new-entry-body > .adm-modal-content { overflow: visible; }
+.new-entry-pad { padding: 16px 18px; }
+.new-entry-ask { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; }
+.new-entry-ask textarea { resize: vertical; min-height: 80px; font: inherit; }
+.new-entry-note { margin: 0; padding: 4px 0; font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.new-entry-dialog > .new-entry-body > .new-entry-note { padding: 16px 18px; }
+.new-entry-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@media (pointer: coarse) { .new-entry-dialog .new-entry-tabs button { min-height: 44px; } }

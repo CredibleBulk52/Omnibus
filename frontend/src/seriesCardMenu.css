@@ -1,0 +1,48 @@
+/* ⋮ on a cover (components/CoverMenu.jsx; series: SeriesCardMenu, issues: IssueCardMenu; 2026-11-04). */
+/* The card and its ⋮ lift together: the frame takes the shelf's hover lift. */
+.shelf-book-menu-frame { position: relative; flex-shrink: 0; transition: transform var(--fast, .15s) var(--ease, ease); transform-origin: bottom center; }
+.shelf-book-menu-frame:hover, .shelf-book-menu-frame:focus-within { transform: translateY(-14px); z-index: 20; }
+.shelf-book-menu-frame > .shelf-book, .shelf-book-menu-frame > .shelf-book:hover { transform: none; z-index: 1; }
+.cover-grid .shelf-book-menu-frame { width: 100% !important; }
+.cover-grid .shelf-book-menu-frame:hover, .cover-grid .shelf-book-menu-frame:focus-within { transform: none; }
+
+.scm-toggle {
+  position: absolute; top: 6px; left: 6px; z-index: 40;
+  width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center;
+  font: 1.25rem/1 'Bangers', cursive; color: #000; cursor: pointer;
+  background: var(--td-yellow); border: 2px solid #000; border-radius: 50%; box-shadow: 2px 2px 0 #000;
+  opacity: 0; transform: scale(.85); transition: opacity .12s, transform .12s;
+}
+/* Issue covers: bottom-right (the unread dot, read tick and bookmark hold the top corners). */
+.scm-toggle.scm-toggle--issue { top: auto; left: auto; bottom: 8px; right: 6px; }
+/* Shown on hover of the series card, the issue cover or the search result row. */
+.shelf-book-menu-frame:hover .scm-toggle, .shelf-book-menu-frame:focus-within .scm-toggle,
+.issue-cover:hover .scm-toggle, .issue-cover:focus-within .scm-toggle,
+.search-row-wrap:hover .scm-toggle, .search-row-wrap:focus-within .scm-toggle, .scm-toggle.is-open { opacity: 1; transform: none; }
+.scm-toggle:hover, .scm-toggle.is-open { background: var(--om-text); }
+.scm-toggle:focus-visible { outline: 3px solid var(--om-text); outline-offset: 2px; }
+/* Touch screens have no hover: the ⋮ stays visible. */
+@media (hover: none) { .scm-toggle { opacity: 1; transform: none; width: 32px; height: 32px; } }
+
+.scm-panel {
+  position: fixed; z-index: 1200; width: 210px; padding: 6px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--om-base); color: var(--om-text); border: 3px solid #000; box-shadow: 5px 5px 0 #000;
+}
+.scm-title { padding: 4px 8px 6px; font: .95rem 'Bangers', cursive; letter-spacing: .05em; color: var(--td-yellow); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-bottom: 2px solid color-mix(in srgb, var(--om-text) 15%, transparent); margin-bottom: 2px; }
+.scm-panel button {
+  text-align: left; padding: 8px 10px; cursor: pointer; background: none; border: 0; color: inherit;
+  font: 1rem 'Boogaloo', cursive; letter-spacing: .03em;
+}
+.scm-panel button:hover:not(:disabled), .scm-panel button:focus-visible { background: var(--td-yellow); color: #000; outline: none; }
+.scm-panel button:disabled { opacity: .55; cursor: default; }
+.scm-panel .scm-danger { color: color-mix(in srgb, var(--td-red) 75%, var(--om-text)); }
+.scm-panel .scm-danger:hover { background: var(--td-red); color: var(--om-on-secondary, #fff); }
+.scm-wait, .scm-note { padding: 6px 10px; font-size: .8rem; color: var(--text-secondary); }
+.scm-note { color: color-mix(in srgb, var(--td-red) 70%, var(--om-text)); }
+
+/* Search results: at the right of the row, before the arrow. */
+.search-row-wrap { position: relative; }
+.search-row-wrap > .search-row { padding-right: 54px; }
+.scm-toggle.scm-toggle--row { top: 50%; left: auto; right: 14px; transform: translateY(-50%) scale(.85); }
+.search-row-wrap:hover .scm-toggle--row, .search-row-wrap:focus-within .scm-toggle--row, .scm-toggle--row.is-open { transform: translateY(-50%); }
+@media (hover: none) { .scm-toggle.scm-toggle--row { transform: translateY(-50%); } }

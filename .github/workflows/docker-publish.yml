@@ -1,0 +1,76 @@
+name: Build & Push to Docker Hub
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  build-and-push:
+    needs: checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (tags and labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: bulk88/omnibus
+          tags: |
+            # tag :latest on every push to main
+            type=raw,value=latest,enable={{is_default_branch}}
+            # tag :v1.2.3 on version tags
+            type=semver,pattern={{version}}
+            # tag :1.2 (major.minor) on version tags
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push
+        id: publish
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Cache layers between builds to speed things up
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Audit the exact published digest; no application startup, mounts or network.
+      - name: Collect image license inventory
+        env:
+          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          mkdir -p image-license-review
+          image="bulk88/omnibus@$IMAGE_DIGEST"
+          docker pull "$image"
+          printf '%s\n' "$image" > image-license-review/image-reference.txt
+          docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --entrypoint node "$image" /app/scripts/image-license-inventory.cjs > image-license-review/inventory.json
+
+      - name: Save image license inventory
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-license-review
+          path: image-license-review/
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,16 @@
+/* Series a box recommends that the library lacks (components/BoxMissingSeries.jsx). */
+.box-missing { margin: 24px 16px 32px; }
+.box-missing h2 { margin: 0 0 4px; font: 1.5rem 'Bangers', cursive; letter-spacing: .05em; color: var(--om-text); }
+.box-missing h2 span { color: var(--text-secondary); font-size: 1.1rem; }
+.box-missing-intro { margin: 0 0 12px; font-size: .85rem; color: var(--text-secondary); }
+.box-missing-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+.box-missing-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.box-missing-cover { aspect-ratio: 2 / 3; height: auto; }
+.missing-cover b.box-missing-title { font-size: 1.1rem; line-height: 1.1; overflow-wrap: anywhere; }
+.box-missing-cover .missing-cover-action { text-decoration: none; }
+.box-missing-reason { margin: 0; font-size: .78rem; line-height: 1.35; color: var(--text-secondary); }
+.box-missing-links { display: flex; gap: 10px; flex-wrap: wrap; font-size: .75rem; }
+.box-missing-links a, .box-missing-links button { color: var(--text-secondary); background: none; border: 0; padding: 0; cursor: pointer; font: inherit; text-decoration: underline; }
+.box-missing-links a:hover, .box-missing-links button:hover { color: var(--om-text); }
+.box-missing-error { margin: 8px 16px; color: var(--td-red, #e44); font-size: .85rem; }
+@media (max-width: 480px) { .box-missing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } }

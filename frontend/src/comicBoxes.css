@@ -1,0 +1,371 @@
+.comic-boxes .cbox-section-header {
+  gap: 18px;
+  align-items: center;
+}
+.comic-boxes .cbox-section-title {
+  font-size: 23px;
+}
+.comic-boxes .cbox-section-count {
+  margin-left: auto;
+  color: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+  font-size: 11px;
+}
+.box-jump {
+  font:
+    16px "Boogaloo",
+    cursive;
+  color: color-mix(in srgb, var(--td-yellow) 45%, color-mix(in srgb, var(--om-text) 80%, var(--om-base)));
+  text-decoration: none;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--td-yellow) 20%, color-mix(in srgb, var(--om-text) 20%, var(--om-base)));
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.box-jump:hover {
+  background: var(--td-yellow);
+  color: color-mix(in srgb, var(--om-base) 90%, black);
+}
+.comic-boxes .cbox-section {
+  scroll-margin-top: 68px;
+}
+.comic-boxes .cbox-grid {
+  padding-top: 18px;
+  padding-bottom: 24px;
+  row-gap: 28px;
+}
+.comic-boxes .cbox-scene {
+  height: 366px !important;
+  isolation: isolate;
+}
+.comic-boxes .cbox-scene::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 272px;
+  width: 485px;
+  height: 35px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, #000b, transparent 70%);
+  filter: blur(7px);
+  z-index: -1;
+  pointer-events: none;
+}
+.comic-boxes .cbox-label {
+  top: 302px;
+  width: 425px;
+  max-width: 100%;
+}
+.comic-boxes .cbox-col-name {
+  font-size: 23px;
+  line-height: 1.18;
+  color: color-mix(in srgb, var(--om-text) 90%, var(--om-base));
+  font-weight: 400;
+}
+.comic-boxes .cbox-col-meta {
+  font-size: 12px;
+  color: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+  line-height: 1.4;
+  margin-top: 7px;
+}
+.comic-boxes .cbox-col-type {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--om-text) 70%, var(--om-base));
+}
+.comic-boxes .cbox-era-badge {
+  font-size: 10px;
+  color: #a2b9e3;
+}
+.comic-boxes .cbox-scene:hover .cbox-col-name {
+  color: color-mix(in srgb, var(--td-yellow) 70%, white);
+}
+.comic-boxes .cbox-scene:hover .cbox-thumb {
+  transform: translateY(-42px) !important;
+}
+.comic-boxes .cbox-scene:hover > .cbox-front,
+.comic-boxes .cbox-scene:hover > .cbox-rim {
+  transform: none !important;
+}
+@media (max-width: 767px) {
+  .comic-boxes .cbox-section-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .comic-boxes .cbox-section-title {
+    font-size: 21px;
+  }
+  .comic-boxes .cbox-grid {
+    padding-top: 12px;
+    row-gap: 20px;
+  }
+  .box-jump {
+    font-size: 14px;
+  }
+  .comic-boxes .cbox-col-name {
+    font-size: 21px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .comic-boxes .cbox-thumb {
+    transition: none;
+  }
+  .comic-boxes .cbox-scene:hover .cbox-thumb {
+    transform: none !important;
+  }
+}
+.comic-boxes .box-date {
+  color: color-mix(in srgb, var(--td-yellow) 20%, color-mix(in srgb, var(--om-text) 80%, var(--om-base)));
+  font-family: "Boogaloo", cursive;
+  font-size: 15px;
+  letter-spacing: 0.03em;
+}
+.comic-boxes .cbox-col-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.comic-boxes .cbox-placeholder {
+  box-sizing: border-box;
+  padding: 25px 28px !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  text-align: left;
+  background:
+    radial-gradient(color-mix(in srgb, color-mix(in srgb, var(--td-yellow) 35%, color-mix(in srgb, var(--om-text) 70%, var(--om-base))) 9%, transparent) 1px, transparent 1.6px) 0 0/7px 7px,
+    linear-gradient(125deg, color-mix(in srgb, var(--om-base) 90%, white), color-mix(in srgb, var(--om-base) 95%, white));
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.comic-boxes .cbox-placeholder:after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border: 1px solid color-mix(in srgb, color-mix(in srgb, var(--td-yellow) 50%, color-mix(in srgb, var(--om-text) 60%, var(--om-base))) 33%, transparent);
+  pointer-events: none;
+}
+.box-placeholder-stamp {
+  color: color-mix(in srgb, var(--td-yellow) 45%, color-mix(in srgb, var(--om-text) 75%, var(--om-base)));
+  font:
+    11px "Boogaloo",
+    cursive;
+  letter-spacing: 0.2em;
+  border-bottom: 2px solid color-mix(in srgb, var(--td-yellow) 45%, color-mix(in srgb, var(--om-text) 75%, var(--om-base)));
+  padding-bottom: 6px;
+  margin-bottom: 17px;
+}
+.comic-boxes .cbox-placeholder-name {
+  font:
+    42px/0.98 "Bangers",
+    cursive;
+  color: color-mix(in srgb, var(--td-yellow) 20%, var(--om-text));
+  letter-spacing: 0.03em;
+  text-align: left;
+  text-shadow: 3px 3px #0008;
+  max-width: 340px;
+}
+.comic-boxes .cbox-placeholder-era {
+  color: color-mix(in srgb, var(--td-yellow) 15%, color-mix(in srgb, var(--om-text) 75%, var(--om-base)));
+  font:
+    15px "Boogaloo",
+    cursive;
+  margin-top: 8px;
+}
+.comic-boxes .cbox-placeholder-hint {
+  opacity: 1;
+  color: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+  text-align: left;
+  font:
+    700 13px/1.35 "Comic Neue",
+    cursive;
+  margin-top: 15px;
+  max-width: 300px;
+}
+.comic-boxes .box-jump:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--td-yellow) 70%, white);
+  outline-offset: 3px;
+}
+
+@media (max-width: 599px) {
+  .comic-boxes .cbox-scene { zoom: var(--box-scale, 1); }
+}
+
+.cbox-card-description{font:14px/1.45 "DM Sans",sans-serif;color:var(--text-secondary);max-width:470px;margin:9px 0 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.cbox-personal-empty{padding:18px 28px;color:var(--om-text)}.cbox-personal-empty a{color:var(--om-highlight)}.cbox-publisher-filter{display:flex;gap:12px;align-items:center;padding:10px 28px;color:var(--om-text)}.cbox-publisher-filter select{background:var(--om-base);color:var(--om-text);padding:7px;border:1px solid var(--om-secondary)}
+
+.comic-boxes .cbox-grid { grid-template-columns:repeat(auto-fill,minmax(min(100%,500px),1fr)); }
+.comic-boxes .cbox-slot { min-width:0; }
+.comic-boxes .cbox-scene { zoom:var(--box-scale,1); }
+.comic-boxes .cbox-scene.cbox-has-description { height:430px !important; }
+@media(max-width:1024px) { .comic-boxes .cbox-grid { grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr)); } }
+
+/* Coherent folded-box geometry. The artwork retains its full 2:1 face. */
+.comic-boxes .cbox-shell {
+  position:absolute; inset:0 auto auto 0; width:495px; height:298px;
+  overflow:visible; z-index:1; pointer-events:none;
+}
+.comic-boxes .cbox-front {
+  box-sizing:border-box;
+  border:1px solid #10131c;
+  box-shadow:0 3px 4px #0006;
+}
+.comic-boxes .cbox-front::after {
+  content:""; position:absolute; inset:0; pointer-events:none; z-index:2;
+  box-shadow:inset 0 1px 0 #ffffff38, inset 1px 0 0 #ffffff20,
+    inset -2px 0 3px #0004, inset 0 -4px 6px #0004;
+}
+.comic-boxes .cbox-rim-wrap {
+  position:absolute; top:0; left:0; width:495px; height:298px;
+  overflow:visible; z-index:4; pointer-events:none;
+}
+.comic-boxes .cbox-spine-shadow { width:6px; opacity:.55; }
+.comic-boxes .cbox-thumb { border:1px solid #11151c; box-sizing:border-box; }
+
+/* Let the caption determine card height instead of reserving empty rows. */
+.comic-boxes .cbox-scene,
+.comic-boxes .cbox-scene.cbox-has-description {
+  height:auto !important;
+  padding-top:302px;
+  box-sizing:content-box;
+}
+.comic-boxes .cbox-label { position:relative; top:auto; }
+.comic-boxes .cbox-card-description {
+  display:block; overflow:visible; -webkit-line-clamp:unset;
+}
+.comic-boxes .cbox-section { padding-bottom:8px; }
+.comic-boxes .cbox-grid { padding-bottom:20px; row-gap:36px; }
+.comic-boxes .cbox-section-rail {
+  height:9px; margin:8px 28px 0;
+  border-top:2px solid color-mix(in srgb, var(--om-text) 35%, var(--om-base));
+  background:radial-gradient(circle, color-mix(in srgb, var(--om-secondary) 45%, transparent) 1px, transparent 1.5px) 0 2px/5px 5px;
+  box-shadow:none;
+}
+.comic-boxes .cbox-section-rail::after { display:none; }
+@media(max-width:1024px) {
+  .comic-boxes .cbox-slot { display:flex; justify-content:center; align-items:flex-start; }
+  .comic-boxes .cbox-scene { flex-shrink:0; }
+}
+
+/* Supporting comic captions inherit theme colors without repeating masthead art. */
+.comic-boxes .cbox-caption-header {
+  display:flex; align-items:center; gap:12px; margin:16px 28px 12px;
+}
+.comic-boxes .cbox-caption-tab {
+  flex:0 1 auto; padding:2px; background:#050506;
+  clip-path:polygon(0 0,100% 0,calc(100% - 14px) 100%,0 100%);
+}
+.comic-boxes .cbox-caption-tab h2 {
+  margin:0; padding:9px 30px 9px 16px;
+  font:25px/1.1 "Bangers",cursive; letter-spacing:.035em;
+  color:var(--om-banner-text,var(--om-highlight));
+  background:radial-gradient(#0003 1px,transparent 1.5px) 0 0/5px 5px,var(--om-secondary);
+  clip-path:polygon(0 0,100% 0,calc(100% - 13px) 100%,0 100%);
+  -webkit-text-stroke:.6px #050506; paint-order:stroke fill;
+  text-shadow:1.5px 1.5px #050506;
+}
+.comic-boxes .cbox-caption-rail {
+  flex:1; min-width:24px; height:10px; border:2px solid #050506;
+  background:var(--om-secondary); box-shadow:0 2px 0 #0008;
+}
+.comic-boxes .cbox-caption-actions {
+  display:flex; align-items:center; justify-content:flex-end;
+  gap:12px; flex-wrap:wrap; min-width:0;
+}
+.comic-boxes .cbox-caption-actions .cbox-section-count {
+  margin:0; color:var(--om-highlight); white-space:nowrap;
+}
+.comic-boxes .cbox-caption-actions .box-jump { color:var(--om-highlight); }
+.comic-boxes .cbox-caption-actions .box-jump:hover { color:var(--om-base); }
+@media(max-width:900px) {
+  .comic-boxes .cbox-caption-header { flex-wrap:wrap; margin:12px 16px; gap:10px; }
+  .comic-boxes .cbox-caption-actions { flex-basis:100%; justify-content:flex-start; }
+  .comic-boxes .cbox-caption-tab h2 { font-size:23px; }
+}
+
+/* ── Boxes stage 1 (2026-11-03, claude/BOXES_UNIFIED_PLAN.md) ───────────── */
+/* One search field for box titles, above both sections. */
+.comic-boxes .cbox-find { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:14px 28px 0; }
+.comic-boxes .cbox-find-label { flex:1 1 280px; max-width:460px; }
+.comic-boxes .cbox-find-label .find-box { width:100%; box-sizing:border-box; }
+.comic-boxes .cbox-find-count { font-size:.82rem; color:color-mix(in srgb, var(--om-text) 70%, var(--om-base)); }
+.cbox-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.comic-boxes .cbox-caption-actions button.box-jump { background:none; cursor:pointer; }
+
+/* My Comic Boxes: one row that scrolls sideways. */
+.comic-boxes .cbox-row-wrap { position:relative; margin:0 28px; }
+.comic-boxes .cbox-row {
+  display:flex; gap:28px; overflow-x:auto; overflow-y:hidden; scroll-snap-type:x proximity;
+  padding:18px 2px 22px; overscroll-behavior-x:contain;
+  /* The red scroll bar of the Home shelves (homePanels.css). */
+  scrollbar-width:thin; scrollbar-color:var(--om-secondary) var(--om-base);
+}
+.comic-boxes .cbox-row::-webkit-scrollbar { display:block; height:6px; }
+.comic-boxes .cbox-row::-webkit-scrollbar-track { background:var(--om-base); }
+.comic-boxes .cbox-row::-webkit-scrollbar-thumb { background:var(--om-secondary); }
+.comic-boxes .cbox-row:focus-visible { outline:2px solid var(--om-highlight); outline-offset:2px; }
+.comic-boxes .cbox-row > .cbox-slot { flex:0 0 min(420px, 82vw); scroll-snap-align:start; display:block; }
+.comic-boxes .cbox-row-arrow {
+  position:absolute; top:150px; z-index:6; width:40px; height:40px; border-radius:50%;
+  border:2px solid #050506; background:var(--om-secondary); color:var(--om-highlight);
+  font:700 26px/1 system-ui,sans-serif; cursor:pointer; box-shadow:2px 2px 0 #050506;
+}
+.comic-boxes .cbox-row-arrow:hover { background:var(--om-highlight); color:var(--om-base); }
+.comic-boxes .cbox-row-arrow--left { left:-14px; }
+.comic-boxes .cbox-row-arrow--right { right:-14px; }
+@media (max-width:900px) {
+  .comic-boxes .cbox-find { margin:12px 16px 0; }
+  .comic-boxes .cbox-row-wrap { margin:0 16px; }
+  .comic-boxes .cbox-row { gap:18px; }
+  .comic-boxes .cbox-row-arrow { display:none; }   /* swipe on phones */
+}
+
+/* Reading orders shown as boxes. */
+.comic-boxes .cbox-kind-badge { background:var(--om-highlight); color:var(--om-base); }
+.comic-boxes .cbox-order-ribbon {
+  position:absolute; right:12px; top:10px; z-index:3; padding:3px 9px;
+  font:16px/1.1 "Bangers",cursive; letter-spacing:.06em; color:#050506;
+  background:var(--td-yellow, #f5d000); border:2px solid #050506; box-shadow:2px 2px 0 #050506;
+  transform:rotate(-2deg); pointer-events:none;
+}
+
+/* + Create a box: what goes in it. */
+.cbox-create { display:flex; flex-direction:column; gap:10px; }
+.cbox-create-q { margin:0 0 2px; font-size:.95rem; color:var(--text-primary); }
+.cbox-create-choice {
+  display:flex; flex-direction:column; gap:3px; text-align:left; cursor:pointer;
+  padding:12px 14px; border:1px solid var(--border-subtle); border-radius:6px;
+  background:color-mix(in srgb, var(--om-secondary) 10%, transparent); color:var(--text-primary);
+}
+.cbox-create-choice:hover, .cbox-create-choice:focus-visible { border-color:var(--om-highlight); background:color-mix(in srgb, var(--om-highlight) 12%, transparent); }
+.cbox-create-choice strong { font-size:1rem; }
+.cbox-create-choice span { font-size:.82rem; color:var(--text-secondary); line-height:1.4; }
+
+/* Find shared boxes (dialog). */
+.cbox-shared { display:flex; flex-direction:column; gap:12px; }
+.cbox-shared-intro, .cbox-shared-empty { margin:0; font-size:.86rem; line-height:1.45; color:var(--text-secondary); }
+.cbox-shared-search { width:100%; box-sizing:border-box; }
+.cbox-shared-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px; max-height:min(56vh, 520px); overflow-y:auto;
+  scrollbar-width:thin; scrollbar-color:var(--om-secondary) var(--om-base); }
+.cbox-shared-item { display:flex; align-items:center; gap:12px; padding:8px 10px; border:1px solid var(--border-subtle); border-radius:6px; }
+.cbox-shared-art { flex:0 0 64px; height:40px; display:flex; align-items:center; justify-content:center; overflow:hidden; border-radius:3px;
+  background:color-mix(in srgb, var(--om-secondary) 18%, var(--om-base)); color:var(--om-highlight); font:15px "Bangers",cursive; }
+.cbox-shared-art img { width:100%; height:100%; object-fit:cover; }
+.cbox-shared-open { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; text-align:left; background:none; border:0; padding:0; cursor:pointer; color:var(--text-primary); }
+.cbox-shared-open strong { font-size:.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cbox-shared-open span { font-size:.78rem; color:var(--text-secondary); }
+.cbox-shared-open:hover strong, .cbox-shared-open:focus-visible strong { text-decoration:underline; }
+.cbox-shared-done { font-size:.8rem; color:var(--om-highlight); white-space:nowrap; }
+.cbox-follow { font-size:.8rem; padding:4px 12px; white-space:nowrap; }
+
+/* Default artwork keeps a live text layer; generated images never contain titles. */
+.comic-boxes .cbox-default-artwork { padding: 20px 24px !important; background-color:#10121a; }
+.cbox-default-art-image { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+.cbox-default-caption { position:absolute; inset:18% 16%; z-index:1; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; background:radial-gradient(ellipse at center, #0b0d1460 25%, transparent 100%); }
+.comic-boxes .cbox-default-artwork:after { content:none; }
+.comic-boxes .cbox-default-caption .box-placeholder-stamp { color:#f3d67b; font-size:9px; letter-spacing:.14em; line-height:1.2; margin-bottom:8px; padding:0; border:0; flex:none; text-shadow:1px 1px 3px #000; }
+.comic-boxes .cbox-default-caption .cbox-placeholder-name { color:#fff5dd; display:block; -webkit-line-clamp:unset; flex:none; min-height:0; width:100%; max-width:none; max-height:none; text-align:center; text-wrap:balance; overflow-wrap:anywhere; text-shadow:2px 2px 2px #000; line-height:1.05; }
+.comic-boxes .cbox-default-caption .cbox-placeholder-era { color:#fff5dd; flex:none; }
+.cbox-artwork-choice { position:absolute; z-index:5; bottom:8px; right:8px; background:#10121a; color:#fff5dd; border:1px solid #fff5dd80; padding:4px 8px; opacity:0; cursor:pointer; }
+.cbox-scene:hover .cbox-artwork-choice, .cbox-scene:focus-within .cbox-artwork-choice { opacity:1; }
+@media (hover:none) { .cbox-artwork-choice { opacity:1; } }

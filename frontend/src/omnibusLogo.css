@@ -1,0 +1,16 @@
+/* Layered, recolourable logo (components/OmnibusLogo.jsx and the .spinner loading mark).
+   Layers made from omnibus-logo-512.png on 2026-10-27: ink (black + blue, fixed),
+   red ring and yellow burst as alpha masks filled with the root colours. */
+.om-logo { position:relative; display:block; background:url('./assets/logo/logo-ink-512.png') center / contain no-repeat; }
+.om-logo--sm { background-image:url('./assets/logo/logo-ink-160.png'); }
+.om-logo > span { position:absolute; inset:0; -webkit-mask-position:center; mask-position:center; -webkit-mask-size:contain; mask-size:contain; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; }
+.om-logo-red { background:var(--om-secondary); -webkit-mask-image:url('./assets/logo/logo-red-512.png'); mask-image:url('./assets/logo/logo-red-512.png'); }
+.om-logo-yellow { background:var(--om-highlight); -webkit-mask-image:url('./assets/logo/logo-yellow-512.png'); mask-image:url('./assets/logo/logo-yellow-512.png'); }
+.om-logo--sm .om-logo-red { -webkit-mask-image:url('./assets/logo/logo-red-160.png'); mask-image:url('./assets/logo/logo-red-160.png'); }
+.om-logo--sm .om-logo-yellow { -webkit-mask-image:url('./assets/logo/logo-yellow-160.png'); mask-image:url('./assets/logo/logo-yellow-160.png'); }
+
+/* Loading mark: same layers on one element (ink as background, red and yellow as pseudo-elements). */
+.spinner { position:relative; background:url('./assets/logo/logo-ink-160.png') center / contain no-repeat; }
+.spinner::before, .spinner::after { content:''; position:absolute; inset:0; -webkit-mask-position:center; mask-position:center; -webkit-mask-size:contain; mask-size:contain; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; }
+.spinner::before { background:var(--om-secondary); -webkit-mask-image:url('./assets/logo/logo-red-160.png'); mask-image:url('./assets/logo/logo-red-160.png'); }
+.spinner::after { background:var(--om-highlight); -webkit-mask-image:url('./assets/logo/logo-yellow-160.png'); mask-image:url('./assets/logo/logo-yellow-160.png'); }

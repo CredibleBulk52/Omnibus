@@ -1,0 +1,14 @@
+.pull-control{display:flex;flex-wrap:wrap;align-items:center;gap:10px;max-width:100%}.pull-box-link{color:var(--rl-theme-accent,var(--om-highlight));font-size:13px}.pull-note{flex-basis:100%;font:13px/1.5 'DM Sans',sans-serif;color:var(--rl-theme-text,var(--om-text))}.pull-note button{color:var(--rl-theme-accent,var(--om-highlight));background:none;border:0;text-decoration:underline;cursor:pointer;padding:0;font:inherit}.pull-migration{padding:18px;border:2px solid var(--om-secondary);margin-bottom:18px;background:var(--om-base);color:var(--om-text)}.pull-migration p{font-size:14px}.pull-intro{padding:24px;display:flex;gap:24px;align-items:center}.pull-intro>img{width:35%;max-width:400px}.pull-intro h2{font-family:Bangers,cursive}.pull-release-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.pull-release-tabs button{font:20px Bangers,cursive;cursor:pointer;border:2px solid #08090c;background:var(--om-secondary);color:var(--om-highlight);padding:7px 10px;box-shadow:2px 2px #08090c}.pull-release-tabs button[aria-pressed=true]{background:var(--om-highlight);color:var(--om-base)}.pull-empty{font-size:14px;line-height:1.5}.pull-empty a{color:var(--om-highlight)}@media(max-width:599px){.pull-intro{flex-direction:column}.pull-intro>img{width:80%}}
+
+.pull-control .pull-note button { min-height:0; padding:0; box-shadow:none; letter-spacing:normal; flex:initial; }
+.pull-control>button:disabled { opacity:.55; cursor:default; }
+/* + Pull and + Add to a box side by side, the same size. */
+.pull-control>button.order-list-button { flex:1 1 0; white-space:nowrap; padding-left:8px; padding-right:8px; }
+
+/* Compact comic burst: stays beside the cover so artwork and controls remain clear. */
+.hp-release .hp-release-new {
+  display:inline-block; margin:0 0 7px; padding:8px 13px;
+  background:var(--om-highlight); color:var(--om-base);
+  font:15px/1 'Bangers',cursive; letter-spacing:.5px;
+  clip-path:polygon(0 12%,12% 14%,14% 0,27% 9%,40% 0,50% 9%,64% 0,76% 10%,88% 0,89% 14%,100% 12%,95% 47%,100% 87%,88% 85%,86% 100%,73% 91%,60% 100%,50% 91%,36% 100%,24% 90%,12% 100%,11% 86%,0 88%,5% 50%);
+}

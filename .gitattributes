@@ -1,0 +1,22 @@
+# Line endings: store and check out text files with LF (the app runs on Linux in Docker;
+# Windows editors handle LF). Stops the "LF will be replaced by CRLF" warnings.
+* text=auto eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.zip binary
+*.cbz binary
+*.db binary
+
+# Preserve upstream notice bytes: coverage.json records their exact SHA-256 hashes.
+licenses/native/*-NOTICES.txt -text
+# Stored with CRLF; keep as is.
+backend/eisner.txt -text

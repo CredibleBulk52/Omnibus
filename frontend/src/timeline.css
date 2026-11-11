@@ -1,0 +1,916 @@
+.events-outer.tl-outer {
+  padding: 0 !important;
+}
+.chron {
+  --cream: color-mix(in srgb, var(--td-yellow) 15%, var(--om-text));
+  --yellow: var(--td-yellow);
+  --muted: color-mix(in srgb, var(--om-text) 70%, var(--om-base));
+  padding: 34px 0 64px;   /* width and side margins: curatedPage.css */
+  color: var(--cream);
+  font-family: "DM Sans", sans-serif;
+}
+.chron * {
+  box-sizing: border-box;
+}
+.chron button {
+  cursor: pointer;
+}
+.chron-nav {
+  position: sticky;
+  top: 52px;
+  z-index: 25;
+  background: var(--om-base);
+  border-bottom: 1px solid color-mix(in srgb, var(--om-base) 75%, white);
+  box-shadow: 0 9px 18px #0007;
+  margin-bottom: 34px;
+}
+.chron-decades {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 0 11px;
+  border-bottom: 1px solid color-mix(in srgb, var(--om-base) 85%, white);
+}
+.chron-decades > span {
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--muted);
+  margin-right: 20px;
+}
+.chron-decades button {
+  border: 0;
+  background: transparent;
+  color: var(--cream);
+  font:
+    23px "Bangers",
+    cursive;
+  padding: 4px 18px;
+}
+.chron-decades button.active,
+.chron-decades button:hover {
+  background: var(--yellow);
+  color: var(--om-base);
+  transform: skew(-5deg);
+}
+.chron-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+.chron input,
+.chron select {
+  background: color-mix(in srgb, var(--om-base) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--om-base) 75%, white);
+  border-radius: 3px;
+  color: var(--cream);
+  padding: 9px 12px;
+  font-size: 12px;
+}
+.chron input {
+  width: 230px;
+  min-width: 120px;
+}
+.chron select {
+  max-width: 108px;
+}
+.chron-tiers {
+  display: flex;
+  gap: 5px;
+}
+.chron-tiers button {
+  background: transparent;
+  border: 1px solid transparent;
+  color: color-mix(in srgb, var(--om-text) 80%, var(--om-base));
+  font-size: 11px;
+  padding: 8px;
+}
+.chron-tiers i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  background: color-mix(in srgb, var(--td-red) 70%, white);
+}
+.chron-tiers [data-tier="2"] i {
+  background: var(--td-yellow);
+}
+.chron-tiers [data-tier="3"] i {
+  background: #79b3df;
+}
+.chron-tiers button[aria-pressed="false"] {
+  opacity: 0.35;
+}
+.chron-tiers button:hover {
+  border-color: color-mix(in srgb, var(--om-text) 30%, var(--om-base));
+}
+.chron-reset {
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+  font-size: 11px;
+}
+.chron output {
+  margin-left: auto;
+  color: color-mix(in srgb, var(--om-text) 55%, var(--om-base));
+  font-size: 11px;
+  white-space: nowrap;
+}
+.chron-years {
+  position: relative;
+}
+.chron-years:before {
+  content: "";
+  position: absolute;
+  left: 37px;
+  top: 28px;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(var(--yellow), color-mix(in srgb, var(--om-text) 25%, var(--om-base)) 300px);
+}
+.chron-year {
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr);
+  gap: 18px;
+  position: relative;
+  padding-bottom: 38px;
+  scroll-margin-top: 188px;
+}
+.chron-year-label {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  align-self: start;
+  background: var(--om-base);
+  padding: 9px 0 17px;
+  width: 78px;
+}
+.chron-year-label b {
+  font:
+    35px "Bangers",
+    cursive;
+  color: var(--yellow);
+}
+.chron-year-label span {
+  display: block;
+  color: color-mix(in srgb, var(--om-text) 55%, var(--om-base));
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 1px;
+  margin-top: 7px;
+}
+.chron-panels {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.chron-card {
+  --accent: #7eafd3;
+  grid-column: span 2;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+  border-top: 3px solid var(--accent);
+  box-shadow: 5px 5px 0 #050608;
+  min-width: 0;
+  overflow: hidden;
+}
+.chron-tier-1 {
+  --accent: color-mix(in srgb, var(--td-red) 70%, white);
+  grid-column: span 6;
+  min-height: 290px;
+  display: grid;
+  grid-template-columns: 1fr 31%;
+  background:
+    radial-gradient(ellipse at 100% 0, #6a232b55, transparent 70%), color-mix(in srgb, var(--om-base) 95%, white);
+}
+.chron-tier-2 {
+  --accent: color-mix(in srgb, var(--td-yellow) 65%, color-mix(in srgb, var(--om-text) 70%, var(--om-base)));
+  grid-column: span 3;
+}
+.chron-art {
+  height: 125px;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(color-mix(in srgb, var(--om-text) 7%, transparent) 1px, transparent 1px) 0 0/6px 6px,
+    var(--om-base);
+}
+.chron-art img {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  object-position: 50% 25%;
+  opacity: 0.8;
+}
+.chron-tier-1 .chron-art {
+  grid-column: 2;
+  grid-row: 1;
+  height: 100%;
+  min-height: 290px;
+  transform: skew(-7deg);
+  margin-right: -24px;
+  border-left: 5px solid #08090c;
+}
+.chron-tier-1 .chron-art img {
+  transform: skew(7deg) scale(1.13);
+  opacity: 1;
+  object-position: 50% 30%;
+}
+.chron-tier-1 .chron-copy {
+  grid-column: 1;
+  grid-row: 1;
+  padding: 26px 32px;
+}
+.chron-copy {
+  padding: 20px;
+  min-width: 0;
+}
+.chron-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  color: var(--accent);
+}
+.chron-meta b {
+  color: color-mix(in srgb, var(--om-text) 70%, var(--om-base));
+  font-size: 9px;
+  letter-spacing: 1px;
+  font-weight: 500;
+}
+.chron h2 {
+  font:
+    30px/1.07 "Bangers",
+    cursive;
+  letter-spacing: 0.4px;
+  color: var(--cream);
+  margin: 12px 0;
+}
+.chron-tier-1 h2 {
+  font-size: clamp(34px, 3.8vw, 56px);
+  max-width: 700px;
+}
+.chron-tier-2 h2 {
+  font-size: 34px;
+}
+.chron-description {
+  font-size: 12px;
+  line-height: 1.75;
+  color: color-mix(in srgb, var(--om-text) 75%, var(--om-base));
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.chron-tier-1 .chron-description {
+  color: color-mix(in srgb, var(--om-text) 85%, var(--om-base));
+  max-width: 680px;
+}
+.chron-more {
+  color: var(--accent);
+  font-size: 10px;
+  background: transparent;
+  border: 0;
+  padding: 10px 0 0;
+}
+.expanded .chron-description {
+  display: block;
+}
+.chron-card footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--om-text) 8%, transparent);
+  padding-top: 13px;
+  margin-top: 17px;
+  color: color-mix(in srgb, var(--om-text) 85%, var(--om-base));
+  font-size: 11px;
+}
+.chron-card footer small {
+  font-size: 10px;
+  color: color-mix(in srgb, var(--om-text) 60%, var(--om-base));
+  margin-left: 4px;
+}
+.chron-card footer i {
+  display: block;
+  height: 3px;
+  background: color-mix(in srgb, var(--om-text) 8%, transparent);
+  flex: 1;
+  max-width: 110px;
+  margin-left: auto;
+}
+.chron-card footer i b {
+  display: block;
+  background: var(--accent);
+  height: 100%;
+  opacity: 0.7;
+}
+.chron-no-art .chron-art {
+  height: 60px;
+}
+.chron-no-art .chron-art span {
+  position: absolute;
+  right: 12px;
+  top: 0;
+  font: 70px "Bangers";
+  color: color-mix(in srgb, var(--om-text) 4%, transparent);
+}
+.chron-no-art.chron-tier-1 .chron-art {
+  height: 100%;
+}
+.chron-note {
+  color: color-mix(in srgb, var(--om-text) 50%, var(--om-base));
+  font-size: 11px;
+  margin-left: 112px;
+  padding-top: 20px;
+  border-top: 1px solid color-mix(in srgb, var(--om-base) 85%, white);
+}
+.chron :focus-visible {
+  outline: 2px solid var(--yellow);
+  outline-offset: 4px;
+}
+.chron-tier-1 .chron-art img {
+  position: absolute;
+  inset: 0;
+}
+.chron-description {
+  white-space: normal;
+}
+.chron-tier-1 .chron-description {
+  -webkit-line-clamp: 3;
+}
+.chron-card footer {
+  margin-top: 19px;
+}
+.chron-tier-1 {
+  min-height: 300px;
+}
+@media (min-width: 1400px) {
+  .chron-tier-3 .chron-art {
+    height: 150px;
+  }
+}
+@media (max-width: 1050px) {
+  .chron {
+    padding-top: 25px;
+    padding-bottom: 25px;
+  }
+  .chron-tools {
+    flex-wrap: wrap;
+  }
+  .chron input {
+    flex: 1;
+  }
+  .chron-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .chron-tier-1 {
+    grid-column: span 2;
+  }
+  .chron-tier-2,
+  .chron-tier-3 {
+    grid-column: span 1;
+  }
+  .chron-year {
+    grid-template-columns: 75px minmax(0, 1fr);
+    gap: 10px;
+  }
+  .chron-year-label {
+    width: 64px;
+  }
+  .chron-years:before {
+    left: 31px;
+  }
+  .chron-decades button {
+    padding: 4px 12px;
+  }
+  .chron-year {
+    scroll-margin-top: 225px;
+  }
+}
+@media (max-width: 650px) {
+  .chron {
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+  .chron-nav {
+    top: 52px;
+    margin-bottom: 25px;
+  }
+  .chron-decades {
+    gap: 2px;
+    justify-content: space-between;
+  }
+  .chron-decades > span {
+    display: none;
+  }
+  .chron-decades button {
+    font-size: 21px;
+    padding: 5px 10px;
+  }
+  .chron-tools {
+    gap: 7px;
+    padding: 10px 0;
+  }
+  .chron input {
+    width: 180px;
+    font-size: 11px;
+  }
+  .chron select {
+    width: 96px;
+    font-size: 11px;
+  }
+  .chron-tiers {
+    order: 3;
+    gap: 0;
+  }
+  .chron-tiers button {
+    padding: 5px 8px;
+  }
+  .chron-reset {
+    order: 4;
+  }
+  .chron output {
+    order: 5;
+    font-size: 9px;
+  }
+  .chron-year {
+    display: block;
+    scroll-margin-top: 200px;
+    padding-bottom: 30px;
+  }
+  .chron-year-label {
+    width: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    padding: 0 0 12px;
+  }
+  .chron-year-label span {
+    margin: 0;
+  }
+  .chron-years:before {
+    display: none;
+  }
+  .chron-panels {
+    display: flex;
+    flex-direction: column;
+    gap: 17px;
+  }
+  .chron-card {
+    width: 100%;
+  }
+  .chron-tier-1 {
+    display: flex;
+    min-height: 0;
+  }
+  .chron-tier-1 .chron-art {
+    order: 0;
+    height: 170px;
+    min-height: 0;
+    transform: none;
+    margin: 0;
+    border: 0;
+  }
+  .chron-tier-1 .chron-art img {
+    transform: none;
+    object-position: 50% 25%;
+  }
+  .chron-tier-1 .chron-copy,
+  .chron-copy {
+    padding: 20px;
+  }
+  .chron-tier-1 h2 {
+    font-size: 39px;
+  }
+  .chron-art {
+    height: 130px;
+  }
+  .chron-note {
+    margin-left: 0;
+  }
+  .chron h2 {
+    font-size: 32px;
+  }
+}
+.chron-tier-2,
+.chron-tier-3 {
+  border: 3px solid var(--accent);
+  outline: 2px solid #06070a;
+  box-shadow: 6px 6px 0 #000;
+  display: grid;
+  grid-template-columns: 36% minmax(0, 1fr);
+  background:
+    radial-gradient(color-mix(in srgb, color-mix(in srgb, var(--td-yellow) 65%, color-mix(in srgb, var(--om-text) 70%, var(--om-base))) 7%, transparent) 1px, transparent 1px) 0 0/6px 6px,
+    color-mix(in srgb, var(--om-base) 95%, white);
+}
+.chron-tier-3 {
+  background:
+    radial-gradient(#7eafd318 1px, transparent 1px) 0 0/6px 6px,
+    color-mix(in srgb, var(--om-base) 95%, white);
+  grid-template-columns: 32% minmax(0, 1fr);
+}
+.chron-tier-2 .chron-art,
+.chron-tier-3 .chron-art {
+  height: auto !important;
+  min-height: 0;
+  margin: 14px 0 14px 12px;
+  align-self: start;
+  aspect-ratio: 2/3;
+  background: color-mix(in srgb, var(--om-base) 70%, black);
+  border: 3px solid #070809;
+  box-shadow: 3px 3px 0 #000;
+}
+.chron-tier-2 .chron-art img,
+.chron-tier-3 .chron-art img {
+  display: block;
+  position: absolute;
+  inset: 0;
+  object-fit: contain;
+  object-position: center;
+  opacity: 1;
+  width: 100%;
+  height: 100%;
+}
+.chron-tier-2 .chron-copy {
+  padding: 15px 15px 17px;
+}
+.chron-tier-3 .chron-copy {
+  padding: 12px 12px 14px;
+}
+.chron-tier-2 .chron-meta,
+.chron-tier-3 .chron-meta {
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 9px;
+  letter-spacing: 0.8px;
+}
+.chron-tier-2 .chron-meta > span,
+.chron-tier-3 .chron-meta > span {
+  background: var(--accent);
+  color: var(--om-base);
+  padding: 5px 7px;
+  border: 2px solid #08090b;
+  box-shadow: 2px 2px 0 #000;
+  font-weight: 700;
+}
+.chron-tier-2 h2 {
+  font-size: 31px;
+  margin: 14px 0 11px;
+}
+.chron-tier-3 h2 {
+  font-size: 25px;
+  margin: 12px 0 9px;
+}
+.chron-tier-2 .chron-description {
+  font-family: "Comic Neue", cursive;
+  font-size: 14px;
+  line-height: 1.45;
+  color: color-mix(in srgb, var(--td-yellow) 20%, color-mix(in srgb, var(--om-text) 95%, var(--om-base)));
+  -webkit-line-clamp: 4;
+}
+.chron-tier-3 .chron-description {
+  font-family: "Comic Neue", cursive;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #c7ddeb;
+  -webkit-line-clamp: 2;
+}
+.chron-tier-2 footer,
+.chron-tier-3 footer {
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.chron-tier-3 footer {
+  margin-top: 12px;
+}
+.chron-tier-2 footer i,
+.chron-tier-3 footer i {
+  min-width: 32px;
+}
+.chron-tier-3 footer small {
+  font-size: 9px;
+}
+.chron-tier-2.chron-no-art .chron-art,
+.chron-tier-3.chron-no-art .chron-art {
+  background:
+    radial-gradient(color-mix(in srgb, var(--om-text) 8%, transparent) 1px, transparent 1px) 0 0/5px 5px,
+    var(--om-base);
+}
+.chron-tier-2.chron-no-art .chron-art span,
+.chron-tier-3.chron-no-art .chron-art span {
+  font-size: 35px;
+  top: 30%;
+  right: 5px;
+  color: var(--accent);
+}
+@media (min-width: 651px) and (max-width: 1150px) {
+  .chron-tier-2 {
+    grid-column: 1/-1;
+  }
+  .chron-tier-3 {
+    grid-column: span 1;
+    grid-template-columns: 30% minmax(0, 1fr);
+  }
+}
+@media (max-width: 650px) {
+  .chron-tier-2 {
+    grid-template-columns: 36% minmax(0, 1fr);
+  }
+  .chron-tier-3 {
+    grid-template-columns: 30% minmax(0, 1fr);
+  }
+  .chron-tier-2 h2 {
+    font-size: 29px;
+  }
+  .chron-tier-3 h2 {
+    font-size: 25px;
+  }
+  .chron-tier-2 .chron-copy,
+  .chron-tier-3 .chron-copy {
+    padding: 12px;
+  }
+  .chron-tier-2 .chron-description {
+    font-size: 13px;
+    -webkit-line-clamp: 3;
+  }
+  .chron-tier-3 .chron-description {
+    font-size: 12px;
+  }
+}
+.chron-tier-1 {
+  background:
+    radial-gradient(color-mix(in srgb, color-mix(in srgb, var(--td-red) 70%, white) 11%, transparent) 1px, transparent 1px) 0 0/6px 6px,
+    radial-gradient(ellipse at 100% 0, #6a232b55, transparent 70%),
+    color-mix(in srgb, var(--om-base) 95%, white);
+}
+.chron-tier-1 .chron-meta > span {
+  background: var(--accent);
+  color: var(--om-base);
+  padding: 5px 7px;
+  border: 2px solid #08090b;
+  box-shadow: 2px 2px 0 #000;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+.chron-nav {
+  border-left: 2px solid color-mix(in srgb, var(--om-text) 40%, var(--om-base));
+  border-right: 2px solid color-mix(in srgb, var(--om-text) 40%, var(--om-base));
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.chron .chron-description {
+  font-family: "Comic Neue", "Comic Sans MS", cursive;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.chron .chron-tier-3 .chron-description {
+  font-size: 14px;
+}
+@media (max-width: 650px) {
+  .chron-nav {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .chron .chron-description {
+    font-size: 14px;
+  }
+  .chron .chron-tier-3 .chron-description {
+    font-size: 13px;
+  }
+  .chron-tiers button {
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+}
+.chron-tier-1 {
+  grid-template-columns: minmax(0, 1fr) clamp(180px, 24%, 290px);
+}
+.chron-tier-1 .chron-art {
+  transform: none;
+  margin: 0;
+  min-height: 0;
+  height: auto;
+  align-self: stretch;
+  border-left: 5px solid #08090c;
+  background:
+    radial-gradient(color-mix(in srgb, color-mix(in srgb, var(--td-red) 70%, white) 11%, transparent) 1px, transparent 1px) 0 0/6px 6px,
+    var(--om-base);
+  clip-path: polygon(8% 0, 100% 0, 100% 100%, 0 100%);
+  padding: 15px 14px 15px 30px;
+}
+.chron-tier-1 .chron-art img {
+  position: static;
+  transform: none;
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 390px;
+  object-fit: contain;
+  object-position: center;
+  aspect-ratio: 2/3;
+}
+.chron-tier-1.chron-no-art .chron-art {
+  height: auto;
+  min-height: 220px;
+}
+@media (max-width: 650px) {
+  .chron-tier-1 .chron-art {
+    height: auto;
+    min-height: 0;
+    clip-path: none;
+    border: 0;
+    border-bottom: 3px solid #08090c;
+    padding: 16px;
+    display: flex;
+    justify-content: center;
+  }
+  .chron-tier-1 .chron-art img {
+    width: 160px;
+    height: 240px;
+    max-height: none;
+    object-fit: contain;
+    transform: none;
+  }
+}
+
+.main-content:has(.tl-outer) {
+  overflow: visible;
+}
+.chron h2 a {
+  color: inherit;
+  text-decoration: none;
+}
+.chron h2 a:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+.chron-art {
+  display: block;
+}
+.chron-manual {
+  display: block;
+  margin-top: 10px;
+  color: color-mix(in srgb, var(--om-text) 70%, var(--om-base));
+  font-size: 10px;
+}
+.chron-decades {
+  flex-wrap: wrap;
+}
+.chron.expanded .chron-description,
+.chron .expanded .chron-description {
+  display: block;
+  white-space: pre-line;
+}
+.chron-tier-1 .chron-art {
+  align-content: center;
+}
+.chron-tools {
+  flex-wrap: wrap;
+}
+
+/* Keep the artwork crop independent of summary length and viewport width. */
+.chron-tier-1 {
+  grid-template-columns: minmax(0, 1fr) 31%;
+  min-height: 0;
+}
+.chron-tier-1 .chron-art,
+.chron-tier-1.chron-no-art .chron-art {
+  aspect-ratio: 1 / 1;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  align-self: start;
+  overflow: hidden;
+}
+.chron-tier-1 .chron-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  object-fit: cover;
+  object-position: 50% 30%;
+  transform: none;
+}
+
+/* One sticky row; narrower windows can scroll through the same controls. */
+.chron-nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--om-text) 40%, var(--om-base)) var(--om-base);
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+.chron-decades {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 3px;
+  border-bottom: 0;
+  border-right: 1px solid color-mix(in srgb, var(--om-base) 75%, white);
+  padding: 0 12px 0 0;
+}
+.chron-decades > span {
+  display: none;
+}
+.chron-decades button {
+  font-size: 21px;
+  padding: 4px 10px;
+}
+.chron-tools {
+  flex: 1 0 auto;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0;
+}
+.chron-tools input {
+  flex: 0 1 180px;
+  width: 180px;
+  min-width: 130px;
+}
+.chron-tools select {
+  flex: 0 0 auto;
+}
+.chron-tiers,
+.chron-reset,
+.chron-tools output {
+  flex-shrink: 0;
+  order: initial;
+}
+.chron-tiers button {
+  white-space: nowrap;
+}
+@media (max-width: 650px) {
+  .chron-tier-1 .chron-art {
+    width: 100%;
+    display: block;
+  }
+  .chron-nav {
+    gap: 10px;
+  }
+  .chron-tools input {
+    width: 150px;
+  }
+}
+
+/* Publisher filter (2026-10-26): the first row of the timeline bar. */
+.chron-pubs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--om-base) 85%, white);
+}
+.chron-pubs > span {
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--muted);
+  margin-right: 12px;
+}
+.chron-pubs button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  border: 2px solid var(--pub);
+  background: transparent;
+  color: var(--cream);
+  font: 20px "Bangers", cursive;
+  letter-spacing: 1px;
+  padding: 3px 16px 2px;
+  transform: skew(-5deg);
+  cursor: pointer;
+}
+.chron-pubs button small {
+  font: 11px system-ui, sans-serif;
+  letter-spacing: 0;
+  opacity: 0.75;
+}
+.chron-pubs button:hover {
+  background: color-mix(in srgb, var(--pub) 22%, transparent);
+}
+.chron-pubs button[aria-pressed="true"] {
+  background: var(--pub);
+  color: var(--om-base);
+  box-shadow: 3px 3px 0 #000;
+}
+@media (max-width: 650px) {
+  .chron-pubs > span { display: none; }
+  .chron-pubs { gap: 6px; padding: 10px 0 8px; }
+  .chron-pubs button { font-size: 17px; padding: 2px 11px 1px; }
+}

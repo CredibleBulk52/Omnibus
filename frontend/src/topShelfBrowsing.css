@@ -1,0 +1,21 @@
+/* Current Comic only; the original shelf remains in CanonPageLegacy. */
+.ts-browsing .ts-scroller { min-width: 0; position: relative; }
+.ts-browsing .ts-scroll-controls { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; margin-left: 6px; }
+.ts-browsing .ts-scroll-controls button { width: 44px; height: 36px; border: 2px solid var(--shelf-colour); background: color-mix(in srgb, var(--om-base) 90%, white); color: var(--shelf-colour); font: bold 23px/1 sans-serif; cursor: pointer; }
+.ts-browsing .ts-scroll-controls button:disabled { opacity: .28; cursor: default; }
+.ts-browsing .ts-scroll-controls button:hover:not(:disabled) { background: var(--shelf-colour); color: color-mix(in srgb, var(--om-base) 90%, black); }
+.ts-browsing .ts-books { display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: calc((100% - 110px) / 6); overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: 20px; }
+.ts-browsing .ts-book { scroll-snap-align: start; }
+.ts-browsing .ts-feature-art { isolation: isolate; }
+.ts-browsing .ts-feature-art .ts-pile-cover { width: 59%; left: 20%; opacity: .92; box-shadow: 4px 6px 9px #000a; }
+.ts-browsing .ts-feature-art .ts-pile-0 { transform: translate(-22%, -59%) rotate(-24deg); z-index: 0; }
+.ts-browsing .ts-feature-art .ts-pile-1 { transform: translate(24%, -58%) rotate(21deg); z-index: 1; }
+.ts-browsing .ts-feature-art .ts-pile-2 { transform: translate(-16%, -43%) rotate(-14deg); z-index: 2; }
+.ts-browsing .ts-feature-art .ts-pile-3 { transform: translate(19%, -42%) rotate(14deg); z-index: 3; }
+.ts-browsing .ts-feature-art .ts-front-cover { width: 62%; left: 19%; z-index: 4; transform: translateY(-50%) rotate(4deg); }
+.ts-browsing .ts-feature-art .ts-seal { z-index: 5; }
+@media (max-width: 1000px) { .ts-browsing .ts-books { grid-template-columns: none; grid-auto-columns: 150px; } }
+@media (max-width: 700px) {
+  .ts-browsing .ts-books { grid-template-columns: none; grid-auto-columns: 140px; }
+  .ts-browsing .ts-scroll-controls button { height: 44px; }
+}

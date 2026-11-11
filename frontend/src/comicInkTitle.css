@@ -1,0 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Bowlby+One+SC&display=swap');
+
+.csh-title { margin:16px 8px 18px 0; line-height:1.14; font-weight:400; color:var(--rl-theme-accent); }
+.csh-title-face { display:inline-block; position:relative; isolation:isolate; max-width:100%; padding-right:7px; font:400 var(--csh-title-size,44px)/1.14 'Bowlby One SC',sans-serif; letter-spacing:.025em; text-transform:uppercase; -webkit-text-stroke:3px var(--csh-ink); paint-order:stroke fill; overflow-wrap:anywhere; }
+.csh-title-depth { position:absolute; inset:0; z-index:-1; color:var(--csh-depth); -webkit-text-stroke:3px var(--csh-ink); paint-order:stroke fill; transform:translate(5px,5px); padding-right:7px; pointer-events:none; }
+.csh-subtitle { display:block; font:500 17px/1.25 'DM Sans',sans-serif; letter-spacing:.18em; text-transform:uppercase; color:var(--rl-theme-text); margin:13px 0 0 2px; }

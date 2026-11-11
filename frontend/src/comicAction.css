@@ -1,0 +1,6 @@
+/* The comic action button (2026-10-28): the Series page's big Read button and the compact
+   actions that share its look (home page links and others). Shared, so it no longer lives in
+   the Series hero stylesheet; layout stays with each page (.csh-resume in comicSeriesHero.css). */
+.csh-resume, .comic-action { background:var(--rl-theme-button,var(--om-action)); color:var(--rl-theme-on-button-accent,var(--om-on-action)); border:3px solid var(--csh-ink); border-radius:0; box-shadow:4px 5px var(--csh-ink); font:24px 'Bangers',cursive; letter-spacing:.6px; transform:skewX(-2deg); padding:10px 8px; min-height:48px; cursor:pointer; }
+.comic-action { display:inline-flex; align-items:center; justify-content:center; gap:6px; --csh-ink:#08090c; text-decoration:none; }
+.home-panels .comic-action { background:var(--rl-theme-secondary,var(--om-secondary)); color:var(--rl-theme-on-secondary-accent,var(--om-on-secondary)); }

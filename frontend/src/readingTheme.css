@@ -1,0 +1,64 @@
+/* Local to reading-list content. App chrome and semantic error colors stay intact. */
+.rl-themed {
+  --td-yellow:var(--rl-theme-accent);
+  --text-primary:var(--rl-theme-text);
+  --text-secondary:var(--rl-theme-muted);
+  --text-muted:var(--rl-theme-muted);
+  --bg-surface:var(--rl-theme-panel);
+  --bg-elevated:var(--rl-theme-panel);
+  color:var(--rl-theme-text);
+  background:var(--rl-theme-bg);
+}
+.rl-themed .page-header{background:var(--rl-theme-panel)!important}
+.rl-themed .page-header::before{background:var(--rl-theme-banner)!important}
+.rl-themed .page-header .page-title{color:var(--rl-theme-on-banner)!important;opacity:1}
+.rl-themed .page-header-actions .home-stat-n{color:var(--rl-theme-accent)!important}
+.rl-themed .page-header-actions .home-stat-l{color:var(--rl-theme-muted)!important;opacity:1}
+.rl-themed .page-header-dots-r{background-image:radial-gradient(rgba(255,255,255,.04) 1px,transparent 1px)}
+.rl-themed .rl-sec-banner,.rl-themed .rl-caption{background:var(--rl-theme-banner)!important;color:var(--rl-theme-on-banner)!important}
+.rl-themed .rl-sec-title,.rl-themed .rl-sec-prog,.rl-themed .rl-caption-title,.rl-themed .rl-caption-by{color:var(--rl-theme-on-banner)!important;opacity:1}
+.essential-card-emblem {
+  position:absolute;
+  left:50%;
+  top:3%;
+  transform:translateX(-50%);
+  width:min(100%,calc(66% * var(--brand-scale,1)));
+  height:min(100%,calc(82% * var(--brand-scale,1)));
+  --emblem-ink:color-mix(in srgb,var(--rl-theme-secondary) 84%,#ddd);
+  background:linear-gradient(color-mix(in srgb,var(--emblem-ink) 80%,transparent) 0 0),var(--emblem-image) center top / contain no-repeat;
+  mask:var(--emblem-image) center top / contain no-repeat;
+  opacity:.48;
+  pointer-events:none;
+}
+.rl-themed .rl-hero.cover-coloured-hero{
+  /* A stationary glow behind the covers; the right side stays charcoal. */
+  background:radial-gradient(ellipse 65% 130% at 0% 50%,rgba(var(--rl-theme-main-rgb),.18),rgba(var(--rl-theme-main-rgb),.06) 45%,transparent 100%),linear-gradient(110deg,var(--rl-theme-panel),var(--rl-theme-bg))!important;
+  border-top-color:var(--rl-theme-accent)!important;
+}
+.rl-themed .rl-hero::before{
+  /* One dot layer only: overlapping 7px/9px grids caused the uneven pattern. */
+  background:radial-gradient(circle,rgba(255,255,255,.035) .75px,transparent 1px) 0 0/10px 10px;
+  -webkit-mask-image:linear-gradient(to right,#000,rgba(0,0,0,.35) 40%,rgba(0,0,0,.15));
+  mask-image:linear-gradient(to right,#000,rgba(0,0,0,.35) 40%,rgba(0,0,0,.15));
+}
+.rl-themed .rl-hero-desc,.rl-themed .rl-card-desc{color:var(--rl-theme-muted)!important;opacity:1;line-height:1.7}
+.rl-themed .rl-hero-actions .btn-primary{background:var(--rl-theme-button)!important;color:var(--rl-theme-on-button)!important;border-color:var(--rl-theme-button)!important}
+.rl-themed .rl-hero-actions .btn-primary span{opacity:1!important}
+.rl-themed .rl-art{background:var(--rl-theme-panel)!important}
+.rl-themed.rl-card{background:var(--rl-theme-panel);border-color:#000}
+.rl-themed.rl-card:hover{box-shadow:7px 7px 0 var(--rl-theme-main)}
+.rl-themed .rl-chapter-line{background:var(--rl-theme-line)}
+.rl-themed .rl-section-title,.rl-themed .rl-chapter-title,.rl-themed .rl-row-num-inline{color:var(--rl-theme-accent)!important}
+.rl-themed .rl-chapter-num,.rl-themed .rl-toggle .on,.rl-themed .rl-chip--essential,.rl-themed .rl-burst{background:var(--rl-theme-accent)!important;color:var(--rl-theme-on-accent)!important;opacity:1}
+.rl-themed .rl-sec-part{color:var(--rl-theme-accent)}
+.rl-themed .rl-stat-line,.rl-themed .rl-chapter-stat,.rl-themed .rl-progress-text,.rl-themed .rl-row-sub{color:var(--rl-theme-muted)!important;opacity:1;font-size:12px}
+.rl-themed .rl-progress-read{background:var(--rl-theme-accent)!important}
+.rl-themed .rl-progress-owned{background:color-mix(in srgb, var(--om-base) 75%, white)!important}
+.rl-themed .rl-progress-bar{background:color-mix(in srgb, var(--om-base) 90%, white);border:0}
+.rl-themed .rl-pill--reading,.rl-themed .rl-pill--done{color:var(--rl-theme-accent);opacity:1}
+.rl-themed .issue-book--current .issue-cover{box-shadow:0 0 0 3px #000,0 0 0 5px var(--rl-theme-accent)!important}
+.rl-themed .issue-bookmark::after,.rl-themed .rl-thumb-bookmark::after{background:var(--rl-theme-accent)!important}
+.rl-themed .issue-here{background:var(--rl-theme-accent)!important;color:var(--rl-theme-on-accent)!important}
+.rl-themed .rl-row--current{background:var(--rl-theme-panel);box-shadow:inset 3px 0 var(--rl-theme-accent)}
+.rl-themed .btn-ghost{color:var(--rl-theme-text)}
+

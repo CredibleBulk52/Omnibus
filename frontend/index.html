@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d0d0f" />
+    <title>Omnibus</title>
+    <link rel="icon" type="image/png" href="/omnibus-icon-192.png" />
+    <link rel="apple-touch-icon" href="/omnibus-apple-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Omnibus" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <style>
+      body { margin: 0; background: #0d0d0f; }
+      #root { min-height: 100vh; }
+    </style>
+    <script>
+      if ('serviceWorker' in navigator) {
+        // Record whether a SW was already controlling this page when it loaded.
+        // If not, we need to reload after the SW activates so it can intercept
+        // fetches from the very beginning of the next load.
+        var hadController = !!navigator.serviceWorker.controller;
+
+        navigator.serviceWorker.register('/sw.js').catch(function(err) {
+          console.warn('[omnibus] SW registration failed:', err);
+        });
+
+        // SW tells us when it has activated and claimed this page.
+        // Only reload if the page loaded WITHOUT a controller — meaning
+        // the SW is brand new and this page's fetches weren't intercepted.
+        navigator.serviceWorker.addEventListener('message', function(event) {
+          if (event.data && event.data.type === 'SW_ACTIVATED' && !hadController) {
+            // This reload lets the SW intercept all fetches on the next load.
+            // hadController becomes true after the reload so this only fires once.
+            window.location.reload();
+          }
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/index.jsx"></script>
+  </body>
+</html>

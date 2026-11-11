@@ -1,0 +1,60 @@
+.ai-settings-refined { min-width: 0; }
+.ai-settings-refined h3 { margin: 0; font-size: 18px; }
+.ai-settings-refined .ai-heading, .ai-settings-refined .ai-save { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ai-settings-refined .ai-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.ai-settings-refined .ai-defaults { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; margin: 16px 0; }
+.ai-settings-refined .ai-default { background: color-mix(in srgb, var(--om-base) 95%, white); border: 1px solid #46516a; border-top: 4px solid var(--td-yellow, color-mix(in srgb, var(--td-yellow) 80%, white)); padding: 20px; min-width: 0; }
+.ai-settings-refined .ai-default-generation { border-top-color: #8daed8; }
+.ai-settings-refined .ai-kicker { color: #b7c8df; text-transform: uppercase; letter-spacing: 1px; font-size: 12px; margin-bottom: 6px; }
+.ai-settings-refined .ai-disclosure { border-top: 1px solid var(--border-subtle, color-mix(in srgb, var(--om-base) 85%, white)); padding-bottom: 16px; }
+.ai-settings-refined summary { cursor: pointer; }
+.ai-settings-refined .ai-disclosure > summary, .ai-settings-refined .ai-task > summary { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; padding: 16px 0; list-style: none; }
+.ai-settings-refined .ai-disclosure > summary::before, .ai-settings-refined .ai-task > summary::before { content: '›'; color: var(--td-yellow); }
+.ai-settings-refined details[open] > summary::before { content: '⌄'; }
+.ai-settings-refined summary > span { margin-left: auto; color: color-mix(in srgb, var(--om-text) 75%, var(--om-base)); font-size: 13px; overflow-wrap: anywhere; }
+.ai-settings-refined .ai-task { border-top: 1px solid var(--border-subtle, color-mix(in srgb, var(--om-base) 85%, white)); }
+.ai-settings-refined .ai-task > summary { padding: 12px 0; }
+.ai-settings-refined .ai-task > summary strong { font-size: 14px; }
+.ai-settings-refined .ai-task-body { background: color-mix(in srgb, var(--om-base) 95%, white); padding: 16px; margin-bottom: 12px; }
+.ai-settings-refined .ai-model-info { margin: 8px 0; font-size: 13px; }
+.ai-settings-refined .ai-model-info summary { color: #c3cce0; padding: 4px 0; }
+.ai-settings-refined .ai-task-groups > .settings-card { background: transparent; border: 0; padding: 0; box-shadow: none; }
+.ai-settings-refined .ai-task-groups > .ai-tier { margin: 12px 0 26px; border: 1px solid color-mix(in srgb, var(--om-base) 80%, white); background: var(--om-base); }
+.ai-settings-refined .ai-tier .ai-tier-title { margin: 0; padding: 13px 16px; background: color-mix(in srgb, var(--om-base) 90%, white); border-left: 5px solid color-mix(in srgb, var(--td-yellow) 75%, white); color: color-mix(in srgb, var(--td-yellow) 50%, white); font-size: 20px; font-weight: 800; letter-spacing: .3px; }
+.ai-settings-refined .ai-tier-generation .ai-tier-title { background: #233448; border-left-color: #8daed8; color: #d4e5ff; }
+.ai-settings-refined .ai-task-subgroup { padding: 0 16px 8px; }
+.ai-settings-refined .ai-subgroup-heading { display: flex; align-items: baseline; gap: 8px; padding: 16px 0 10px; }
+.ai-settings-refined .ai-subgroup-heading h4 { margin: 0; flex-shrink: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #b6c3d9; }
+.ai-settings-refined .ai-heading-help { min-width: 0; font-size: 13px; }
+.ai-settings-refined .ai-heading-help > summary { display: inline-flex; align-items: center; justify-content: center; width: 22px; min-height: 22px; border: 1px solid #69788f; border-radius: 50%; list-style: none; color: #bac8dc; font: italic 14px Georgia, serif; }
+.ai-settings-refined .ai-heading-help > summary::before { content: none; }
+.ai-settings-refined .ai-heading-help > summary::-webkit-details-marker { display: none; }
+.ai-settings-refined .ai-heading-help p { margin: 8px 0 0; color: #b6c3d9; line-height: 1.5; }
+.ai-settings-refined .ai-tier .ai-task > summary strong { font-weight: 500; font-size: 14px; }
+.ai-settings-refined .ai-disclosure > summary { background: color-mix(in srgb, var(--om-base) 90%, white); border: 1px solid #394457; padding: 14px 16px; margin-bottom: 12px; }
+.ai-settings-refined .ai-disclosure > summary strong { font-size: 17px; font-weight: 750; }
+.ai-settings-refined .ai-task > summary:hover { background: color-mix(in srgb, var(--om-base) 90%, white); }
+.ai-settings-refined .ai-save { padding: 12px 0 20px; font-size: 13px; color: var(--text-muted); }
+.ai-settings-refined .ai-error { color: #ff998d; }
+.ai-settings-refined .ai-warning { color: color-mix(in srgb, var(--td-yellow) 55%, var(--om-text)); }
+.ai-settings-refined .ai-usage-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin: 16px 0; }
+.ai-settings-refined .ai-usage-summary > div { border-bottom: 2px solid #46516a; padding: 12px 0; }
+.ai-settings-refined .ai-usage-summary span { display: block; color: var(--text-muted); font-size: 13px; }
+.ai-settings-refined .ai-usage-summary b { display: block; font-size: 24px; }
+.ai-settings-refined .form-input { max-width: 100%; min-width: 0; }
+.ai-settings-refined .settings-section-header { flex-wrap: wrap; }
+.ai-settings-refined .settings-section, .ai-settings-refined .settings-card { min-width: 0; }
+.ai-settings-refined .settings-card { overflow-x: auto; }
+.ai-settings-refined .home-stats { display: flex; flex-wrap: wrap; gap: 12px; }
+.ai-settings-refined .home-stat { min-width: 70px; flex: 1 1 70px; }
+.ai-settings-refined :focus-visible { outline: 2px solid var(--td-yellow); outline-offset: 3px; }
+@media(max-width: 700px) {
+  .ai-settings-refined .ai-defaults { grid-template-columns: 1fr; }
+  .ai-settings-refined summary > span { width: 100%; margin-left: 16px; }
+  .ai-settings-refined .ai-default, .ai-settings-refined .ai-task-body { padding: 12px; }
+  .ai-settings-refined .ai-usage-summary b { font-size: 20px; }
+  .ai-settings-refined .settings-two-col { grid-template-columns: minmax(0,1fr); }
+  .ai-settings-refined .ai-task-subgroup { padding-left: 10px; padding-right: 10px; }
+  .ai-settings-refined .ai-subgroup-heading { flex-wrap: wrap; }
+}
+@media(pointer: coarse) { .ai-settings-refined summary, .ai-settings-refined button { min-height: 44px; } .ai-settings-refined .ai-heading-help > summary { width: 44px; min-height: 44px; } }

@@ -1,0 +1,18 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {act} from 'react-dom/test-utils';
+import {MemoryRouter} from 'react-router-dom';
+import {PullButton} from './PullBox';
+import {ReleasePanel} from './HomeFeatures';
+vi.mock('../App',()=>({getUser:()=>({id:'reader'}),useLibrary:()=>({activeLibrary:null,libraries:[]}),isAdmin:()=>false}));
+vi.mock('./Confirm',()=>({useConfirm:()=>async()=>true}));
+vi.mock('./RequestSeries',()=>({default:()=> <div>Existing request dialog</div>}));
+vi.mock('./ReadingTheme',()=>({useReadingTheme:()=>({style:{}})}));
+vi.mock('../pages/EventsPage',()=>({EVENT_TIERS:{}}));
+let host,root;
+beforeEach(()=>{global.IS_REACT_ACT_ENVIRONMENT=true;global.ResizeObserver=class{observe(){}disconnect(){}};window.matchMedia=()=>({matches:false});localStorage.clear();host=document.createElement('div');document.body.appendChild(host);root=createRoot(host);});
+afterEach(()=>{act(()=>root.unmount());host.remove();vi.restoreAllMocks();});
+const render=async node=>act(async()=>root.render(<MemoryRouter>{node}</MemoryRouter>));
+test('Pull toggles membership, explains monitoring, reuses request dialog and confirms removal',async()=>{let pulled=false;global.fetch=vi.fn(async(url,options)=>{if(options.method==='POST')pulled=true;if(options.method==='DELETE')pulled=false;return {ok:true,json:async()=>({pulled,collecting:false})};});await render(<PullButton seriesId="s" name="A series" status="continuing"/>);await act(async()=>host.querySelector('button').click());expect(host.textContent).toContain('On your pull list');expect(host.textContent).toContain('isn’t actively monitored');expect(host.querySelector('a').getAttribute('href')).toBe('/my-pull-box');await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='Request this series').click());expect(host.textContent).toContain('Existing request dialog');await act(async()=>host.querySelector('button').click());expect(host.textContent).not.toContain('On your pull list');expect(fetch.mock.calls.filter(([,o])=>o.method==='DELETE')).toHaveLength(1);});
+test('My Pulls switches only the release rail and remembers selection with cross-library context',async()=>{global.fetch=vi.fn(async()=>({ok:true,json:async()=>({favoritesCount:0,seriesIds:['followed'],items:[{id:'pullissue',seriesId:'followed',seriesName:'Pulled series',issue_number:'3',effective_date:'2026-01-01',completed:0}]})}));await render(<ReleasePanel items={[{id:'regular',seriesId:'other',seriesName:'Recent library series'}]}/>);expect(host.textContent).toContain('Recent library series');await act(async()=>[...host.querySelectorAll('button')].find(b=>b.textContent==='My Pulls').click());expect(host.textContent).toContain('Pulled series');expect(host.textContent).not.toContain('Recent library series');expect(host.textContent).toContain('All libraries');expect(host.textContent).toContain('Unread');expect(localStorage.getItem('omnibus-pull-tab:reader')).toBe('pull');expect(host.querySelector('.hp-read-action').getAttribute('href')).toBe('/read/pullissue');});
+test('empty pulls explain the next step without creating a box',async()=>{localStorage.setItem('omnibus-pull-tab:reader','pull');global.fetch=vi.fn(async()=>({ok:true,json:async()=>({box:null,seriesIds:[],items:[],favoritesCount:0})}));await render(<ReleasePanel/>);expect(host.textContent).toContain('Choose + Pull on a series');expect(fetch.mock.calls.every(([,o])=>o.method==='GET')).toBe(true);});

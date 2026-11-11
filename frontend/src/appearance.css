@@ -1,0 +1,59 @@
+/* Appearance page (pages/AppearancePage.jsx). Uses the root colours so it previews itself. */
+.ap-body { max-width: 900px; margin: 0 auto; padding: 24px 28px 60px; color: var(--om-text); }
+.ap-section { margin-bottom: 30px; }
+.ap-section h2 { margin: 0 0 12px; font: 1.5rem 'Bangers', cursive; letter-spacing: .06em; color: var(--td-yellow); }
+.ap-note { margin: -6px 0 14px; font-size: 13px; color: var(--text-secondary); }
+.ap-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+.ap-preset { display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--bg-elevated); border: 2px solid transparent; color: var(--om-text); cursor: pointer; text-align: left; box-shadow: 3px 3px 0 #000; }
+.ap-preset:hover { border-color: color-mix(in srgb, var(--td-yellow) 45%, transparent); }
+.ap-preset.on { border-color: var(--td-yellow); }
+.ap-preset-group + .ap-preset-group { margin-top: 18px; }
+.ap-preset-group-title { margin: 0 0 8px; font: 1.05rem 'Boogaloo', cursive; letter-spacing: .05em; text-transform: uppercase; color: var(--text-secondary); }
+/* A tiny page: banner in the secondary colour with a highlight title, then a text line and a highlight line. */
+.ap-preset-swatch { display: flex; flex-direction: column; gap: 5px; height: 58px; padding: 6px 7px; border: 2px solid #000; overflow: hidden; }
+.ap-sw-banner {
+  align-self: flex-start; padding: 1px 12px 0 6px; border: 1.5px solid #000;
+  clip-path: polygon(0 0, 100% 0, 88% 100%, 0 100%);
+  font: 15px/1.1 'Bangers', cursive; letter-spacing: .06em; -webkit-text-stroke: .6px #000;
+}
+.ap-sw-line { height: 4px; width: 80%; opacity: .85; }
+.ap-sw-line--short { width: 45%; opacity: 1; }
+.ap-preset-name { font-size: 13px; font-weight: 600; }
+.ap-roles { display: flex; flex-direction: column; gap: 10px; }
+.ap-role { display: flex; align-items: center; gap: 14px; padding: 10px 12px; background: var(--bg-elevated); border-left: 3px solid transparent; }
+.ap-role--warn { border-left-color: #e0a040; }
+.ap-swatch { position: relative; flex: none; width: 52px; height: 52px; border: 2px solid #000; box-shadow: 2px 2px 0 #000; cursor: pointer; }
+.ap-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.ap-swatch:focus-within { outline: 2px solid var(--td-yellow); outline-offset: 3px; }
+.ap-role-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ap-role-copy b { font-size: 15px; }
+.ap-role-copy small { font-size: 12px; color: var(--text-secondary); }
+.ap-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; font-size: 12px; color: #e0a040; }
+.ap-warn button { padding: 3px 10px; background: transparent; color: #e0a040; border: 1px solid #e0a040; cursor: pointer; font-size: 12px; }
+.ap-hex { flex: none; width: 96px; padding: 7px 10px; background: color-mix(in srgb, var(--om-base) 60%, black); color: var(--om-text); border: 1px solid color-mix(in srgb, var(--om-base) 80%, white); font: 13px ui-monospace, Menlo, Consolas, monospace; text-transform: lowercase; }
+.ap-hex:focus { outline: none; border-color: var(--td-yellow); }
+.ap-switch { display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: var(--bg-elevated); cursor: pointer; }
+.ap-switch input { flex: none; width: 20px; height: 20px; margin-top: 1px; accent-color: var(--td-yellow); cursor: pointer; }
+.ap-switch b { display: block; font-size: 15px; }
+.ap-switch small { display: block; margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.ap-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; padding-top: 6px; }
+.ap-status { font-size: 13px; color: var(--text-secondary); }
+.ap-status--error { color: #e0a040; }
+@media (max-width: 650px) {
+  .ap-body { padding: 18px 16px 50px; }
+  .ap-role { flex-wrap: wrap; }
+  .ap-hex { width: 100%; order: 3; }
+  .ap-switch input, .ap-swatch { min-height: 44px; }
+}
+
+/* Miniature page previews show the independent action treatment. */
+.ap-presets { grid-template-columns:repeat(auto-fill,minmax(175px,1fr)); }
+.ap-preset-swatch { width:100%; height:132px; padding:8px; gap:9px; }
+.ap-sw-banner { align-self:stretch; padding:5px 7px; }
+.ap-sw-tabs { display:flex; gap:12px; font:11px 'DM Sans',sans-serif; }
+.ap-sw-tabs > span { padding-bottom:3px; border-bottom:2px solid transparent; }
+.ap-sw-panel { display:flex; flex-direction:column; gap:9px; padding:8px; font:10px 'DM Sans',sans-serif; }
+.ap-sw-action { align-self:flex-start; padding:5px 9px; border:1px solid #08090c; font:13px 'Bangers',cursive; box-shadow:2px 2px #000; }
+.ap-action-reset { margin-bottom:10px; }
+.ap-preset:focus-visible { outline:3px solid var(--om-text); outline-offset:3px; }
+@media(max-width:420px) { .ap-presets { grid-template-columns:repeat(2,minmax(0,1fr)); } .ap-sw-tabs { gap:8px; } }

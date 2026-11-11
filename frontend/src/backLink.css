@@ -1,0 +1,9 @@
+/* Shared back button (components/BackLink.jsx): page palette, Comic yellow fallback. */
+.back-link { display:inline-flex; align-items:center; gap:6px; align-self:flex-start; min-height:40px; padding:6px 14px; box-sizing:border-box;
+  background:color-mix(in srgb, var(--rl-theme-banner, var(--om-base)) 75%, #08090c); color:var(--rl-theme-accent, var(--td-yellow));
+  border:2px solid #08090c; border-left:3px solid var(--rl-theme-accent, var(--td-yellow)); border-radius:0; box-shadow:2px 3px 0 #000;
+  font:17px 'Boogaloo', cursive; letter-spacing:.02em; text-align:left; cursor:pointer; overflow-wrap:anywhere; }
+.back-link:hover { background:color-mix(in srgb, var(--rl-theme-main, var(--td-yellow)) 28%, var(--om-base)); }
+.back-link:active { transform:translate(1px,1px); box-shadow:1px 1px 0 #000; }
+.back-link:focus-visible { outline:2px solid var(--rl-theme-accent, var(--td-yellow)); outline-offset:3px; }
+@media (pointer:coarse) { .back-link { min-height:44px; } }

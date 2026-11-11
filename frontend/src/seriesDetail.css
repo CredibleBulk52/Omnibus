@@ -1,0 +1,51 @@
+.series-detail-page .series-hero { overflow: visible; }
+.series-detail-page .series-hero-bg { inset: 0; overflow: hidden; }
+.series-detail-page .series-hero-content { align-items: flex-start; padding-bottom: 20px; }
+.series-detail-page .series-cover-xl { align-self: flex-start; }
+.series-detail-page .series-info { min-width: 0; padding-bottom: 0; }
+.series-primary-actions, .series-bulk-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 16px; }
+.series-reading-progress { margin-top: 14px; color: var(--text-secondary); font-size: 0.9rem; }
+.series-manage { position: relative; margin-left: auto; }
+.series-secondary-actions { display: flex; align-items: center; justify-content: space-between; padding: 4px 28px; }
+.series-secondary-actions .btn { font-size: .8rem; }
+.series-read-notice { color: var(--text-primary); font-size: .9rem; margin: 12px 0 0; }
+.series-detail-page .series-tabs { overflow: visible; align-items: center; }
+.series-detail-page .series-tabs-list { display: flex; flex: 1; min-width: 0; overflow-x: auto; }
+.series-detail-page .series-tabs-tools { flex-shrink: 0; display: flex; align-items: center; padding-left: 12px; }
+.series-detail-page .series-tab { flex-shrink: 0; }
+.series-primary-actions .btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+/* The hero establishes a stacking context above the sticky tab bar for Manage. */
+.series-detail-page .series-hero { position: relative; z-index: 60; }
+@media (max-width: 900px) {
+  .series-detail-page .series-hero-content { flex-direction: row; align-items: flex-start; text-align: left; gap: 18px; }
+  .series-detail-page .series-cover-xl { width: 120px; }
+  .series-detail-page .series-info { flex: 1; }
+}
+@media (max-width: 599px) {
+  .series-detail-page .series-hero-content { display: grid; grid-template-columns: 72px minmax(0,1fr); gap: 14px; padding: 16px 14px; }
+  .series-detail-page .series-cover-xl { width: 72px; grid-column: 1; grid-row: 1; }
+  .series-detail-page .series-info { display: contents; }
+  .series-detail-page .series-publisher-badge, .series-detail-page .series-title-large, .series-detail-page .series-info > div:not([class]) { grid-column: 2; }
+  .series-detail-page .series-cover-xl { grid-row: 1 / span 3; }
+  .series-detail-page .series-title-large { font-size: 1.8rem; margin: 0; }
+  .series-detail-page .series-publisher-badge { justify-self: start; margin: 0; }
+  .series-detail-page .series-info > div:not([class]) { gap: 6px 12px !important; margin: 0 !important; font-size: .8rem !important; }
+  .series-detail-page .series-hero-extras, .series-detail-page .series-description { display: none; }
+  .series-detail-page .series-reading-progress { grid-column: 1 / -1; margin: 0; font-size: .8rem; }
+  .series-detail-page .series-primary-actions, .series-detail-page .series-bulk-actions, .series-detail-page .series-read-notice { grid-column: 1 / -1; margin: 0; }
+  .series-detail-page .series-primary-actions { gap: 7px; }
+  .series-detail-page .series-primary-actions > .series-resume { flex-basis: 100%; }
+  .series-detail-page .series-primary-actions .btn { min-height: 44px; font-size: .8rem; padding: 8px 10px; }
+  .series-detail-page .series-secondary-actions { padding: 0 8px; }
+  .series-detail-page .series-tabs { padding: 0 6px; }
+  .series-detail-page .series-tab { padding: 12px 10px; }
+}
+
+.series-mobile-details { display: none; }
+@media (max-width: 599px) { .series-mobile-details { display: block; margin-bottom: 18px; } }
+
+@media (max-width: 599px) {
+  .series-detail-page .issues-books { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; padding: 16px 14px 0; overflow: visible; }
+  .series-detail-page .issue-book { width: 100% !important; min-width: 0; }
+  .series-detail-page .issue-cover { width: 100% !important; height: auto !important; aspect-ratio: 2 / 3; }
+}

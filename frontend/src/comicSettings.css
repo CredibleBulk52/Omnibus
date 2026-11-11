@@ -1,0 +1,42 @@
+.comic-settings { --text-muted: color-mix(in srgb, var(--om-text) 80%, var(--om-base)); --border-subtle: color-mix(in srgb, var(--om-base) 80%, white); }
+.comic-settings .settings-page-body { max-width: 1280px; }
+.comic-settings .settings-admin-label { font: 500 .8rem/1.5 system-ui,sans-serif; color: color-mix(in srgb, var(--om-text) 90%, var(--om-base)); letter-spacing: .08em; text-transform: uppercase; }
+.comic-settings .admin-groups-note { background: color-mix(in srgb, var(--om-base) 95%, white); border-left: 3px solid #8499b6; padding: 14px 16px; color: color-mix(in srgb, var(--om-text) 85%, var(--om-base)); line-height: 1.6; margin-bottom: 10px; }
+.comic-settings .admin-groups-note span { display: block; }
+.comic-settings .admin-group { background: color-mix(in srgb, var(--om-base) 95%, white); border-radius: 6px; }
+.comic-settings .admin-group-toggle { padding: 18px; }
+.comic-settings .admin-group-sub { color: color-mix(in srgb, var(--om-text) 80%, var(--om-base)); line-height: 1.5; }
+.comic-settings .admin-group-body { padding: 18px; }
+.comic-settings .settings-section { padding: 22px 0; }
+.comic-settings .settings-section:first-child { padding-top: 0; }
+.comic-settings .settings-section:last-child { border-bottom: 0; padding-bottom: 0; }
+.comic-settings .settings-section-header { gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.comic-settings .settings-section-title { font: 650 1.1rem/1.5 system-ui,sans-serif; color: var(--om-text); }
+.comic-settings .settings-section-sub { max-width: 680px; color: color-mix(in srgb, var(--om-text) 80%, var(--om-base)); line-height: 1.6; }
+.comic-settings .settings-two-col { align-items: start; gap: 18px; }
+.comic-settings .settings-card { background: var(--om-base); border-color: color-mix(in srgb, var(--om-base) 80%, white); border-radius: 6px; min-width: 0; }
+.comic-settings .settings-card-title { color: color-mix(in srgb, var(--td-yellow) 65%, white); font: 650 .875rem/1.5 system-ui,sans-serif; text-transform: none; letter-spacing: .02em; margin-bottom: 14px; }
+.comic-settings .form-label { color: color-mix(in srgb, var(--om-text) 90%, var(--om-base)); font: 600 .8125rem/1.5 system-ui,sans-serif; letter-spacing: 0; text-transform: none; }
+.comic-settings .form-hint { color: color-mix(in srgb, var(--om-text) 80%, var(--om-base)); font-size: .8125rem; line-height: 1.6; overflow-wrap: anywhere; }
+.comic-settings :is(.form-input,select,textarea) { background: color-mix(in srgb, var(--om-base) 90%, black); border-color: #4c586b; color: var(--om-text); max-width: 100%; }
+.comic-settings .form-input { padding: 9px 11px; }
+.comic-settings #group-system .settings-section:first-child { border-left: 2px solid #a36767; padding-left: 16px; }
+.comic-settings .settings-card > div { min-width: 0; }
+.comic-settings .settings-card > div[style*="flex"] { flex-wrap: wrap; }
+.comic-settings :is(.form-input,summary):focus-visible { outline: 2px solid color-mix(in srgb, var(--td-yellow) 65%, white); outline-offset: 3px; }
+.comic-settings #group-connections .settings-section-header .settings-section-title { font-size: 0; }
+.comic-settings #group-connections .settings-section-header .settings-section-title button { color: color-mix(in srgb, var(--om-text) 80%, var(--om-base)) !important; }
+@media(max-width:900px) {
+ .comic-settings .settings-page-body { padding: 16px 14px 60px; }
+ .comic-settings .settings-two-col { grid-template-columns: minmax(0,1fr); }
+ .comic-settings .admin-group-body { padding: 14px; }
+ .comic-settings .settings-card { padding: 16px; }
+ .comic-settings .settings-section-header > div { min-width: 0; }
+ .comic-settings .ai-models-settings > div > p { min-width: 0 !important; }
+}
+@media(max-width:500px) {
+ .comic-settings .settings-page-body { padding-inline: 10px; }
+ .comic-settings .admin-group-body { padding: 12px; }
+ .comic-settings .settings-card { padding: 12px; }
+ .comic-settings :is(input,select,textarea) { font-size: 16px !important; }
+}

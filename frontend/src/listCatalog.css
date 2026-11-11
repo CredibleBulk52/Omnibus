@@ -1,0 +1,140 @@
+.lc-page .lc-toolbar{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:20px 0}
+.lc-page .lc-search{flex:1;min-width:180px;max-width:440px}
+.lc-page .lc-search input{width:100%}
+.lc-page .lc-sort select{width:100%;background:color-mix(in srgb, var(--om-base) 95%, white);color:color-mix(in srgb, var(--om-text) 95%, var(--om-base));border:1px solid color-mix(in srgb, var(--om-text) 30%, var(--om-base));border-radius:4px;padding:10px 12px;font:inherit;min-height:42px}
+.lc-page .lc-sort{display:flex;gap:8px;align-items:center;color:color-mix(in srgb, var(--om-text) 75%, var(--om-base));font-size:13px}
+.lc-page .lc-sort select{width:auto}
+.lc-page .lc-feature{margin:24px 0;display:grid;grid-template-columns:minmax(260px,38%) 1fr;border:3px solid #000;box-shadow:7px 7px #000;overflow:hidden;background:linear-gradient(110deg,var(--rl-theme-panel),var(--rl-theme-bg));}
+.lc-page .lc-feature-art{position:relative;min-height:320px;overflow:hidden;background:radial-gradient(ellipse at bottom,rgba(var(--rl-theme-main-rgb),.45),transparent 80%)}
+.lc-page .lc-feature-art:before{content:'';position:absolute;inset:0;background:radial-gradient(color-mix(in srgb, var(--om-text) 7%, transparent) 1px,transparent 1.5px) 0 0/9px 9px}
+.lc-page .lc-feature-art .rl-fan{bottom:25px;transform:scale(1.65)}
+.lc-page .lc-feature-copy{padding:30px 30px 28px;min-width:0}
+.lc-page .lc-kicker{font:16px 'Boogaloo',sans-serif;letter-spacing:.15em;text-transform:uppercase;color:var(--rl-theme-accent)}
+.lc-page .lc-feature h2{font:clamp(30px,3vw,46px)/1.06 'Bangers',cursive;letter-spacing:.035em;margin:12px 0;color:var(--rl-theme-text)}
+.lc-page .lc-feature p{font-size:14px;line-height:1.7;color:var(--rl-theme-muted);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;margin:14px 0 20px}
+.lc-page .lc-feature .rl-progress{max-width:400px;margin-bottom:22px}
+.lc-page .lc-feature .btn{display:inline-flex;text-decoration:none;gap:16px;background:var(--rl-theme-accent);color:var(--rl-theme-on-accent)}
+.lc-page .lc-feature .rl-burst{min-width:72px;min-height:72px;font-size:13px;right:18px;top:18px}
+.lc-page .lc-result-count{margin:28px 0 10px;color:color-mix(in srgb, var(--om-text) 75%, var(--om-base));font-size:13px}
+.lc-page .lc-publisher{margin:0 0 36px}
+.lc-page .lc-publisher .rl-grid{padding-left:0;padding-right:0}
+.lc-page > .rl-tabs{padding-left:0;padding-right:0}
+/* Slim chapter-style banners: ink border, angled end and subtle halftone. */
+.lc-page .lc-publisher-head{
+  --publisher-accent:var(--om-highlight);
+  --publisher-text:var(--om-banner-text, var(--om-highlight));
+  --publisher-fill:var(--om-secondary);
+  position:relative;isolation:isolate;display:flex;align-items:center;flex-wrap:wrap;
+  gap:8px 16px;min-height:50px;margin-bottom:22px;padding:9px 46px 9px 16px;
+  background:var(--publisher-fill);border:3px solid #000;border-left:5px solid var(--publisher-accent);
+  clip-path:polygon(0 0,100% 0,calc(100% - 28px) 100%,0 100%);
+}
+.lc-page .lc-publisher-head[data-publisher="DC"]{--publisher-accent:#75bdff;--publisher-fill:#173e64}
+.lc-page .lc-publisher-head[data-publisher="Marvel"]{--publisher-accent:#ff938a;--publisher-fill:#612525}
+.lc-page .lc-publisher-head::before{
+  content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background-image:radial-gradient(rgba(0,0,0,.22) 1.2px,transparent 1.7px);background-size:8px 8px;
+}
+.lc-page .lc-publisher-head h2{
+  min-width:0;overflow-wrap:anywhere;font:28px/1.05 'Bangers',cursive;color:color-mix(in srgb, var(--td-yellow) 5%, var(--om-text));
+  margin:0;letter-spacing:.07em;text-transform:uppercase;text-shadow:2px 2px 0 #000;
+}
+.lc-page .lc-publisher-head span{
+  font:14px/1.2 'Boogaloo',sans-serif;color:var(--publisher-accent);white-space:nowrap;
+  background:#0009;padding:4px 10px;border-left:2px solid var(--publisher-accent);
+}
+@media(max-width:700px){
+  .lc-page .lc-publisher-head{padding:9px 32px 9px 12px;gap:8px 12px;clip-path:polygon(0 0,100% 0,calc(100% - 20px) 100%,0 100%)}
+  .lc-page .lc-publisher-head h2{font-size:25px}
+}
+.lc-page .rl-grid{padding:0;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:26px}
+.lc-page .lc-card-wrap{min-width:0;display:flex;flex-direction:column;position:relative}
+.lc-page .rl-card{text-decoration:none;flex:1;min-width:0}
+.lc-page .lc-organize{align-self:flex-end;border:0;background:transparent;color:color-mix(in srgb, var(--om-text) 75%, var(--om-base));font-size:12px;cursor:pointer;padding:12px 4px 0}
+.lc-page .lc-organize:hover{color:var(--td-yellow);text-decoration:underline}
+.lc-page .rl-caption-title{-webkit-line-clamp:3}
+.lc-page .rl-card-desc{-webkit-line-clamp:3}
+.lc-page .rl-burst{min-width:58px;min-height:58px}
+.lc-page .lc-sr{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+.lc-library-options{border:1px solid color-mix(in srgb, var(--om-text) 30%, var(--om-base));padding:12px;margin:0 0 18px;display:grid;gap:10px;color:var(--text-primary)}
+.lc-library-options label{display:flex;gap:8px;align-items:center}.lc-library-options small{color:var(--text-secondary);line-height:1.5}
+@media(min-width:1500px){.lc-page .rl-grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}}
+@media(max-width:700px){.lc-page .lc-feature{grid-template-columns:1fr;margin:16px 0}.lc-page .lc-feature-art{min-height:240px}.lc-page .lc-feature-art .rl-fan{transform:scale(1.4);bottom:14px}.lc-page .lc-feature-copy{padding:22px}.lc-page .lc-toolbar{margin:16px 0;gap:10px}.lc-page .lc-search{max-width:none;flex-basis:100%}.lc-page .lc-publisher{margin:0 0 28px}.lc-page .rl-grid{grid-template-columns:repeat(auto-fill,minmax(min(250px,100%),1fr))}.lc-page .ess-mast h1{font-size:clamp(38px,10vw,65px)}}
+@media(prefers-reduced-motion:reduce){.lc-page .rl-card,.lc-page .rl-fan-cover{transition:none}}
+.lc-page > .find-bar{margin-top:20px}
+
+/* Essentials (2026-10-28): the character glow behind each card's covers, as in the Spotlight. */
+/* !important: readingTheme.css paints every themed .rl-art flat with !important. */
+.lc-page .rl-themed .rl-art--essential{background:radial-gradient(ellipse 75% 85% at 50% 72%,rgba(var(--rl-theme-main-rgb),.6),transparent 78%),var(--rl-theme-panel,var(--bg-elevated))!important}
+
+/* Essentials publisher bar: a line of admin text after the count. */
+.lc-page .lc-publisher-note{flex:1 1 280px;min-width:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+/* Custom section title: the comic display face, like the banner headings. */
+.lc-page .lc-publisher-head .lc-section-title{margin:0;min-width:0;font:26px/1.05 'Bangers',cursive;letter-spacing:.06em;text-transform:uppercase;color:color-mix(in srgb, var(--td-yellow) 5%, var(--om-text));text-shadow:2px 2px 0 #000;overflow-wrap:anywhere}
+.lc-page .lc-publisher-head--publisher .lc-section-title{font-size:23px;color:var(--publisher-accent)}
+.lc-page .lc-publisher-head .lc-section-count{order:3;margin-left:auto}
+@media(max-width:700px){.lc-page .lc-publisher-head .lc-section-title{font-size:22px}.lc-page .lc-publisher-head--publisher .lc-section-title{font-size:20px}}
+.lc-page .lc-publisher-input{flex:1 1 240px;min-width:0;padding:6px 9px;font:15px 'DM Sans',sans-serif;color:var(--om-text);background:#0009;border:2px solid #000;box-shadow:inset 0 0 0 1px var(--publisher-accent)}
+.lc-page .lc-publisher-input:focus{outline:none;box-shadow:inset 0 0 0 2px var(--publisher-accent)}
+.lc-page .lc-publisher-head .lc-publisher-btn{padding:4px 10px;font:14px 'Boogaloo',cursive;letter-spacing:.04em;cursor:pointer;background:var(--publisher-accent);color:#000;border:2px solid #000;white-space:nowrap}
+.lc-page .lc-publisher-head .lc-publisher-btn--ghost{background:#0009;color:var(--publisher-accent);border-color:transparent}
+.lc-page .lc-publisher-btn:disabled{opacity:.6;cursor:default}
+.lc-page .lc-publisher-error{color:#ffb6b9;flex-basis:100%}
+
+/* Horizontal clipping must not create a competing scroll container for Find. */
+.app-body:has(.lc-page) { overflow-x:clip; }
+.lc-page .lc-toolbar.find-bar { position:sticky; top:var(--topbar-h,52px); z-index:20; }
+
+/* Curated Essentials: one preview row per collection; complete results on demand. */
+.lc-view-switch{display:flex;gap:4px}.lc-view-switch button{padding:10px 12px;background:transparent;color:var(--text-primary);border:1px solid var(--border-subtle);font:inherit;cursor:pointer;white-space:nowrap}.lc-view-switch button.active{background:var(--td-yellow);color:#111;border-color:var(--td-yellow)}
+.lc-page .lc-curated-row{grid-template-columns:repeat(4,minmax(0,1fr))}
+.lc-page .lc-view-all{order:4;margin-left:12px;white-space:nowrap}
+.lc-results-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0}.lc-results-heading h2{font-family:'Bangers',cursive;font-size:28px;margin:0}
+.lc-page .lc-toolbar{flex-wrap:wrap;scroll-margin-top:var(--topbar-h,52px)}
+@media(max-width:1050px){.lc-page .lc-curated-row{display:flex;overflow-x:auto;gap:20px;padding-bottom:12px;scroll-snap-type:x proximity}.lc-curated-row>.lc-card-wrap{flex:0 0 290px;scroll-snap-align:start}}
+@media(max-width:600px){.lc-page .lc-curated-row>.lc-card-wrap{flex-basis:82%}.lc-page .lc-toolbar{gap:8px;padding:10px}.lc-view-switch{flex:1}.lc-view-switch button{flex:1;padding:8px}.lc-page .lc-toolbar .lc-search{order:3;flex-basis:100%}.lc-page .lc-sort select{max-width:145px}.lc-page .lc-publisher-head{flex-wrap:wrap}.lc-page .lc-view-all{margin-left:0}}
+
+.lc-section-brand{display:flex;align-items:center;flex-shrink:0;font:26px 'Bangers',cursive;color:var(--publisher-accent)}
+.lc-page .lc-publisher-head[data-publisher] .lc-section-title{color:var(--publisher-accent)}
+.lc-section-appearance{display:flex;flex-wrap:wrap;align-items:end;gap:10px;flex-basis:100%;padding:8px 0}
+.lc-section-appearance label{display:flex;flex-direction:column;gap:5px;font:14px 'DM Sans',sans-serif;color:var(--text-primary)}
+.lc-section-appearance select{max-width:220px;padding:7px;background:var(--bg-base);color:var(--text-primary);border:1px solid var(--border-subtle)}
+.lc-section-appearance input[type=color]{width:60px;height:34px;border:1px solid var(--border-subtle);background:transparent;padding:2px;cursor:pointer}
+
+/* Let the document own vertical scrolling so the filter sticks beneath the top bar. */
+.main-content:has(.lc-page){overflow:visible}
+.lc-page .lc-scroller{min-width:0}
+.lc-page .lc-scroller .lc-curated-row{display:flex;flex-wrap:nowrap;overflow-x:auto;gap:26px;padding:4px 8px 8px 0;margin:0;scroll-snap-type:x proximity;scrollbar-width:thin;scrollbar-color:var(--om-highlight) color-mix(in srgb, var(--om-base) 95%, white)}
+/* Essentials shelves (2026-11-10, user chose a proper inset shelf): the banner is the shelf's sign and the cards sit
+   inside a dark panel with room for their ink shadows, above a plank. Overrides the Top Shelf .ts-books look it inherits. */
+.lc-page .lc-scroller .lc-publisher-head{margin-bottom:0}
+.lc-page .lc-scroller .lc-curated-row{padding:22px 22px 26px;scroll-padding-inline:22px;
+  background:radial-gradient(ellipse at 50% 0,color-mix(in srgb,var(--om-highlight) 9%,transparent),transparent 70%),radial-gradient(rgba(255,255,255,.05) 1px,transparent 1.6px) 0 0/7px 7px,color-mix(in srgb,var(--om-base) 85%,black);
+  border:3px solid #000;border-top:0;border-bottom:10px solid color-mix(in srgb,var(--om-base) 82%,white);box-shadow:6px 7px #000,inset 0 8px 14px -8px #000}
+.lc-page .lc-publisher:has(.lc-scroller){margin-bottom:44px}
+@media(max-width:600px){.lc-page .lc-scroller .lc-curated-row{padding:16px 14px 20px;scroll-padding-inline:14px;gap:18px}}
+/* Titles reserve two lines so descriptions and progress bars line up across a shelf. */
+.lc-page .lc-curated-row .rl-caption{min-height:calc(2.84rem + 14px);display:flex;flex-direction:column;justify-content:center}
+.lc-page .lc-curated-row>.lc-card-wrap{flex:0 0 calc((100% - 78px)/4);min-width:0;scroll-snap-align:start}
+.lc-page .ts-scroll-controls{order:5;display:flex;gap:6px;flex-shrink:0}
+.lc-page .ts-scroll-controls button{width:40px;height:40px;border:2px solid var(--publisher-accent);background:var(--om-base);color:var(--publisher-accent);font:bold 22px sans-serif;cursor:pointer}
+.lc-page .ts-scroll-controls button:disabled{opacity:.3;cursor:default}
+@media(max-width:1050px){.lc-page .lc-curated-row>.lc-card-wrap{flex-basis:290px}}
+@media(max-width:600px){.lc-page .lc-curated-row>.lc-card-wrap{flex-basis:82%}}
+
+@media(max-width:599px){.lc-page .lc-toolbar.find-bar{top:46px;scroll-margin-top:46px}}
+
+/* Match the slim themed shelf scrollbar, leaving only room for the ink shadow. */
+.lc-page .lc-curated-row::-webkit-scrollbar{height:6px}
+.lc-page .lc-curated-row::-webkit-scrollbar-track{background:color-mix(in srgb, var(--om-base) 95%, white)}
+.lc-page .lc-curated-row::-webkit-scrollbar-thumb{background:var(--om-highlight);border-radius:3px}
+.lc-page .lc-curated-row::-webkit-scrollbar-thumb:hover{background:var(--om-banner-text,var(--om-highlight))}
+.lc-page .lc-publisher-head:not([data-publisher]) .lc-section-title{color:var(--publisher-text)}
+
+/* Collection editing shares the existing modal, palette and brand components. */
+.lc-collection-dialog{display:grid;gap:18px}.lc-collection-dialog .rl-field{margin:0}.lc-collection-dialog small{display:block;color:var(--text-secondary);margin-top:6px}.lc-collection-preview{min-height:64px;margin:0;padding:12px;gap:12px}.lc-collection-preview .brand-character,.lc-section-brand .brand-character{width:42px;height:42px;object-fit:contain;margin:0}.lc-order-btn{border:1px solid var(--publisher-accent);background:transparent;color:var(--publisher-text);padding:6px 9px;cursor:pointer}.lc-order-btn:disabled{opacity:.3;cursor:default}
+.lc-feature-description{font-size:14px;line-height:1.65;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;margin:12px 0 18px}.lc-feature-description>strong:first-child{display:block;margin-bottom:4px}
+.lc-curated-row{scrollbar-color:color-mix(in srgb,var(--om-highlight) 40%,var(--om-base)) var(--om-base)}.lc-curated-row::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--om-highlight) 40%,var(--om-base))}.lc-curated-row:hover{scrollbar-color:var(--om-highlight) var(--om-base)}.lc-page .rl-chip-row[hidden]{display:none}
+
+.lc-edit-collection { border:0; background:transparent; color:inherit; font:inherit; font-size:.78rem; padding:8px; opacity:.75; cursor:pointer; }
+.lc-edit-collection:hover,.lc-edit-collection:focus-visible { opacity:1; text-decoration:underline; }

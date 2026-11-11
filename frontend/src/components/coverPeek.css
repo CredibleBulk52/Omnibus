@@ -1,0 +1,22 @@
+/* CoverPeek: thumbnail that enlarges on hover (mouse) or tap (touch). */
+.cover-peek-thumb { flex-shrink: 0; object-fit: cover; border-radius: 2px; cursor: zoom-in; }
+.cover-peek-blank { flex-shrink: 0; background: var(--adm-g1); border-radius: 2px; }
+
+/* Above the shared dialogs (modal.css z-index 5000). */
+.cover-peek-float {
+  position: fixed; z-index: 6000; pointer-events: none;
+  background: var(--om-base) center / cover no-repeat;   /* thumbnail shows while the large cover loads */
+  border: 3px solid #000; box-shadow: 4px 4px 0 #000, 0 10px 30px rgba(0, 0, 0, .6);
+  border-radius: 3px; overflow: hidden;
+}
+.cover-peek-float img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.cover-peek-full {
+  position: fixed; inset: 0; z-index: 6000; padding: 24px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .85); cursor: zoom-out;
+}
+.cover-peek-full img {
+  max-width: min(90vw, 480px); max-height: 85vh; object-fit: contain;
+  border: 3px solid #000; box-shadow: 4px 4px 0 #000; border-radius: 3px;
+}

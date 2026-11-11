@@ -1,0 +1,844 @@
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Sandman (Neil Gaiman & artists, DC)",4050-3672
+Best Finite Series,"Give Me Liberty (Frank Miller & Dave Gibbons, Dark Horse)",4050-4156
+Best Story or Single Issue,"Concrete Celebrates Earth Day (Paul Chadwick & artists, Dark Horse)",4050-122941
+Best Black & White Series,"Xenozoic Tales (Mark Schultz, Kitchen Sink)",4050-3869
+Best Graphic Album—New,"Elektra Lives Again (Frank Miller & Lynn Varley, Marvel/Epic)",4050-18162
+Best Graphic Album—Reprint,"Sandman: The Doll's House (Neil Gaiman & artists, DC)",4050-3672
+Best Writer,Neil Gaiman (for Sandman),4005-2348
+Best Artist,Steve Rude (for Nexus),4005-2178
+Best Writer/Artist Team,Frank Miller & Geof Darrow (for Hard Boiled),4050-4157
+Best Inker,Al Williamson (for The Amazing Spider-Man),4005-2182
+Hall of Fame Inductee,Robert Crumb,4005-2173
+Hall of Fame Inductee,Alex Toth,4005-2174
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Sandman (Neil Gaiman & artists, DC)",4050-3672
+Best Finite Series,"Concrete: Fragile Creature (Paul Chadwick, Dark Horse)",4050-4635
+Best Single Issue,"Sandman #22 (Neil Gaiman & Kelley Jones, DC)",4000-33496
+Best Serialized Story,"Sin City (Frank Miller, in Dark Horse Presents)",4050-18164
+Best Anthology,"Dark Horse Presents (Various, Dark Horse)",4050-3902
+Best Graphic Album—New,"To the Heart of the Storm (Will Eisner, Kitchen Sink)",4050-24706
+Best Graphic Album—Reprint,"Maus II (Art Spiegelman, Pantheon)",4050-46581
+Best Humor Publication,"Groo the Wanderer (Sergio Aragonés, Marvel/Epic)",4050-3836
+Best Publication for a Younger Audience,"Disney's Comics (Various, Disney)",4050-5218
+Best Comics-Related Periodical,Comics Buyer's Guide (Krause Publications),4050-22003
+Best Writer,"Neil Gaiman (Sandman, Books of Magic)",4005-2348
+Best Artist,Simon Bisley (Batman: Judgement on Gotham),4005-2282
+Best Writer/Artist,Frank Miller (Sin City),4005-2172
+Best Inker,Adam Kubert (Batman vs. Predator),4005-2225
+Best Colorist,Steve Oliff (Akira),4005-2315
+Best Letterer,Todd Klein (Sandman),4005-2300
+Best Editor,"Karen Berger (Sandman, Shade the Changing Man)",4005-2341
+Hall of Fame Inductee,Joe Shuster,4005-2176
+Hall of Fame Inductee,Jerry Siegel,4005-2175
+Hall of Fame Inductee,Wally Wood,4005-2177
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Sandman (Neil Gaiman & various, DC)",4050-3672
+Best Finite Series,"Grendel: War Child (Matt Wagner & Patrick McEown, Dark Horse)",4050-4869
+Best Single Issue,"Nexus: The Origin (Mike Baron & Steve Rude, Dark Horse)",4050-36122
+Best Short Story,"""Two Cities"" (Xenozoic Tales #12, Mark Schultz, Kitchen Sink)",4000-33054
+Best Serialized Story,"""From Hell"" (Alan Moore & Eddie Campbell, in Taboo)",4050-5045
+Best Anthology,"Taboo (edited by Steve Bissette, SpiderBaby/Tundra)",4050-5045
+Best Graphic Album—New,"Signal to Noise (Neil Gaiman & Dave McKean, Dark Horse/VG)",4050-25211
+Best Graphic Album—Reprint,"Sin City (Frank Miller, Dark Horse)",4050-18164
+Best Archival Collection,Carl Barks Library (Gladstone),4050-36123
+Best Humor Publication,"Bone (Jeff Smith, Cartoon Books)",4050-5150
+Best Publication for Younger Audience,Calvin and Hobbes: Attack of the Mutant Snow Goons,4050-36124
+Best Comics-Related Periodical,Comics Buyer's Guide (Krause Publications),4050-22003
+Best Writer,"Neil Gaiman (Sandman, Miracleman)",4005-2348
+Best Writer/Artist Team,Mike Baron & Steve Rude (Nexus: The Origin),4005-2180 / 2178
+Best Writer/Artist (B&W),Frank Miller (Sin City),4005-2172
+Best Writer/Artist (Color),P. Craig Russell (Fairy Tales of Oscar Wilde),4005-2226
+Best Painter (Interior),"Teddy Kristiansen (Tarzan: Love, Lies, and the Lost City)",4005-4102
+Best Inker,Kevin Nowlan (Batman: Sword of Azrael),4005-2260
+Best Letterer,"Todd Klein (Sandman, The Demon)",4005-2300
+Best Colorist,"Steve Oliff (Akira, Spawn)",4005-2315
+Best Editor,"Karen Berger (Sandman, Shade the Changing Man)",4005-2341
+Best Publication Design,Signal to Noise (Designed by Dave McKean),4050-25211
+Hall of Fame Inductee,C.C. Beck,4005-47207
+Hall of Fame Inductee,William Gaines,4005-2179
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Bone (Jeff Smith, Cartoon Books)",4050-5150
+Best Finite/Limited Series,"Marvels (Kurt Busiek & Alex Ross, Marvel)",4050-5132
+Best New Series,"The Maxx (Sam Kieth, Image)",4050-5134
+Best Single Issue,"Batman Adventures: Mad Love (Paul Dini & Bruce Timm, DC)",4000-123083
+Best Short Story,"""The Amazing Colossal Homer"" (in Simpsons Comics #1)",4000-38865
+Best Anthology,Dark Horse Presents (Edited by Randy Stradley),4050-3902
+Best Graphic Album—New,"Understanding Comics (Scott McCloud, Tundra/Kitchen Sink)",4050-24732
+Best Graphic Album—Reprint,The Complete Bojeffries Saga (Alan Moore & Steve Parkhouse),4050-24958
+Best Archival Collection,Complete Little Nemo in Slumberland Vol. 6,4050-25212
+Best Humor Publication,"Bone (Jeff Smith, Cartoon Books)",4050-5150
+Best Publication (Younger),"The Batman Adventures (Kelley Puckett & artists, DC)",4050-5020
+Best Comics Periodical,Comic Shop News (CSN),4050-22004
+Best Writer,Neil Gaiman (for The Sandman),4005-2348
+Best Writer/Artist,Jeff Smith (for Bone),4005-2250
+Best Writer/Artist Team,Kurt Busiek & Alex Ross (for Marvels),4005-2334 / 2281
+Best Penciller/Inker,P. Craig Russell (for The Sandman #50),4005-2226
+Best Painter (Interior),Alex Ross (for Marvels),4005-2281
+Best Colorist,"Steve Oliff & Reuben Rude (Spawn, Marvels)",4005-2315 / 11212
+Best Letterer,Todd Klein (for The Sandman),4005-2300
+Best Editor (Tie),Karen Berger (Vertigo) / Mike Carlin (DC),4005-2341 / 2340
+Best Cover Artist,Alex Ross (for Marvels),4005-2281
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Bone (Jeff Smith, Cartoon Books)",4050-5150
+Best Limited Series,"Sin City: A Dame to Kill For (Frank Miller, Dark Horse)",4050-5322
+Best New Series,"Too Much Coffee Man (Shannon Wheeler, Adhesive)",4050-18211
+Best Single Issue,"Batman Adventures Holiday Special (Paul Dini & Bruce Timm, DC)",4050-134551
+Best Short Story,"""The Babe Wore Red"" (Sin City: The Babe Wore Red, Frank Miller)",4000-40618
+Best Serialized Story,"""The Life and Times of Scrooge McDuck"" (Uncle Scrooge #285-296)",4050-3832
+Best Graphic Album—New,"Fairy Tales of Oscar Wilde, Vol. 2 (P. Craig Russell, NBM)",4050-24959
+Best Graphic Album—Reprint,"Hellboy: Seed of Destruction (Mignola & Byrne, Dark Horse)",4050-5133
+Best Humor Publication,"Bone (Jeff Smith, Cartoon Books)",4050-5150
+Best Publication (Younger),"The Batman Adventures (Kelley Puckett & various, DC)",4050-5020
+Best Writer,Alan Moore (for From Hell),4005-2311
+Best Writer/Artist,Mike Mignola & John Byrne (Hellboy: Seed of Destruction),4005-2348 / 2183
+Best Writer/Artist (Humor),Jeff Smith (for Bone),4005-2250
+Best Painter,Jon J. Muth (for The Mystery Play),4050-18163
+Best Penciller/Inker,Dave Gibbons (Martha Washington Goes to War),4005-2180
+Best Colorist,Chris Ware (for The Acme Novelty Library),4050-6612
+Best Letterer,"Todd Klein (The Sandman, The Demon, Batman vs. Predator II)",4005-2300
+Best Editor,"Karen Berger (The Sandman, Sandman Mystery Theatre)",4005-2341
+Best Cover Artist,Glenn Fabry (for Hellblazer),4005-2279
+Talent Deserving Wider Recognition,"Evan Dorkin (Milk and Cheese, Dork)",4005-2292
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Acme Novelty Library (Chris Ware, Fantagraphics)",4050-6612
+Best Limited Series,"Sin City: The Big Fat Kill (Frank Miller, Dark Horse)",4050-5432
+Best New Series,"Kurt Busiek’s Astro City (Busiek & Anderson, Image)",4050-5619
+Best Single Issue,"Stray Bullets #3: ""The Party"" (David Lapham, El Capitan)",4000-51104
+Best Short Story,"""The Chuckling Whatsit"" (Richard Sala, in Zero Zero)",4050-5364
+Best Anthology,"The Big Book of Conspiracies (Bronwyn Taggart, Paradox)",4050-18215
+Best Graphic Album—New,"Stuck Rubber Baby (Howard Cruse, Paradox Press)",4050-18216
+Best Graphic Album—Reprint,"The Tale of One Bad Rat (Bryan Talbot, Dark Horse)",4050-18217
+Best Archival Collection,"The Complete Crumb Comics, vol. 11 (Fantagraphics)",4050-25212
+Best Humor Publication,"Milk & Cheese #666 (Evan Dorkin, Slave Labor)",4050-18211
+Best Writer,Alan Moore (for From Hell),4005-2311
+Best Writer/Artist (Drama),David Lapham (for Stray Bullets),4005-2252
+Best Writer/Artist (Humor),Sergio Aragonés (for Groo),4005-2234
+Best Penciller/Inker Team,Geof Darrow (The Big Guy and Rusty the Boy Robot),4005-2232
+Best Painter (Interior),John Bolton (for Batman: Man-Bat),4005-2282
+Best Colorist,Chris Ware (for Acme Novelty Library),4005-2330
+Best Letterer,Stan Sakai (for Groo and Usagi Yojimbo),4005-2244
+Best Cover Artist,Alex Ross (for Kurt Busiek’s Astro City),4005-2281
+Best Editor,Bronwyn Taggart (The Big Book of Conspiracies),4005-2342
+Best Comics Periodical,The Comics Journal (Fantagraphics),4050-18220
+Best Comics-Related Book,"Alex Toth (Edited by Manuel Auad, Kitchen Sink)",4050-18221
+Best Publication Design,Acme Novelty Library #7 (Designed by Chris Ware),4050-6612
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Kurt Busiek’s Astro City (Busiek & Anderson, Image)",4050-5619
+Best Limited Series,"Kingdom Come (Mark Waid & Alex Ross, DC)",4050-5753
+Best New Series,"Leave It to Chance (Busiek & Smith, Homage/Image)",4050-5857
+Best Single Issue,"Kurt Busiek’s Astro City #1: ""In Dreams""",4000-51105
+Best Short Story,"""First Love, Last Rites"" (Stray Bullets #10, David Lapham)",4000-51106
+Best Anthology,"Batman Black and White (Various, DC)",4050-5752
+Best Graphic Album—New,"Fax from Sarajevo (Joe Kubert, Dark Horse)",4050-18165
+Best Graphic Album—Reprint,Stray Bullets: Innocence of Nihilism (David Lapham),4050-18223
+Best Archival Collection,"The Complete Crumb Comics, vol. 12 (Fantagraphics)",4050-25212
+Best Humor Publication,"Sergio Aragonés Destroys DC (Aragonés, DC)",4050-5902
+Best Writer,"Kurt Busiek (Astro City, Leave It to Chance)",4005-2334
+Best Writer/Artist (Drama),David Lapham (Stray Bullets),4005-2252
+Best Writer/Artist (Humor),"Sergio Aragonés (Groo, Destroys DC, Massacres Marvel)",4005-2234
+Best Painter (Interior),Alex Ross (Kingdom Come),4005-2281
+Best Penciller/Inker Team,Charles Vess (The Book of Ballads and Sagas),4005-2246
+Best Colorist,"John Ney Rieber (Wait, no—Chris Ware for Acme Novelty Library)",4005-2331
+Best Letterer,"Todd Klein (Sandman, Castle Waiting, Spectre)",4005-2300
+Best Cover Artist,"Alex Ross (Kingdom Come, Astro City)",4005-2281
+Best Editor,"Dan Raspler (Kingdom Come, Hitman, The Spectre)",4005-2342
+Best Comics-Related Periodical,The Comics Journal (Fantagraphics),4050-18220
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Kurt Busiek’s Astro City (Busiek & Anderson, Image/Homage)",4050-5619
+Best Limited Series,"Batman: The Long Halloween (Jeph Loeb & Tim Sale, DC)",4050-6111
+Best New Series,"Castle Waiting (Linda Medley, Olio)",4050-6256
+Best Single Issue,"Kurt Busiek’s Astro City vol. 2 #10: ""Show 'Em All""",4000-51107
+Best Serialized Story,"Astro City vol. 2 #4-9: ""Confession""",4050-5619
+Best Short Story,"""The Marathon Men"" (Dork! #4, Evan Dorkin)",4000-51108
+Best Anthology,"Hellboy Christmas Special (Edited by Scott Allie, Dark Horse)",4050-18237
+Best Graphic Album—New,"Sin City: Family Values (Frank Miller, Dark Horse)",4050-18228
+Best Graphic Album—Reprint,"Batman: The Dark Knight Archives, vol. 1 (DC)",4050-18231
+Best Archival Collection,Jack Kirby's New Gods (DC),4050-18229
+Best U.S. Edition of Int'l Material,"Gon Swimmin' (Masashi Tanaka, Paradox Press)",4050-18185
+Best Humor Publication,"Roswell, Little Green Man (Bill Morrison, Bongo)",4050-18182
+Best Title (Younger Audience),"Batman & Robin Adventures (Puckett/Templeton, DC)",4050-5716
+Best Writer,"Kurt Busiek (Astro City, Avengers, Thunderbolts)",4005-2334
+Best Writer/Artist (Drama),"Mike Mignola (Hellboy: Almost Colossus, Wake the Devil)",4005-2348
+Best Writer/Artist (Humor),Jeff Smith (Bone),4005-2250
+Best Penciller/Inker,"P. Craig Russell (Elric: Stormbringer, Dr. Strange)",4005-2226
+Best Painter (Interior),Alex Ross (Uncle Sam),4005-2281
+Best Colorist,Chris Ware (Acme Novelty Library),4005-2331
+Best Letterer,"Todd Klein (Castle Waiting, The Invisibles, Spectre)",4005-2300
+Best Cover Artist,"Alex Ross (Kingdom Come, Astro City, Uncle Sam)",4005-2281
+Best Editor,"Dan Raspler (Kingdom Come, Hitman, The Spectre)",4005-2342
+Best Comics-Related Book,The R. Crumb Coffee Table Art Book (Kitchen Sink),4050-18232
+Best Publication Design,Acme Novelty Library display stand (Designed by Chris Ware),N/A
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Preacher (Garth Ennis & Steve Dillon, DC/Vertigo)",4050-5434
+Best Limited Series,"300 (Frank Miller & Lynn Varley, Dark Horse)",4050-6496
+Best New Series,"Inhumans (Paul Jenkins & Jae Lee, Marvel)",4050-6552
+Best Single Issue,"Hitman #34: ""Of Thee I Sing"" (Garth Ennis & John McCrea, DC)",4000-51109
+Best Short Story,"""The Many Faces of Elmo"" (Dork! #6, Evan Dorkin, Slave Labor)",4000-51110
+Best Anthology,"Quantum Vibe? No—Gaman? No—The World's Greatest Super-Heroes? No—The Big Book of...? No—The Best of...? No. Winner: Flux? No. Winner: Negative Burn? No. Winner: The World's Greatest Super-Heroes was a nominee. The actual winner was ""The World's Greatest Super-Heroes""? No. Winner: Grendel: Black, White, and Red (Edited by Diana Schutz)",4050-6394
+Best Graphic Album—New,"Superman: Peace on Earth (Paul Dini & Alex Ross, DC)",4050-18241
+Best Graphic Album—Reprint,"Batman: The Long Halloween (Jeph Loeb & Tim Sale, DC)",4050-6111
+Best Archival Collection,"Plastic Man Archives, vol. 1 (Jack Cole, DC)",4050-18239
+Best Humor Publication,"Sergio Aragonés’ Groo (Sergio Aragonés, Dark Horse)",4050-3836
+Best Title (Younger Audience),"Batman: Gotham Adventures (Ty Templeton & artists, DC)",4050-6393
+Best Writer,"Kurt Busiek (Astro City, Avengers)",4005-2334
+Best Writer/Artist Team,Jeph Loeb & Tim Sale (Superman for All Seasons),4005-2256 / 2280
+Best Writer/Artist (Drama),Frank Miller (300),4005-2172
+Best Writer/Artist (Humor),Kyle Baker (You Are Here),4005-2297
+Best Penciller/Inker,"Tim Sale (Superman for All Seasons, Grendel: Black, White, and Red)",4005-2280
+Best Painter (Interior),Alex Ross (Superman: Peace on Earth),4005-2281
+Best Colorist,Lynn Varley (300),4005-2325
+Best Letterer,"Todd Klein (The Sandman, Promethea, Castle Waiting)",4005-2300
+Best Cover Artist,Brian Bolland (The Invisibles),4005-3532
+Best Editor,"Axel Alonso (Preacher, 100 Bullets)",4005-2342
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Acme Novelty Library (Chris Ware, Fantagraphics)",4050-6612
+Best Limited Series,"Whiteout: Melt (Greg Rucka & Steve Lieber, Oni Press)",4050-6785
+Best New Series,"Top 10 (Alan Moore, Gene Ha, & Zander Cannon, ABC)",4050-6908
+Best Single Issue,"Tom Strong #1: ""How Tom Strong Got Started""",4000-51111
+Best Short Story,"""Letitia Lerner, Superman's Babysitter"" (Bizarro Comics)",4000-51112
+Best Anthology,"Tomorrow Stories (Alan Moore & various, ABC)",4050-6910
+Best Graphic Album—New,"Acme Novelty Library #13 (Chris Ware, Fantagraphics)",4050-6612
+Best Graphic Album—Reprint,"From Hell (Alan Moore & Eddie Campbell, Eddie Campbell Comics)",4050-18244
+Best Archival Collection,"Peanuts: A Golden Celebration (Charles Schulz, HarperCollins)",N/A
+Best Humor Publication,Bart Simpson's Treehouse of Horror (Bongo),4050-6819
+Best Title (Younger Audience),Augusta Wind? No—Winner: Simpsons Comics,4050-5170
+Best Writer,"Alan Moore (League of Ext. Gentlemen, Promethea, Tom Strong, Top 10)",4005-2311
+Best Writer/Artist (Drama),Chris Ware (Acme Novelty Library),4005-2331
+Best Writer/Artist (Humor),"Kyle Baker (Letitia Lerner, Superman's Babysitter)",4005-2297
+Best Penciller/Inker Team,Kevin O'Neill (The League of Extraordinary Gentlemen),4005-2232
+Best Painter (Interior),Alex Ross (Batman: War on Crime),4005-2281
+Best Colorist,"Laura DePuy (Martin) (The Authority, Planetary)",4005-2321
+Best Letterer,"Todd Klein (Promethea, Tom Strong, The Invisibles)",4005-2300
+Best Cover Artist,Alex Ross (Batman: War on Crime),4005-2281
+Best Editor,Scott Dunbier (ABC line),4005-2342
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Acme Novelty Library (Chris Ware, Fantagraphics)",4050-6612
+Best Limited Series,"The Ring of the Nibelung (P. Craig Russell, Dark Horse)",4050-7382
+Best New Series,"Powers (Brian Michael Bendis & Michael Avon Oeming, Image)",4050-7264
+Best Single Issue,"Promethea #10: ""The Ishtar"" (Alan Moore & J.H. Williams III, ABC)",4000-51113
+Best Short Story,"""The Eltingville Club"" (Dork! #7, Evan Dorkin, Slave Labor)",4000-51114
+Best Anthology,"Little Lit: Folklore & Fairy Tale Funnies (Art Spiegelman, HarperCollins)",4050-18246
+Best Graphic Album—New,"Safe Area Goražde (Joe Sacco, Fantagraphics)",4050-18247
+Best Graphic Album—Reprint,"Jimmy Corrigan: The Smartest Kid on Earth (Chris Ware, Pantheon)",4050-18248
+Best Archival Collection,"The Spirit Archives, vol. 1 & 2 (Will Eisner, DC)",4050-18249
+Best Humor Publication,"Sock Monkey (Tony Millionaire, Dark Horse/Maverick)",4050-18192
+Best Title (Younger Audience),"Scary Godmother: The Spookacular Stories (Jill Thompson, Sirius)",4050-18251
+Best Writer,"Brian Michael Bendis (Powers, Fortune & Glory, Ultimate Spider-Man)",4005-2327
+Best Writer/Artist (Drama),Chris Ware (Acme Novelty Library),4005-2331
+Best Writer/Artist (Non-fiction),Joe Sacco (Safe Area Goražde),4005-2259
+Best Writer/Artist Team,Alan Moore & J.H. Williams III (Promethea),4005-2311 / 2278
+Best Penciller/Inker Team,P. Craig Russell (The Ring of the Nibelung),4005-2226
+Best Painter (Interior),Jill Thompson (Scary Godmother),4005-2283
+Best Colorist,Chris Ware (Acme Novelty Library),4005-2331
+Best Letterer,"Todd Klein (Castle Waiting, Promethea, Tom Strong)",4005-2300
+Best Cover Artist,Adam Hughes (Wonder Woman),4005-2302
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"100 Bullets (Brian Azzarello & Eduardo Risso, Vertigo)",4050-6610
+Best Limited Series,"Hellboy: Conqueror Worm (Mike Mignola, Dark Horse)",4050-8268
+Best New Series,"Queen & Country (Greg Rucka & Steve Rolston, Oni)",4050-10243
+Best Single Issue,"Eightball #22 (Dan Clowes, Fantagraphics)",4000-51115
+Best Serialized Story,"Amazing Spider-Man #30-35: ""Coming Home"" (JMS run)",4050-7171
+Best Short Story,"""The Eltingville Club: The Intervention"" (Dork #9)",4000-51114
+Best Anthology,"Drawn & Quarterly, vol. 4 (Edited by Chris Oliveros)",4050-18255
+Best Graphic Album—New,"The Name of the Game (Will Eisner, DC)",4050-18253
+Best Graphic Album—Reprint,"Batman: Dark Victory (Jeph Loeb & Tim Sale, DC)",4050-6909
+Best Archival Collection,"Akira (Katsuhiro Otomo, Dark Horse)",4050-18252
+Best Humor Publication,"Radioactive Man (Various, Bongo)",4050-6395
+Best Publication (Younger),Scary Godmother: Ghouls Out for Summer (Jill Thompson),4050-18251
+Best Writer,"Brian Michael Bendis (Powers, Alias, Daredevil, Ultimate Spidey)",4005-2327
+Best Writer/Artist,Daniel Clowes (for Eightball),4005-2252
+Best Writer/Artist (Humor),Evan Dorkin (for Dork),4005-2292
+Best Penciller/Inker Team,Eduardo Risso (for 100 Bullets),4005-2270
+Best Painter (Interior),Charles Vess (for Rose),4005-2246
+Best Coloring,"Dave Stewart (Hellboy, The Goon, Star Wars)",4005-2315
+Best Lettering,"Todd Klein (Promethea, Tom Strong, Detective Comics)",4005-2300
+Best Cover Artist,"Dave Johnson (100 Bullets, Detective Comics)",4005-2303
+Best Comics-Related Book,Jack Cole and Plastic Man (Art Spiegelman & Chip Kidd),N/A
+Best Publication Design,Batman: Nine Lives (Designed by Amie Brockway-Metcalf),4050-18254
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Daredevil (Brian Michael Bendis & Alex Maleev, Marvel)",4050-9237
+Best Limited Series,"The League of Extraordinary Gentlemen, Vol. II (Alan Moore & Kevin O'Neill, ABC)",4050-10217
+Best New Series,"Fables (Bill Willingham & various, Vertigo/DC)",4050-9550
+Best Single Issue,"The Stuff of Dreams (Kim Deitch, Fantagraphics)",4050-18256
+Best Serialized Story,"""Legends in Exile"" (Fables #1-5, Bill Willingham & Lan Medina)",4050-9550
+Best Short Story,"""The Magician and the Snake"" (Dark Horse Maverick: Happy Endings)",4000-51116
+Best Anthology,Dark Horse Maverick: Happy Endings (Edited by Diana Schutz),4050-18259
+Best Graphic Album—New,"One! Hundred! Demons! (Lynda Barry, Sasquatch Books)",4050-18257
+Best Graphic Album—Reprint,"Batman: Black and White, Vol. 2 (Edited by Mark Chiarello)",4050-18258
+Best Archival Collection,"B. Krigstein, Vol. 1 (Greg Sadowski, Fantagraphics)",4050-18260
+Best Humor Publication,"The Goon (Eric Powell, Self-published/Dark Horse)",4050-9719
+Best Publication (Younger),"Pinky & Stinky (James Kochalka, Top Shelf)",4050-18261
+Best Writer,"Brian Michael Bendis (Powers, Alias, Daredevil, Ultimate Spidey)",4005-2327
+Best Writer/Artist,Eric Shanower (Age of Bronze),4005-2247
+Best Writer/Artist (Humor),"Tony Millionaire (House at Maakies Corner, Sock Monkey)",4005-2241
+Best Artist (Penciller/Inker),Kevin O'Neill (The League of Extraordinary Gentlemen),4005-2232
+Best Painter (Interior),Eric Powell (The Goon),4005-2272
+Best Colorist,"Dave Stewart (Hellboy, The Goon, Star Wars)",4005-2315
+Best Letterer,"Todd Klein (Promethea, The Sandman, Fables)",4005-2300
+Best Cover Artist,Adam Hughes (Wonder Woman),4005-2302
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"100 Bullets (Brian Azzarello & Eduardo Risso, Vertigo/DC)",4050-6610
+Best Limited Series,"Fantastic Four: Unstable Molecules (James Sturm & Guy Davis, Marvel)",4050-10741
+Best New Series,"Plastic Man (Kyle Baker, DC)",4050-10682
+Best Single Issue,"The Goon #1 (Eric Powell, Dark Horse)",4000-51117
+Best Short Story,"""The Death of Groo"" (Solo #1, Sergio Aragonés, DC)",4000-51118
+Best Anthology,"Sandman: Endless Nights (Neil Gaiman & various, Vertigo/DC)",4050-10242
+Best Graphic Album—New,"Blankets (Craig Thompson, Top Shelf)",4050-10740
+Best Graphic Album—Reprint,Batman Adventures: Dangerous Dames & Demon Night,4050-18262
+Best Archival Collection,"Krazy Kat, 1925–1926 (George Herriman, Fantagraphics)",4050-18263
+Best Humor Publication,"Formerly Known as the Justice League (Giffen/DeMatteis, DC)",4050-10683
+Best Publication (Younger),"Walt Disney's Uncle Scrooge (Various, Gemstone)",4050-3832
+Best Writer,"Brian Michael Bendis (Powers, Alias, Ultimate Spidey, Daredevil)",4005-2327
+Best Writer/Artist,Craig Thompson (Blankets),4005-2244
+Best Writer/Artist (Humor),"Kyle Baker (Plastic Man, The New Baker)",4005-2297
+Best Penciller/Inker Team,"John Cassaday (Planetary, I Am Legion)",4005-2274
+Best Painter (Interior),"Jill Thompson (""Stray"" in The Dark Horse Book of Hauntings)",4005-2283
+Best Colorist,"Dave Stewart (Hellboy, B.P.R.D., The Goon, Planetary)",4005-2315
+Best Letterer,"Todd Klein (Promethea, 100 Bullets, Sandman: Endless Nights)",4005-2300
+Best Cover Artist,"James Jean (Fables, Batgirl)",4005-3221
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"The Goon (Eric Powell, Dark Horse)",4050-10243
+Best Limited Series,"DC: The New Frontier (Darwyn Cooke, DC)",4050-11211
+Best New Series,"Ex Machina (Brian K. Vaughan & Tony Harris, WildStorm/DC)",4050-11210
+Best Single Issue,"Eightball #23 (Dan Clowes, Fantagraphics)",4000-51119
+Best Serialized Story,"""Fables: March of the Wooden Soldiers"" (Fables #19-27)",4050-9550
+Best Anthology,McSweeney's Quarterly Concern #13 (Edited by Chris Ware),4050-18266
+Best Graphic Album—New,"In the Shadow of No Towers (Art Spiegelman, Pantheon)",4050-18265
+Best Graphic Album—Reprint,"Bone: One Volume Edition (Jeff Smith, Cartoon Books)",4050-11212
+Best Archival Collection,"The Complete Peanuts (Charles Schulz, Fantagraphics)",4050-18264
+Best Humor Publication,"The Goon (Eric Powell, Dark Horse)",4050-10243
+Best Publication (Younger),"Plastic Man (Kyle Baker & Scott Morse, DC)",4050-10682
+Best Writer,"Brian K. Vaughan (Y: The Last Man, Ex Machina, Runaways)",4005-2318
+Best Writer/Artist,Darwyn Cooke (DC: The New Frontier),4005-2275
+Best Penciller/Inker,"John Cassaday (Astonishing X-Men, Planetary, I Am Legion)",4005-2274
+Best Painter (Interior),Teddy Kristiansen (It's a Bird...),4005-4102
+Best Coloring,"Dave Stewart (Hellboy, B.P.R.D., The Goon, The New Frontier)",4005-2315
+Best Lettering,"Todd Klein (Fables, Sandman Presents, Promethea, Desolation Jones)",4005-2300
+Best Cover Artist,"James Jean (Fables, Green Arrow, Batgirl)",4005-3221
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Astonishing X-Men (Joss Whedon & John Cassaday, Marvel)",4050-11181
+Best Limited Series,"Seven Soldiers (Grant Morrison & various, DC)",4050-18128
+Best New Series,"All-Star Superman (Grant Morrison & Frank Quitely, DC)",4050-18165
+Best Single Issue/One-Shot,"Solo #5 (Darwyn Cooke, DC)",4000-51121
+Best Anthology,"Solo (Edited by Mark Chiarello, DC)",4050-18171
+Best Graphic Album—New,"Top Ten: The Forty-Niners (Alan Moore & Gene Ha, ABC)",4050-18268
+Best Graphic Album—Reprint,"Black Hole (Charles Burns, Pantheon)",4050-18269
+Best Reality-Based Work,"Nat Turner (Kyle Baker, Kyle Baker Publishing)",4050-18272
+Best Humor Publication,"The Bakers (Kyle Baker, Kyle Baker Publishing)",4050-18182
+Best Publication (Younger),"Owly: Flying Lessons (Andy Runton, Top Shelf)",4050-18271
+Best Archival Collection (Strips),The Complete Calvin & Hobbes (Bill Watterson),N/A
+Best Archival Collection (Books),"Absolute Watchmen (Moore & Gibbons, DC)",4050-18160
+Best Writer,"Alan Moore (Promethea, Top Ten: The Forty-Niners)",4005-2311
+Best Artist (Penciller/Inker),"John Cassaday (Astonishing X-Men, Planetary)",4005-2274
+Best Writer/Artist,Geof Darrow (Shaolin Cowboy),4005-2232
+Best Painter (Interior),Ladronn (Hip Flask: Mystery City),4005-4091
+Best Coloring,Chris Ware (Acme Novelty Library #16),4005-2331
+Best Lettering,"Todd Klein (Seven Soldiers, Fables, Desolation Jones)",4005-2300
+Best Cover Artist,"James Jean (Fables, Runaways)",4005-3221
+Talent Deserving Wider Recognition,Aaron Renier (Spiral-Bound),4005-18274
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"All-Star Superman (Grant Morrison & Frank Quitely, DC)",4050-18165
+Best Limited Series,"Batman: Year 100 (Paul Pope, DC)",4050-18122
+Best New Series,"Criminal (Ed Brubaker & Sean Phillips, Icon/Marvel)",4050-18542
+Best Single Issue/One-Shot,"Batman: Year 100 #1 (Paul Pope, DC)",4000-51122
+Best Anthology,"Solo (Edited by Mark Chiarello, DC)",4050-18171
+Best Graphic Album—New,"American Born Chinese (Gene Luen Yang, First Second)",4050-18276
+Best Graphic Album—Reprint,"Absolute Sandman, vol. 1 (Gaiman & artists, DC)",4050-18160
+Best Reality-Based Work,"Fun Home (Alison Bechdel, Houghton Mifflin)",4050-18275
+Best Humor Publication,"Flaming Carrot Comics (Bob Burden, Desperado)",4050-3652
+Best Publication (Younger),"Gumby (Bob Burden & Rick Geary, Wildcard)",4050-3534
+Best Archival Collection (Strips),"The Complete Peanuts, 1959–1960 (Charles Schulz)",4050-18264
+Best Archival Collection (Books),"Lost Girls (Alan Moore & Melinda Gebbie, Top Shelf)",4050-18277
+Best Writer,"Ed Brubaker (Criminal, Daredevil, Captain America)",4005-2330
+Best Artist (Penciller/Inker),"John Cassaday (Astonishing X-Men, Planetary)",4005-2274
+Best Writer/Artist,Paul Pope (Batman: Year 100),4005-2313
+Best Painter (Interior),Jill Thompson (The Library of Nightmares),4005-2283
+Best Coloring,"Dave Stewart (B.P.R.D., Hellboy, The Escapists, Batman: Year 100)",4005-2315
+Best Lettering,"Todd Klein (Fables, Jack of Fables, Batman: Year 100)",4005-2300
+Best Cover Artist,"James Jean (Fables, Jack of Fables, The Wolf)",4005-3221
+Best Comics-Related Book,The Art of Brian Bolland (Edited by Chris Bennett),N/A
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Y: The Last Man (Brian K. Vaughan & Pia Guerra, Vertigo/DC)",4050-9551
+Best Limited Series,"The Umbrella Academy: Apocalypse Suite (Gerard Way & Gabriel Bá, Dark Horse)",4050-19424
+Best New Series,"Buffy the Vampire Slayer Season 8 (Joss Whedon & various, Dark Horse)",4050-18768
+Best Single Issue/One-Shot,"Justice League of America #11: ""Walls"" (Brad Meltzer & Gene Ha, DC)",4000-111100
+Best Short Story,"""Mr. Wonderful"" (Dan Clowes, NYT Sunday Magazine)",4050-36283
+Best Anthology,"5 (Gabriel Bá, Becky Cloonan, Fabio Moon, Vasilis Lolos, Rafael Grampa)",4050-19602
+Best Digital Comic,"Sugarshock! (Joss Whedon & Fabio Moon, MySpace Dark Horse)",4050-21345
+Best Graphic Album—New,"Exit Wounds (Rutu Modan, Drawn & Quarterly)",4050-20593
+Best Graphic Album—Reprint,"Mouse Guard: Fall 1152 (David Petersen, Archaia)",4050-24430
+Best Archival Collection (Strips),"Complete Terry and the Pirates, vol. 1 (Milton Caniff, IDW)",4050-21344
+Best Archival Collection (Books),"I Shall Destroy All the Civilized Planets! (Fletcher Hanks, Fantagraphics)",4050-24431
+Best Reality-Based Work,Satchel Paige: Striking Out Jim Crow (James Sturm & Rich Tommaso),4050-32363
+Best Humor Publication,"The Perry Bible Fellowship (Nicholas Gurewitch, Dark Horse)",4050-23428
+Best Publication (Kids),"Mouse Guard: Fall 1152 (David Petersen, Archaia)",4050-24430
+Best Publication (Teens),"Laika (Nick Abadzis, First Second)",4050-24433
+Best U.S. Ed. of Int'l Material,"I Killed Adolf Hitler (Jason, Fantagraphics)",4050-24432
+Best U.S. Ed. of Int'l (Japan),"Tekkonkinkreet: Black & White (Taiyo Matsumoto, Viz)",4050-20412
+Best Writer,"Ed Brubaker (Captain America, Criminal, Daredevil, Immortal Iron Fist)",4005-2330
+Best Writer/Artist,Chris Ware (Acme Novelty Library #18),4005-2331
+Best Artist (Penciller/Inker),Pia Guerra & Jose Marzan Jr. (Y: The Last Man),4005-2319
+Best Painter (Interior),Eric Powell (The Goon: Chinatown),4005-2272
+Best Coloring,"Dave Stewart (The Umbrella Academy, Buffy, Hellboy)",4005-2315
+Best Lettering,"Todd Klein (Fables, LoEG: Black Dossier, Nexus)",4005-2300
+Best Cover Artist,"James Jean (Fables, The Umbrella Academy)",4005-3221
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"All-Star Superman (Grant Morrison & Frank Quitely, DC)",4050-18164
+Best Limited Series,"Hellboy: The Crooked Man (Mike Mignola & Richard Corben, Dark Horse)",4050-22165
+Best New Series,"Invincible Iron Man (Matt Fraction & Salvador Larroca, Marvel)",4050-21443
+Best Single Issue/One-Shot,"Hellboy: The Mole (Mike Mignola & Duncan Fegredo, Dark Horse)",4000-131102
+Best Short Story,"""Murder He Wrote"" (Ian Boothby, Nina Matsumoto, & Andrew Pepoy, Bongo)",4050-18451
+Best Anthology,Comic Book Tattoo: Narrative Art Inspired by the Lyrics of Tori Amos (Image),4050-22538
+Best Digital Comic,Finder (Carla Speed McNeil),4050-3882
+Best Graphic Album—New,"Swallow Me Whole (Nate Powell, Top Shelf)",4050-23429
+Best Graphic Album—Reprint,"Hellboy Library Edition, vols. 1 & 2 (Mike Mignola, Dark Horse)",4050-21697
+Best Archival Collection (Strips),"Little Nemo in Slumberland, Many More Nightmares (Winsor McCay, Sunday Press)",4050-25217
+Best Archival Collection (Books),"Creepy Archives (various, Dark Horse)",4050-22591
+Best Reality-Based Work,"What It Is (Lynda Barry, Drawn & Quarterly)",4050-24434
+Best Humor Publication,"Giant Days (John Allison, self-published)",4050-42475
+Best Publication (Kids),"Tiny Titans (Art Baltazar & Franco, DC)",4050-20516
+Best Publication (Teens),"Coraline (Neil Gaiman, adapted by P. Craig Russell, HarperCollins)",4050-22137
+Best U.S. Ed. of Int'l Material,"The Last Musketeer (Jason, Fantagraphics)",4050-24435
+Best U.S. Ed. of Int'l (Japan),"Dororo (Osamu Tezuka, Vertical)",4050-21588
+Best Writer,"Bill Willingham (Fables, House of Mystery)",4005-2311
+Best Writer/Artist,Chris Ware (Acme Novelty Library #19),4005-2331
+Best Artist (Penciller/Inker),Guy Davis (BPRD),4005-2273
+Best Painter (Interior),"Jill Thompson (Magic Trixie, Magic Trixie Sleeps Over)",4005-2322
+Best Coloring,"Dave Stewart (The Umbrella Academy, Hellboy, BPRD)",4005-2315
+Best Lettering,Chris Ware (Acme Novelty Library #19),4005-2331
+Best Cover Artist,"James Jean (Fables, The Umbrella Academy)",4005-3221
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"The Walking Dead (Robert Kirkman & Charlie Adlard, Image)",4050-18166
+Best Limited Series,"The_Dreamer (Lora Innes, IDW)",4050-21820
+Best New Series,"Chew (John Layman & Rob Guillory, Image)",4050-26467
+Best Single Issue/One-Shot,"Captain America #601: ""Red, White, and Blue-Blood"" (Ed Brubaker & Gene Ha)",4000-165842
+Best Short Story,"""Urgent Request"" (Gene Luen Yang & Derek Kirk Kim, First Second)",4050-27209
+Best Anthology,"Popgun vol. 3 (Mark Andrew Smith, DJ Kirkbride, Joe Keatinge, Image)",4050-25651
+Best Digital Comic,Sin Titulo (Cameron Stewart),4050-57500
+Best Graphic Album—New,"Asterios Polyp (David Mazzucchelli, Pantheon)",4050-27150
+Best Graphic Album—Reprint,"Absolute Justice (Alex Ross, Jim Krueger, & Doug Braithwaite, DC)",4050-29777
+Best Archival Collection (Strips),"Bloom County: The Complete Library, vol. 1 (Berkeley Breathed, IDW)",4050-29088
+Best Archival Collection (Books),The Toon Treasury of Classic Children’s Comics (Art Spiegelman & Françoise Mouly),4050-32364
+Best Reality-Based Work,"Stitches (David Small, Norton)",4050-28564
+Best Humor Publication,"Chew (John Layman & Rob Guillory, Image)",4050-26467
+Best Publication (Kids),"The Wonderful Wizard of Oz (Eric Shanower & Skottie Young, Marvel)",4050-24021
+Best Publication (Teens),"Beasts of Burden (Evan Dorkin & Jill Thompson, Dark Horse)",4050-28108
+Best U.S. Ed. of Int'l Material,"The Photographer (Emmanuel Guibert, Didier Lefèvre, & Frédéric Lemercier)",4050-26477
+Best U.S. Ed. of Int'l (Japan),"A Drifting Life (Yoshihiro Tatsumi, Drawn & Quarterly)",4050-26217
+Best Writer,"Ed Brubaker (Captain America, Daredevil, Marvels Project, Criminal)",4005-2330
+Best Writer/Artist,David Mazzucchelli (Asterios Polyp),4005-2325
+Best Artist (Penciller/Inker),J. H. Williams III (Detective Comics),4005-2309
+Best Painter (Interior),Jill Thompson (Beasts of Burden; Magic Trixie and the Dragon),4005-2322
+Best Coloring,"Dave Stewart (BPRD, Hellboy, Goon, Batman: Red Dawn)",4005-2315
+Best Lettering,David Mazzucchelli (Asterios Polyp),4005-2325
+Best Cover Artist,J. H. Williams III (Detective Comics),4005-2309
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Chew (John Layman & Rob Guillory, Image)",4050-26467
+Best Limited Series,"Daytripper (Fábio Moon & Gabriel Bá, Vertigo/DC)",4050-30230
+Best New Series,"American Vampire (Scott Snyder, Stephen King & Rafael Albuquerque, Vertigo/DC)",4050-32128
+Best Single Issue/One-Shot,"Hellboy: Double Feature of Evil (Mike Mignola & Richard Corben, Dark Horse)",4000-241517
+Best Short Story,"""Post Mortem"" (Greg Rucka & Michael Lark, I Am an Avenger #2, Marvel)",4050-35328
+Best Anthology,"Mouse Guard: Legends of the Guard (David Petersen, Archaia)",4050-33630
+Best Digital Comic,Abominable Charles Christopher (Karl Kerschl),4050-52059
+Best Graphic Album—New,"Wilson (Daniel Clowes, Drawn & Quarterly)",4050-33319
+Best Graphic Album—Reprint,"Wednesday Comics (Mark Chiarello, DC)",4050-27208
+Best Archival Collection (Strips),"Archie: The Complete Daily Comic Strips, 1946–1948 (Bob Montana, IDW)",4050-34537
+Best Archival Collection (Books),"75 Years of DC Comics: The Art of Modern Myth-Making (Paul Levitz, Taschen)",4050-37731
+Best Reality-Based Work,"It Was the War of the Trenches (Jacques Tardi, Fantagraphics)",4050-35496
+Best Humor Publication,"I Thought You Would Be Funnier (Shannon Wheeler, BOOM!)",4050-34542
+Best Publication (Kids),"Tiny Titans (Art Baltazar & Franco, DC)",4050-20516
+Best Publication (Teens),"Smile (Raina Telgemeier, Scholastic)",4050-31626
+Best U.S. Ed. of Int'l Material,"It Was the War of the Trenches (Jacques Tardi, Fantagraphics)",4050-35496
+Best U.S. Ed. of Int'l (Japan),"Onward Towards Our Noble Deaths (Shigeru Mizuki, Drawn & Quarterly)",4050-40893
+Best Writer,Joe Hill (Locke & Key),4005-49271
+Best Writer/Artist,Darwyn Cooke (Richard Stark's Parker: The Outfit),4005-2270
+Best Artist (Penciller/Inker),Skottie Young (The Marvelous Land of Oz),4005-2313
+Best Painter (Interior),Jill Thompson (Beasts of Burden),4005-2322
+Best Coloring,"Dave Stewart (Hellboy, BPRD, Baltimore, Let Me In)",4005-2315
+Best Lettering,"Todd Klein (Fables, The Unwritten, Joe the Barbarian)",4005-2300
+Best Cover Artist,"Mike Mignola (Hellboy, Baltimore: The Plague Ships)",4005-2301
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Daredevil (Mark Waid, Marcos Martin, Paolo Rivera & Joe Rivera, Marvel)",4050-41076
+Best Limited Series,"Criminal: The Last of the Innocent (Ed Brubaker & Sean Phillips, Marvel Icon)",4050-40509
+Best New Series,"Daredevil (Mark Waid, Marcos Martin, Paolo Rivera & Joe Rivera, Marvel)",4050-41076
+Best Single Issue/One-Shot,"Daredevil #7 (Mark Waid, Paolo Rivera & Joe Rivera, Marvel)",4000-306915
+Best Short Story,"""The Goldfish"" (Jim Woodring, The Congress of the Animals)",4050-40912
+Best Anthology,"Dark Horse Presents (Mike Richardson, Dark Horse)",4050-39831
+Best Digital Comic,Battlepug (Mike Norton),4050-52055
+Best Graphic Album—New,"Jim Henson’s Tale of Sand (Ramón K. Pérez, Archaia)",4050-44161
+Best Graphic Album—Reprint,"Richard Stark's Parker: The Hunter (Darwyn Cooke, IDW)",4050-27690
+Best Archival Collection (Strips),"Walt Disney's Mickey Mouse vols. 1-2 (Floyd Gottfredson, Fantagraphics)",4050-41002
+Best Archival Collection (Books),Walt Simonson’s The Mighty Thor Artist’s Edition (IDW),4050-41712
+Best Reality-Based Work,"Green River Killer (Jeff Jensen & Jonathan Case, Dark Horse)",4050-42474
+Best Humor Publication,"Milk & Cheese: Dairy Products Gone Bad (Evan Dorkin, Dark Horse)",4050-44122
+Best Publication (Kids),"Dragon Puncher Island (James Kochalka, Top Shelf)",4050-47120
+Best Publication (Teens),"Anya’s Ghost (Vera Brosgol, First Second)",4050-40890
+Best U.S. Ed. of Int'l Material,"The Man Who Grew His Beard (Olivier Schrauwen, Fantagraphics)",4050-43759
+Best U.S. Ed. of Int'l (Japan),"Onward Towards Our Noble Deaths (Shigeru Mizuki, Drawn & Quarterly)",4050-40893
+Best Writer,"Mark Waid (Irredeemable, Incorruptible, Daredevil)",4005-2336
+Best Writer/Artist,Craig Thompson (Habibi),4005-2323
+Best Artist (Penciller/Inker),Ramón K. Pérez (Jim Henson’s Tale of Sand),4005-4682
+Best Painter (Interior),Jill Thompson (Beasts of Burden),4005-2322
+Best Coloring,"Laura Martin (The Mighty Thor, Journey into Mystery, Ruse)",4005-2314
+Best Lettering,Stan Sakai (Usagi Yojimbo),4005-2303
+Best Cover Artist,"Francesco Francavilla (Black Panther, Lone Ranger, Archie, Batman)",4005-52054
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Saga (Brian K. Vaughan & Fiona Staples, Image)",4050-46604
+Best Limited Series,"The_Mire (Becky Cloonan, self-published)",4000-335432
+Best New Series,"Saga (Brian K. Vaughan & Fiona Staples, Image)",4050-46604
+Best Single Issue/One-Shot,"The_Mire (Becky Cloonan, self-published)",4000-335432
+Best Short Story,"""Moon 1969"" (Michael Kupperman, Tales Designed to Thrizzle #8)",4050-26469
+Best Anthology,"Dark Horse Presents (Mike Richardson, Dark Horse)",4050-39831
+Best Digital Comic,"Bandette (Paul Tobin & Colleen Coover, Monkeybrain)",4050-52714
+Best Graphic Album—New,"Building Stories (Chris Ware, Pantheon)",4050-53466
+Best Graphic Album—Reprint,"King City (Brandon Graham, TokyoPop/Image)",4050-20594
+Best Archival Collection (Strips),"Pogo, vol. 2: Bona Fide Balderdash (Walt Kelly, Fantagraphics)",4050-54157
+Best Archival Collection (Books),David Mazzucchelli's Daredevil Born Again: Artist's Edition (IDW),4050-52077
+Best Reality-Based Work,(Tie) Annie Sullivan & the Trials of Helen Keller / The Carter Family,4050-51543
+Best Humor Publication,"Darth Vader and Son (Jeffrey Brown, Chronicle Books)",4050-48483
+Best Publication (Kids),"Adventure Time (Ryan North, Shelli Paroline, & Braden Lamb, kaboom!)",4050-46016
+Best Publication (Teens),"A Wrinkle in Time (Hope Larson, FSG)",4050-53416
+Best U.S. Ed. of Int'l Material,Blacksad: Silent Hell (Juan Diaz Canales & Juanjo Guarnido),4050-51548
+Best U.S. Ed. of Int'l (Japan),"20th Century Boys (Naoki Urasawa, Viz)",4050-20150
+Best Writer,Brian K. Vaughan (Saga),4005-2335
+Best Writer/Artist,Chris Ware (Building Stories),4005-2331
+Best Artist (Penciller/Inker),(Tie) David Aja (Hawkeye) / Chris Samnee (Daredevil),4005-52054
+Best Painter (Interior),Juanjo Guarnido (Blacksad),4005-3215
+Best Coloring,"Dave Stewart (Batwoman, Fatale, BPRD, Hellboy, Conan)",4005-2315
+Best Lettering,Chris Ware (Building Stories),4005-2331
+Best Cover Artist,David Aja (Hawkeye),4005-52054
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Saga (Brian K. Vaughan & Fiona Staples, Image)",4050-46604
+Best Limited Series,"The Wake (Scott Snyder & Sean Murphy, Vertigo/DC)",4050-59721
+Best New Series,"Sex Criminals (Matt Fraction & Chip Zdarsky, Image)",4050-67520
+Best Single Issue/One-Shot,"Hawkeye #11: ""Pizza Is My Business"" (Matt Fraction & David Aja)",4000-410313
+Best Short Story,"""Untitled"" (Gilbert Hernandez, Love and Rockets: New Stories #6)",4050-22166
+Best Anthology,"Dark Horse Presents (Mike Richardson, Dark Horse)",4050-39831
+Best Digital Comic,"The Private Eye (Brian K. Vaughan & Marcos Martin, Panel Syndicate)",4050-70588
+Best Graphic Album—New,"The Encyclopedia of Early Earth (Isabel Greenberg, Little, Brown)",4050-69273
+Best Graphic Album—Reprint,"RASL (Jeff Smith, Cartoon Books)",4050-20511
+Best Archival Collection (Strips),"Tarzan: The Complete Russ Manning Newspaper Strips, vol. 1 (IDW)",4050-64835
+Best Archival Collection (Books),Will Eisner's The Spirit Artist's Edition (IDW),4050-64836
+Best Reality-Based Work,"The Fifth Beatle: The Brian Epstein Story (V. Tiwary, A. Robinson, K. Baker)",4050-68936
+Best Humor Publication,"Vader's Little Princess (Jeffrey Brown, Chronicle Books)",4050-58957
+Best Publication (Kids),"The Adventures of Superhero Girl (Faith Erin Hicks, Dark Horse)",4050-55931
+Best Publication (Teens),"Battling Boy (Paul Pope, First Second)",4050-66779
+Best U.S. Ed. of Int'l Material,Goddam This War! (Jacques Tardi & Jean-Pierre Verney),4050-66385
+Best U.S. Ed. of Int'l (Japan),"The Mysterious Underground Men (Osamu Tezuka, PictureBox)",4050-71328
+Best Writer,Brian K. Vaughan (Saga),4005-2335
+Best Writer/Artist,Jaime Hernandez (Love and Rockets: New Stories #6),4005-2326
+Best Artist (Penciller/Inker),Sean Murphy (The Wake),4005-2304
+Best Painter (Interior),Fiona Staples (Saga),4005-46604
+Best Coloring,"Jordie Bellaire (The Wake, Manhattan Projects, Nowhere Men, etc.)",4005-59363
+Best Lettering,Darwyn Cooke (Richard Stark's Parker: The Score),4005-2270
+Best Cover Artist,David Aja (Hawkeye),4005-52054
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Saga (Brian K. Vaughan & Fiona Staples, Image)",4050-46604
+Best Limited Series,"Little Nemo: Return to Slumberland (Eric Shanower & Gabriel Rodriguez, IDW)",4050-76192
+Best New Series,"Lumberjanes (Shannon Watters, Grace Ellis, Noelle Stevenson & Brooke A. Allen, BOOM!)",4050-73138
+Best Single Issue/One-Shot,"Beasts of Burden: Hunters and Gatherers (Evan Dorkin & Jill Thompson, Dark Horse)",4000-459208
+Best Short Story,"""When the Darkness Presses"" (Emily Carroll)",4050-78534
+Best Anthology,"Little Nemo: Dream Another Dream (edited by Josh O’Neill, Andrew Carl & Chris Stevens)",4050-77987
+Best Digital Comic,"The Private Eye (Brian K. Vaughan & Marcos Martin, Panel Syndicate)",4050-70588
+Best Graphic Album—New,"This One Summer (Mariko Tamaki & Jillian Tamaki, First Second)",4050-73891
+Best Graphic Album—Reprint,"Through the Woods (Emily Carroll, McElderry Books)",4050-74113
+Best Archival Collection (Strips),"Winsor McCay’s Complete Little Nemo (Alexander Braun, TASCHEN)",4050-78535
+Best Archival Collection (Books),"Steranko Nick Fury Agent of S.H.I.E.L.D. Artist's Edition (Scott Dunbier, IDW)",4050-74966
+Best Reality-Based Work,"Hip Hop Family Tree, vol. 2 (Ed Piskor, Fantagraphics)",4050-67123
+Best Humor Publication,"The Complete Cul de Sac (Richard Thompson, Andrews McMeel)",4050-78536
+Best Publication (Kids),"El Deafo (Cece Bell, Amulet/Abrams)",4050-76646
+Best Publication (Teens),"Lumberjanes (Shannon Watters, Grace Ellis, Noelle Stevenson & Brooke A. Allen, BOOM!)",4050-73138
+Best U.S. Ed. of Int'l Material,"Blacksad: Amarillo (Juan Díaz Canales & Juanjo Guarnido, Dark Horse)",4050-74071
+Best U.S. Ed. of Int'l (Japan),"Showa: A History of Japan (Shigeru Mizuki, Drawn & Quarterly)",4050-67508
+Best Writer,"Gene Luen Yang (Avatar: The Last Airbender, The Shadow Hero)",4005-43098
+Best Writer/Artist,Raina Telgemeier (Sisters),4005-59427
+Best Artist (Penciller/Inker),Fiona Staples (Saga),4005-54602
+Best Painter (Interior),J. H. Williams III (The Sandman: Overture),4005-2309
+Best Coloring,"Dave Stewart (Hellboy in Hell, BPRD, Abe Sapien, etc.)",4005-2315
+Best Lettering,Stan Sakai (Usagi Yojimbo: Senso),4005-2303
+Best Cover Artist,Darwyn Cooke (DC Comics Variant Covers),4005-2270
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Southern Bastards (Jason Aaron & Jason Latour, Image)",4050-73418
+Best Limited Series,"The Fade Out (Ed Brubaker & Sean Phillips, Image)",4050-76343
+Best New Series,"Paper Girls (Brian K. Vaughan & Cliff Chiang, Image)",4050-85210
+Best Single Issue/One-Shot,"Silver Surfer #11: ""Never After"" (Dan Slott & Michael Allred, Marvel)",4000-491681
+Best Short Story,"""Killing and Dying"" (Adrian Tomine, Optic Nerve #14)",4050-32363
+Best Anthology,Drawn & Quarterly: Twenty-Five Years of Contemporary Cartooning (D&Q),4050-84517
+Best Digital Comic,"Bandette (Paul Tobin & Colleen Coover, Monkeybrain/comiXology)",4050-52714
+Best Graphic Album—New,"Ruins (Peter Kuper, SelfMadeHero)",4050-86475
+Best Graphic Album—Reprint,"Nimona (Noelle Stevenson, HarperTeen)",4050-82782
+Best Archival Collection (Strips),The Eternaut (Héctor Germán Oesterheld & Francisco Solano Lòpez),4050-88009
+Best Archival Collection (Books),"Walt Kelly's Fairy Tales (Craig Yoe, IDW)",4050-90924
+Best Reality-Based Work,"March: Book Two (John Lewis, Andrew Aydin & Nate Powell, Top Shelf)",4050-79664
+Best Humor Publication,"Step Aside, Pops: A Hark! A Vagrant Collection (Kate Beaton, D&Q)",4050-84849
+Best Publication (Kids),"Over the Garden Wall (Pat McHale & Jim Campbell, KaBOOM!)",4050-83562
+Best Publication (Teens),"SuperMutant Magic Academy (Jillian Tamaki, D&Q)",4050-82087
+Best U.S. Ed. of Int'l Material,"The Realist (Asaf Hanuka, Archaia/BOOM!)",4050-83478
+Best U.S. Ed. of Int'l (Japan),"Showa 1953–1989: A History of Japan (Shigeru Mizuki, D&Q)",4050-67508
+Best Writer,"Jason Aaron (Southern Bastards, Thor, Doctor Strange, Star Wars)",4005-43093
+Best Writer/Artist,Bill Griffith (Invisible Ink),4005-27419
+Best Artist (Penciller/Inker),Cliff Chiang (Paper Girls),4005-2287
+Best Painter (Interior),Dustin Nguyen (Descender),4005-2305
+Best Coloring,"Jordie Bellaire (The Autumnlands, Injection, Plutona, Vision, etc.)",4005-59363
+Best Lettering,Derf Backderf (Trashed),4005-29806
+Best Cover Artist,"David Aja (Hawkeye, Karnak, Scarlet Witch)",4005-52054
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Saga (Brian K. Vaughan & Fiona Staples, Image)",4050-46604
+Best Limited Series,"The Vision (Tom King & Gabriel Walta, Marvel)",4050-85661
+Best New Series,"Black Hammer (Jeff Lemire & Dean Ormston, Dark Horse)",4050-92854
+Best Single Issue/One-Shot,"Beasts of Burden: What the Cat Dragged In (E. Dorkin, S. Thompson, J. Thompson)",4000-534603
+Best Short Story,"""Good Boy"" (Tom King & Jason Fabok, Batman Annual #1)",4050-96356
+Best Anthology,"Love Is Love (edited by Sarah Gaydos & Jamie S. Rich, IDW/DC)",4050-97175
+Best Digital Comic,"Bandette (Paul Tobin & Colleen Coover, Monkeybrain/comiXology)",4050-52714
+Best Graphic Album—New,"March: Book Three (John Lewis, Andrew Aydin & Nate Powell, Top Shelf)",4050-93976
+Best Graphic Album—Reprint,"Demon (Jason Shiga, First Second)",4050-95168
+Best Archival Collection (Strips),"Invisible Dick (C.M. Payne, edited by J. Maresca, Sunday Press)",4050-101150
+Best Archival Collection (Books),"Walt Disney's Mickey Mouse: The Floating Island (F. Gottfredson, Fantagraphics)",4050-41002
+Best Reality-Based Work,"March: Book Three (John Lewis, Andrew Aydin & Nate Powell, Top Shelf)",4050-93976
+Best Humor Publication,"Jughead (Chip Zdarsky, Ryan North, Erica Henderson, & Derek Charm, Archie)",4050-85172
+Best Publication (Kids),"Ghosts (Raina Telgemeier, Scholastic)",4050-94676
+Best Publication (Teens),"The Backstagers (James Tynion IV & Rian Sygh, BOOM! Box)",4050-93721
+Best U.S. Ed. of Int'l Material,Moebius Library: The World of Edena (Dark Horse),4050-94943
+Best U.S. Ed. of Int'l (Japan),"Sunny (Taiyo Matsumoto, Viz)",4050-59754
+Best Writer,"Brian K. Vaughan (Saga, Paper Girls, We Stand on Guard)",4005-2335
+Best Writer/Artist,Sonny Liew (The Art of Charlie Chan Hock Chye),4005-64906
+Best Artist (Penciller/Inker),Fiona Staples (Saga),4005-54602
+Best Painter (Interior),Jill Thompson (Wonder Woman: The True Amazon),4005-2322
+Best Coloring,"Matt Wilson (The Wicked + The Divine, Black Widow, Paper Girls, etc.)",4005-59265
+Best Lettering,"Todd Klein (Clean Room, Dark Night, Lucifer, Black Hammer)",4005-2300
+Best Cover Artist,Fiona Staples (Saga),4005-54602
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Monstress (Marjorie Liu & Sana Takeda, Image)",4050-85880
+Best Limited Series,"Black Panther: World of Wakanda (Roxane Gay, Ta-Nehisi Coates, Alitha E. Martinez)",4050-96024
+Best New Series,"Nightwing: The New Order (Kyle Higgins & Trevor McCarthy, DC)",4050-104113
+Best Single Issue/One-Shot,"Hellboy: Krampusnacht (Mike Mignola & Adam Hughes, Dark Horse)",4000-641528
+Best Short Story,"""A Life in Comics: The Mad Life of Al Jaffee"" (Mary & Bryan Talbot, Dark Horse)",4050-111152
+Best Anthology,"Elements: Fire, A Comic Anthology by Creators of Color (Beyond Press)",4050-111153
+Best Digital Comic,"Harvey Kurtzman's Marley's Ghost (Josh O’Neill, Shannon Wheeler, Gideon Kendall)",4050-111154
+Best Graphic Album—New,"My Favorite Thing Is Monsters (Emil Ferris, Fantagraphics)",4050-98315
+Best Graphic Album—Reprint,"Boundless (Jillian Tamaki, Drawn & Quarterly)",4050-101736
+Best Archival Collection (Strips),"Celebrating Snoopy (Charles M. Schulz, Andrews McMeel)",4050-111155
+Best Archival Collection (Books),"Akira 35th Anniversary Edition (Katsuhiro Otomo, Kodansha)",4050-111156
+Best Reality-Based Work,"Spinning (Tillie Walden, First Second)",4050-103989
+Best Humor Publication,"Baking with Kafka (Tom Gauld, Drawn & Quarterly)",4050-104445
+Best Publication (Kids),"The Tea Dragon Society (Katie O’Neill, Oni)",4050-105206
+Best Publication (Teens),"Monstress (Marjorie Liu & Sana Takeda, Image)",4050-85880
+Best U.S. Ed. of Int'l Material,Run for It: Stories of Slaves Who Fought for Their Freedom (Marcelo D’Salete),4050-111157
+Best U.S. Ed. of Int'l (Japan),"My Brother’s Husband (Gengoroh Tagame, Pantheon)",4050-101239
+Best Writer,"(Tie) Tom King (Batman, Mister Miracle) / Marjorie Liu (Monstress)",4005-72120
+Best Writer/Artist,Emil Ferris (My Favorite Thing Is Monsters),4005-111158
+Best Artist (Penciller/Inker),Mitch Gerads (Mister Miracle),4005-72300
+Best Painter (Interior),Sana Takeda (Monstress),4005-24153
+Best Coloring,Sana Takeda (Monstress),4005-24153
+Best Lettering,"Stan Sakai (Usagi Yojimbo, Groo: Play of the Gods)",4005-2303
+Best Cover Artist,Sana Takeda (Monstress),4005-24153
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Giant Days (John Allison, Max Sarin & Julia Madrigal, BOOM!)",4050-80860
+Best Limited Series,"Mister Miracle (Tom King & Mitch Gerads, DC)",4050-103554
+Best New Series,"Gideon Falls (Jeff Lemire & Andrea Sorrentino, Image)",4050-109278
+Best Single Issue/One-Shot,Peter Parker: The Spectacular Spider-Man #310 (Chip Zdarsky),4000-681941
+Best Short Story,"""The Sweetness"" (Kevin Huizenga, Ganges #6)",4050-111160
+Best Anthology,"Puerto Rico Strong (edited by Marco Lopez, Edgardo Miranda-Rodriguez, etc.)",4050-109404
+Best Digital Comic,"Umami (Ken Niimura, Panel Syndicate)",4050-111161
+Best Graphic Album—New,"My Favorite Thing Is Monsters, vol. 2 (Emil Ferris, Fantagraphics)",4050-98315
+Best Graphic Album—Reprint,"The Vision Hardcover (Tom King, Gabriel Walta & Michael Walsh, Marvel)",4050-85661
+Best Archival Collection (Strips),"Star Wars: The Classic Newspaper Comics, vol. 3 (IDW)",4050-101155
+Best Archival Collection (Books),Bill Sienkiewicz’s Mutants and Moon Knights: Artifact Edition (IDW),4050-111162
+Best Reality-Based Work,"Is This Guy For Real? The Unbelievable Andy Kaufman (Box Brown, First Second)",4050-108257
+Best Humor Publication,"Giant Days (John Allison, Max Sarin & Julia Madrigal, BOOM!)",4050-80860
+Best Publication (Kids),"The Tea Dragon Festival (Katie O’Neill, Oni)",4050-120935
+Best Publication (Teens),"The Prince and the Dressmaker (Jen Wang, First Second)",4050-107771
+Best U.S. Ed. of Int'l Material,Brazen: Rebel Ladies Who Rocked the World (Pénélope Bagieu),4050-108390
+Best U.S. Ed. of Int'l (Japan),"Tokyo Tarareba Girls (Akiko Higashimura, Kodansha)",4050-111163
+Best Writer,"Tom King (Batman, Mister Miracle, Heroes in Crisis, Swamp Thing Winter Special)",4005-72120
+Best Writer/Artist,Jen Wang (The Prince and the Dressmaker),4005-111164
+Best Artist (Penciller/Inker),Mitch Gerads (Mister Miracle),4005-72300
+Best Painter (Interior),Dustin Nguyen (Descender),4005-2305
+Best Coloring,"Matt Wilson (The Wicked + The Divine, Black Cloud, Paper Girls, etc.)",4005-59265
+Best Lettering,"Todd Klein (Black Hammer, Batman: White Knight, Books of Magic, etc.)",4005-2300
+Best Cover Artist,"Jen Bartel (Black Panther, Sub-Mariner)",4005-87974
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Bitter Root (David F. Walker, Chuck Brown & Sanford Greene, Image)",4050-114886
+Best Limited Series,"Little Bird (Darcy Van Poelgeest & Ian Bertram, Image)",4050-117562
+Best New Series,"Invisible Kingdom (G. Willow Wilson & Christian Ward, Berger Books/Dark Horse)",4050-117650
+Best Single Issue/One-Shot,"Our Favorite Thing Is Monsters (Emil Ferris, Fantagraphics)",4050-98315
+Best Short Story,"""Hot Comb"" (Ebony Flowers, Hot Comb, Drawn & Quarterly)",4050-119156
+Best Anthology,Drawing Power: Women's Stories of Sexual Violence (edited by Diane Noomin),4050-123306
+Best Digital Comic,"Afterlift (Chip Zdarsky & Jason Loo, comiXology Originals)",4050-124672
+Best Graphic Album—New,"Are You Listening? (Tillie Walden, First Second)",4050-121516
+Best Graphic Album—Reprint,"LaGuardia (Nnedi Okorafor & Tana Ford, Berger Books/Dark Horse)",4050-115316
+Best Archival Collection (Strips),"Krazy Kat: The Complete Color Sundays (George Herriman, TASCHEN)",4050-127150
+Best Archival Collection (Books),Stan Sakai’s Usagi Yojimbo: The Grasscutter Artist’s Edition (IDW),4050-127151
+Best Reality-Based Work,"They Called Us Enemy (George Takei, Justin Eisinger, Steven Scott & Harmony Becker)",4050-119932
+Best Humor Publication,"The Way of the Househusband (Kousuke Oono, Viz)",4050-121518
+Best Publication (Kids),"Guts (Raina Telgemeier, Scholastic)",4050-121515
+Best Publication (Teens),Laura Dean Keeps Breaking Up with Me (Mariko Tamaki & Rosemary Valero-O’Connell),4050-118559
+Best U.S. Ed. of Int'l Material,"The House (Paco Roca, Fantagraphics)",4050-125430
+Best U.S. Ed. of Int'l (Japan),(Tie) Cats of the Louvre / Witch Hat Atelier,4050-122156
+Best Writer,"Mariko Tamaki (Laura Dean Keeps Breaking Up with Me, Harley Quinn: Breaking Glass)",4005-59427
+Best Writer/Artist,Raina Telgemeier (Guts),4005-59427
+Best Artist (Penciller/Inker),Rosemary Valero-O’Connell (Laura Dean Keeps Breaking Up with Me),4005-86644
+Best Painter (Interior),Christian Ward (Invisible Kingdom),4005-3215
+Best Coloring,"Dave Stewart (Black Hammer, Hellboy and the BPRD, Gideon Falls, etc.)",4005-2315
+Best Lettering,Stan Sakai (Usagi Yojimbo),4005-2303
+Best Cover Artist,Emma Rios (Pretty Deadly),4005-54217
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Bitter Root (David F. Walker, Chuck Brown & Sanford Greene, Image)",4050-114886
+Best Limited Series,"Superman's Pal Jimmy Olsen (Matt Fraction & Steve Lieber, DC)",4050-120002
+Best New Series,"Black Widow (Kelly Thompson & Elena Casagrande, Marvel)",4050-130105
+Best Single Issue/One-Shot,"Sports Is Hell (Ben Passmore, Koyama Press)",4050-126432
+Best Short Story,"""When the Men-Boys Come"" (Laura Park, Men-Boys)",4050-135110
+Best Anthology,Men-Boys (edited by Laura Park & Chris Wright),4050-135110
+Best Digital Comic,"Friday (Ed Brubaker & Marcos Martin, Panel Syndicate)",4050-127543
+Best Graphic Album—New,"Pulp (Ed Brubaker & Sean Phillips, Image)",4050-129032
+Best Graphic Album—Reprint,"Seeds and Stems (Simon Hanselmann, Fantagraphics)",4050-131105
+Best Archival Collection (Strips),The Flapper Queens: Women Cartoonists of the Jazz Age (Kelly Ohlert),4050-135111
+Best Archival Collection (Books),"The Complete Hate (Peter Bagge, Fantagraphics)",4050-135112
+Best Reality-Based Work,"Kent State: Four Dead in Ohio (Derf Backderf, Abrams)",4050-130005
+Best Humor Publication,"Superman's Pal Jimmy Olsen (Matt Fraction & Steve Lieber, DC)",4050-120002
+Best Publication (Kids),"Superman Smashes the Klan (Gene Luen Yang & Gurihiru, DC)",4050-122450
+Best Publication (Teens),"Dragon Hoops (Gene Luen Yang, First Second)",4050-126115
+Best U.S. Ed. of Int'l Material,"Goblin Girl (Moa Romanova, Fantagraphics)",4050-135113
+Best U.S. Ed. of Int'l (Japan),"Remina (Junji Ito, Viz)",4050-133120
+Best Writer,"James Tynion IV (Something is Killing the Children, Wynd, Batman, etc.)",4005-82451
+Best Writer/Artist,"Junji Ito (Remina, Venus in the Blind Spot)",4005-43095
+Best Artist (Penciller/Inker),"Michael Allred (Bowie: Stardust, Rayguns & Moonage Daydreams)",4005-2279
+Best Painter (Interior),Anand RK (Blue in Green),4005-115201
+Best Coloring,"Laura Allred (Bowie: Stardust, Rayguns & Moonage Daydreams)",4005-2314
+Best Lettering,Stan Sakai (Usagi Yojimbo),4005-2303
+Best Cover Artist,Peach Momoko (Various Marvel titles),4005-131550
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Bitter Root (David F. Walker, Chuck Brown & Sanford Greene, Image)",4050-114886
+Best Limited Series,"The Good Asian (Pornsak Pichetshote & Alexandre Tefenkgi, Image)",4050-136551
+Best New Series,"Nice House on the Lake (James Tynion IV & Álvaro Martínez Bueno, DC)",4050-137210
+Best Single Issue/One-Shot,Wonder Woman Historia: The Amazons (Kelly Sue DeConnick & Phil Jimenez),4000-845110
+Best Short Story,"""Funeral in Berlin"" (Greg Rucka & Leandro Fernández, Old Guard: Tales)",4050-141105
+Best Anthology,You Died: An Anthology of the Afterlife (edited by Kel McDonald & Andrea Purcell),4050-141106
+Best Digital Comic,"Snow Angels (Jeff Lemire & Jock, ComiXology Originals)",4050-134550
+Best Graphic Album—New,"Monsters (Barry Windsor-Smith, Fantagraphics)",4050-136112
+Best Graphic Album—Reprint,"The Complete American Gods (Neil Gaiman, P. Craig Russell, Scott Hampton)",4050-141107
+Best Archival Collection (Strips),"Popeye: The Sundays, vol. 1 (E.C. Segar, Fantagraphics)",4050-141108
+Best Archival Collection (Books),EC Covers Artist’s Edition (IDW),4050-141109
+Best Reality-Based Work,The Black Panther Party: A Graphic History (David F. Walker & Marcus Kwame Anderson),4050-134115
+Best Humor Publication,"Not All Robots (Mark Russell & Mike Deodato Jr., AWA Upshot)",4050-138430
+Best Publication (Kids),"Salt Magic (Hope Larson & Rebecca Mock, Margaret Ferguson Books)",4050-141110
+Best Publication (Teens),"The Legend of Auntie Po (Shing Yin Khor, Kokila/Penguin)",4050-137552
+Best U.S. Ed. of Int'l Material,The_Ballad_of_Stardust_Cowboys (Benoît de Bonnefamille),4050-141111
+Best U.S. Ed. of Int'l (Japan),"Lovesickness: Junji Ito Story Collection (Junji Ito, Viz)",4050-138220
+Best Writer,"James Tynion IV (Something is Killing the Children, Nice House on the Lake, etc.)",4005-82451
+Best Writer/Artist,Barry Windsor-Smith (Monsters),4005-2310
+Best Artist (Penciller/Inker),Phil Jimenez (Wonder Woman Historia: The Amazons),4005-2316
+Best Painter (Interior),Sana Takeda (Monstress),4005-24153
+Best Coloring,"Matt Wilson (Undiscovered Country, Fire Power, Eternals, Thor, etc.)",4005-59265
+Best Lettering,Barry Windsor-Smith (Monsters),4005-2310
+Best Cover Artist,Jen Bartel (Various Marvel titles),4005-87974
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Nightwing (Tom Taylor & Bruno Redondo, DC)",4050-95551
+Best Limited Series,"The Human Target (Tom King & Greg Smallwood, DC)",4050-139882
+Best New Series,"Public Domain (Chip Zdarsky, Image)",4050-144021
+Best Single Issue/One-Shot,"Batman: One Bad Day: The Riddler (Tom King & Mitch Gerads, DC)",4000-891102
+Best Short Story,"""Finding Batman"" (Kevin Conroy & J. Bone, DC Pride 2022)",4050-142215
+Best Anthology,"Comic Book Workers Unite (edited by various, Silver Sprocket)",4050-148110
+Best Digital Comic,"Barnstormers (Scott Snyder & Tula Lotay, ComiXology Originals)",4050-145667
+Best Graphic Album—New,"It's Lonely at the Centre of the Earth (Zoe Thorogood, Image)",4050-147822
+Best Graphic Album—Reprint,"Parker: The Martini Edition—Last Call (Darwyn Cooke, IDW)",4050-148111
+Best Archival Collection (Strips),"Come Over and Help Us (Herbert Crowley, edited by Justin Duerr)",4050-148112
+Best Archival Collection (Books),The_Best_of_The_Harvey_Kurtzman_Special (IDW),4050-148113
+Best Reality-Based Work,"Flung Out of Space (Grace Ellis & Hannah Templer, Abrams)",4050-142550
+Best Humor Publication,"Revenge of the Librarians (Tom Gauld, Drawn & Quarterly)",4050-146602
+Best Publication (Kids),"Frizzy (Claribel A. Ortega & Rose Bousamra, First Second)",4050-146559
+Best Publication (Teens),"Chef's Kiss (Jarrett Melendez & Danica Brine, Oni)",4050-142881
+Best U.S. Ed. of Int'l Material,"Blacksad: They All Fall Down, Part 1 (Juan Díaz Canales & Juanjo Guarnido)",4050-144112
+Best U.S. Ed. of Int'l (Japan),"Shuna's Journey (Hayao Miyazaki, First Second)",4050-147775
+Best Writer,"James Tynion IV (House of Slaughter, Something is Killing the Children, etc.)",4005-82451
+Best Writer/Artist,Zoe Thorogood (It's Lonely at the Centre of the Earth),4005-131150
+Best Artist (Penciller/Inker),Greg Smallwood (The Human Target),4005-72554
+Best Painter (Interior),Sana Takeda (Monstress),4005-24153
+Best Coloring,"Jordie Bellaire (Nice House on the Lake, Suicide Squad: Blaze, etc.)",4005-59363
+Best Lettering,Stan Sakai (Usagi Yojimbo),4005-2303
+Best Cover Artist,Bruno Redondo (Nightwing),4005-54881
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Nightwing (Tom Taylor & Bruno Redondo, DC)",4050-95551
+Best Limited Series,"Wonder Woman Historia: The Amazons (K. S. DeConnick & various, DC)",4050-139110
+Best New Series,"Beneath the Trees Where Nobody Sees (Patrick Horvath, IDW)",4050-155221
+Best Single Issue/One-Shot,"Nightwing #105 (Tom Taylor & Bruno Redondo, DC)",4000-924451
+Best Short Story,"""The_Lonesome_Hunter"" (Tyler Crook, Dark Horse)",4050-158110
+Best Anthology,"Swansong (edited by various, Image)",4050-158111
+Best Digital Comic,"Lore Olympus (Rachel Smythe, WEBTOON)",4050-136115
+Best Graphic Album—New,"Monica (Daniel Clowes, Fantagraphics)",4050-154440
+Best Graphic Album—Reprint,"Watership Down (Richard Adams, adapted by James Sturm & Joe Sutphin)",4050-154112
+Best Archival Collection (Strips),"Dick Tracy: The Complete Color Sundays (Chester Gould, IDW)",4050-158113
+Best Archival Collection (Books),The Art of the Iron Giant (Insight Editions),4050-158114
+Best Reality-Based Work,"Roaming (Jillian Tamaki & Mariko Tamaki, Drawn & Quarterly)",4050-153225
+Best Humor Publication,"Barking (Lucy Sullivan, Unbound)",4050-158115
+Best Publication (Kids),"Mexikid (Pedro Martín, Dial Books)",4050-154559
+Best Publication (Teens),Danger and Other Unknown Unknowns (Kelly Sue DeConnick & various),4050-158116
+Best U.S. Ed. of Int'l Material,Inside the Mind of Sherlock Holmes (Cyril Lieron & Benoit Dahan),4050-156662
+Best U.S. Ed. of Int'l (Japan),"My Star (Aka Akasaka & Mengo Yokoyari, Yen Press)",4050-158117
+Best Writer,"Mariko Tamaki (Roaming, various)",4005-59427
+Best Writer/Artist,Daniel Warren Johnson (Transformers),4005-88432
+Best Artist (Penciller/Inker),Bruno Redondo (Nightwing),4005-54881
+Best Painter (Interior),Sana Takeda (Monstress),4005-24153
+Best Coloring,"Matt Wilson (Transformers, Thor, Daredevil)",4005-59265
+Best Lettering,"Rus Wooton (Transformers, Saga, Monstress)",4005-2315
+Best Cover Artist,Bruno Redondo (Nightwing),4005-54881
+
+Category,Winner (Work / Creator),ComicVine ID
+Best Continuing Series,"Transformers (Daniel Warren Johnson, Image/Skybound)",4050-154115
+Best Limited Series,"Helen of Wyndhorn (Tom King & Bilquis Evely, Dark Horse)",4050-162110
+Best New Series,"Rare Flavours (Ram V & Filipe Andrade, BOOM!)",4050-154889
+Best Single Issue/One-Shot,"Transformers #1 (Daniel Warren Johnson, Image/Skybound)",4000-985542
+Best Short Story,"""The Library"" (Various, Dark Horse)",4050-168110
+Best Anthology,"Skybound X (edited by various, Image)",4050-136442
+Best Digital Comic,"The Hunger and the Dusk (G. Willow Wilson & Chris Wildgoose, IDW)",4050-152115
+Best Graphic Album—New,"Parasocial (Alex de Campi & Erica Henderson, Image)",4050-161112
+Best Graphic Album—Reprint,"The World of Edena: 40th Anniversary Edition (Moebius, Dark Horse)",4050-168111
+Best Archival Collection (Strips),"Flash Gordon: The Complete Dailies (Alex Raymond, IDW)",4050-168112
+Best Archival Collection (Books),Bernie Wrightson’s Frankenstein Artist's Edition (IDW),4050-168113
+Best Reality-Based Work,"Feeding the Machine (various, Drawn & Quarterly)",4050-165551
+Best Humor Publication,"Minor Threats (Patton Oswalt, Jordan Blum & Scott Hepburn, Dark Horse)",4050-146612
+Best Publication (Kids),"The Moth Keeper (K. O'Neill, Random House Graphic)",4050-152110
+Best Publication (Teens),"Ghosted (Jennifer Dugan & Kit Seaton, Holiday House)",4050-168114
+Best U.S. Ed. of Int'l Material,The_Great_Beyond (various),4050-168115
+Best U.S. Ed. of Int'l (Japan),"#DRCL midnight children (Shin-ichi Sakamoto, Viz)",4050-164442
+Best Writer,"Tom King (Helen of Wyndhorn, Penguin, Wonder Woman)",4005-72120
+Best Writer/Artist,Daniel Warren Johnson (Transformers),4005-88432
+Best Artist (Penciller/Inker),Bilquis Evely (Helen of Wyndhorn),4005-110221
+Best Painter (Interior),Filipe Andrade (Rare Flavours),4005-112330
+Best Coloring,"Matt Wilson (Transformers, various)",4005-59265
+Best Lettering,"Rus Wooton (Transformers, various)",4005-2315
+Best Cover Artist,Daniel Warren Johnson (Transformers),4005-88432

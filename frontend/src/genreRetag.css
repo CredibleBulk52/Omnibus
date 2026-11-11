@@ -1,0 +1,19 @@
+/* Library › Genres (components/GenreRetag.jsx) */
+.gr { font-size: .875rem; line-height: 1.5; color: var(--text-primary); }
+.gr-help, .gr-pending, .gr-status, .gr-error { margin: 0 0 10px; max-width: 720px; }
+.gr-help, .gr-pending { color: var(--text-muted); }
+.gr-error { color: var(--adm-err, #e06060); }
+.gr-link { background: none; border: 0; padding: 0; font: inherit; color: var(--om-highlight); text-decoration: underline; cursor: pointer; }
+.gr-genres { columns: 2 320px; margin: 0 0 12px; padding-left: 18px; font-size: .8125rem; color: var(--text-muted); }
+.gr-genres li { break-inside: avoid; margin-bottom: 4px; }
+.gr-genres strong { color: var(--text-primary); font-weight: 600; }
+.gr-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.gr-table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+.gr-table th { text-align: left; font-weight: 600; color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); }
+.gr-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; }
+.gr-table a { color: var(--om-highlight); }
+.gr-table em { color: var(--text-muted); }
+@media (max-width: 600px) { .gr-table th:nth-child(2), .gr-table td:nth-child(2) { display: none; } }
+
+.gr-model { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-secondary); }
+.gr-model select { padding: 4px 6px; background: var(--om-base); color: var(--om-text); border: 1px solid var(--border, #444); }

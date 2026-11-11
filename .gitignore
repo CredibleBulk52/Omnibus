@@ -1,0 +1,53 @@
+# ─── Secrets — never commit these ────────────────────────────────────────────
+.env
+config.yaml
+
+# ─── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+
+# ─── Build output ─────────────────────────────────────────────────────────────
+frontend/build/
+dist/
+build/
+
+# ─── Runtime data ─────────────────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.log
+npm-debug.log*
+
+# ─── OS noise ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+
+# ─── Local-only working files (never upload) ─────────────────────────────────
+# Pre-edit code copies, DB backups, repo bundles and test evidence
+_backups/
+logs/
+# Preview screenshots and files Claude sends to the chat
+Claude outputs/
+
+# Owner's working files: review pages and reading-list drafts
+_work/
+outputs/
+
+# Edit leftovers
+*.bak
+*.orig
+*.pre-*
+
+# Python
+__pycache__/
+*.pyc
+
+# Scratch work files (databases, archives); kept out of git
+_work/*
+!_work/duplicate-review.html

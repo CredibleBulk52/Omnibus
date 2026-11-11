@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "basis": "Static inspection of the original librsvg 2.58.93 source manifests and sharp-libvips 8.15.3 build recipe. Not a recovered binary build graph.",
+  "buildRecipe": "https://github.com/lovell/sharp-libvips/blob/cb57c8e09460fa0b5c550806b667a2dfc3f7480b/build/lin.sh",
+  "criticalLimitation": "The build overrides zune-jpeg with ironpeak/zune-image revision eebb01b and regenerates Cargo.lock. Original source-lock versions do not establish final binary dependency versions.",
+  "groups": [
+    {
+      "disposition": "Outside runtime scope in original source graph",
+      "packages": [
+        "anes",
+        "difflib"
+      ],
+      "evidence": "anes is pulled by criterion benchmarking; difflib by predicates. librsvg declares criterion and predicates as dev-dependencies; build recipe disables tests."
+    },
+    {
+      "disposition": "Other target in original source graph",
+      "packages": [
+        "block",
+        "malloc_buf",
+        "objc_id",
+        "objc-foundation"
+      ],
+      "evidence": "locale_config selects objc-foundation for target_os=macos; objc-foundation brings block, objc and objc_id; objc brings malloc_buf."
+    },
+    {
+      "disposition": "Other target in original source graph",
+      "packages": [
+        "winapi-i686-pc-windows-gnu",
+        "winapi-x86_64-pc-windows-gnu"
+      ],
+      "evidence": "winapi selects these under explicit Windows GNU target triples."
+    },
+    {
+      "disposition": "Other target or tests in original source graph",
+      "packages": [
+        "crunchy"
+      ],
+      "evidence": "half declares crunchy as a dev-dependency and for target_arch=spirv, not Linux x86_64."
+    },
+    {
+      "disposition": "Feature-dependent; not automatically a shipped component",
+      "packages": [
+        "profiling",
+        "profiling-procmacros",
+        "simd_helpers"
+      ],
+      "evidence": "These are on the rav1e/v_frame AVIF encoder path. librsvg disables image default features and exposes AVIF as an optional feature. Do not infer inclusion from Cargo.lock alone."
+    },
+    {
+      "disposition": "Relevant library families; establish actual built versions",
+      "packages": [
+        "fxhash",
+        "mac",
+        "phf",
+        "phf_codegen",
+        "phf_generator",
+        "phf_macros",
+        "phf_shared",
+        "selectors",
+        "servo_arc",
+        "zune-core",
+        "zune-jpeg"
+      ],
+      "evidence": "Dependencies of SVG parsing/XML, lookup-table generation, or JPEG decoding. Build dependencies remain conservatively included because their generated code can contribute to runtime output."
+    },
+    {
+      "disposition": "Installed Alpine source origin",
+      "packages": [
+        "ca-certificates"
+      ],
+      "evidence": "Present in the image inventory. MPL notice in certdata.txt, MIT attribution in c_rehash.c and curl notice in mk-ca-bundle.pl were located and retained in alpine-NOTICES.txt, with provenance in coverage.json."
+    }
+  ],
+  "nextAction": "Use exact build artifacts from the libvips binary producer to resolve final source coverage, rather than expanding the original-lockfile audit."
+}

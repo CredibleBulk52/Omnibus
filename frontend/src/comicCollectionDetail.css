@@ -1,0 +1,68 @@
+.comic-collection-detail { --ccd-yellow:var(--td-yellow); min-width:0; }
+.comic-collection-detail > .page-header .page-header-content { flex-wrap:wrap; gap:14px; }
+.comic-collection-detail > .page-header .page-title { display:flex; align-items:baseline; gap:15px; flex-wrap:wrap; overflow-wrap:anywhere; }
+.comic-collection-detail .ccd-dates { font:1.2rem 'Boogaloo',cursive; color:color-mix(in srgb, var(--td-yellow) 25%, white); letter-spacing:.02em; }
+.comic-collection-detail > .page-header .btn,
+.comic-collection-detail .ccd-intro { position:relative; isolation:isolate; padding:18px 28px 22px; border-bottom:5px solid #050506; background:var(--om-base); }
+.comic-collection-detail .ccd-fuzzy { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center 20%; filter:blur(10px) brightness(.28) saturate(1.2); z-index:-2; pointer-events:none; }
+.comic-collection-detail .ccd-intro::after { content:''; position:absolute; inset:0; background:linear-gradient(0deg,color-mix(in srgb, var(--om-base) 75%, black),transparent 70%); z-index:-1; pointer-events:none; }
+.comic-collection-detail .ccd-intro-top { display:flex; align-items:center; justify-content:space-between; gap:15px; margin-bottom:24px; }
+.comic-collection-detail .ccd-intro-left { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.comic-collection-detail .ccd-stamp { border:1px solid #8aa0ad; background:color-mix(in srgb, var(--om-base) 95%, white); color:color-mix(in srgb, var(--om-text) 95%, var(--om-base)); font:14px 'Boogaloo',cursive; letter-spacing:.08em; text-transform:uppercase; padding:5px 9px; box-shadow:2px 2px #000; }
+.comic-collection-detail .ccd-manage { position:relative; }
+.comic-collection-detail .ccd-editorial { display:grid; grid-template-columns:minmax(0,550px) minmax(0,600px); align-items:center; gap:32px; max-width:1182px; }
+.comic-collection-detail .ccd-artwork { margin:0; transform:rotate(-1.5deg); filter:drop-shadow(5px 6px 0 #000); }
+.comic-collection-detail .ccd-artwork img { display:block; max-width:100%; width:100%; max-height:310px; object-fit:contain; }
+.comic-collection-detail .ccd-caption { position:relative; background:color-mix(in srgb, var(--om-base) 94%, transparent); border:2px solid color-mix(in srgb, var(--td-yellow) 60%, color-mix(in srgb, var(--om-text) 60%, var(--om-base))); box-shadow:5px 5px #000; padding:27px 22px 17px; min-width:0; }
+.comic-collection-detail .ccd-caption-tab { position:absolute; top:-15px; left:14px; background:var(--ccd-yellow); border:2px solid #050506; color:#050506; padding:4px 10px; transform:rotate(-2deg); font:20px 'Bangers',cursive; }
+.comic-collection-detail .ccd-lead { font:700 23px/1.35 'Comic Neue',sans-serif; color:color-mix(in srgb, var(--td-yellow) 20%, white); margin:0 0 14px; white-space:pre-line; overflow-wrap:anywhere; }
+.comic-collection-detail .ccd-description { font:16px/1.6 'Comic Neue',sans-serif; color:color-mix(in srgb, var(--om-text) 90%, var(--om-base)); white-space:pre-line; margin:12px 0 0; overflow-wrap:anywhere; }
+.comic-collection-detail .ccd-era { color:color-mix(in srgb, var(--td-yellow) 20%, color-mix(in srgb, var(--om-text) 95%, var(--om-base))); font:16px 'Boogaloo',cursive; }
+.comic-collection-detail .ccd-caption summary { list-style:none; color:var(--ccd-yellow); font:17px 'Boogaloo',cursive; cursor:pointer; padding:6px 0; }
+.comic-collection-detail .ccd-caption summary span { float:right; }
+.comic-collection-detail .ccd-no-art { grid-template-columns:minmax(0,720px); }
+.comic-collection-detail .ccd-facts { display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin-top:26px; }
+.comic-collection-detail .ccd-count { font:30px 'Bangers',cursive; color:var(--ccd-yellow); }
+.comic-collection-detail .ccd-count span { font:17px 'Boogaloo',cursive; text-transform:uppercase; }
+.comic-collection-detail .ccd-type { font:14px 'Boogaloo',cursive; text-transform:uppercase; border:1px solid color-mix(in srgb, var(--td-yellow) 25%, color-mix(in srgb, var(--om-text) 55%, var(--om-base))); padding:4px 8px; color:color-mix(in srgb, var(--td-yellow) 30%, color-mix(in srgb, var(--om-text) 95%, var(--om-base))); background:color-mix(in srgb, var(--om-base) 95%, white); }
+.comic-collection-detail .ccd-fact-copy { font:15px 'Comic Neue',sans-serif; color:color-mix(in srgb, var(--om-text) 80%, var(--om-base)); }
+.comic-collection-detail .ccd-editor { max-width:1000px; margin:16px 24px; padding:22px; background:var(--om-base); border:2px solid color-mix(in srgb, var(--td-yellow) 60%, color-mix(in srgb, var(--om-text) 60%, var(--om-base))); }
+.comic-collection-detail .ccd-rule-editor { margin:18px 0; overflow-wrap:anywhere; }
+.comic-collection-detail .ccd-editor .rule-row { flex-wrap:wrap; }
+.comic-collection-detail .ccd-editor .rule-input { min-width:0; }
+.collection-action-error { padding:14px 22px; background:color-mix(in srgb, var(--om-base) 90%, white); color:#ffb6b9; }
+@media(max-width:767px) {
+ .comic-collection-detail > .page-header .page-header-actions { margin-left:0; }
+ .comic-collection-detail .ccd-intro { padding:16px; }
+ .comic-collection-detail .ccd-editorial { gap:22px; }
+ .comic-collection-detail .ccd-lead { font-size:20px; }
+ .comic-collection-detail .ccd-caption { padding:23px 15px 12px; }
+ .comic-collection-detail .ccd-editor { margin:12px; padding:14px; }
+}
+@media(max-width:540px) {
+ .comic-collection-detail .ccd-editorial { grid-template-columns:minmax(0,1fr); }
+ .comic-collection-detail .ccd-artwork { display:none; }
+ .comic-collection-detail .ccd-fact-copy { flex-basis:100%; font-size:14px; }
+ .comic-collection-detail .ccd-facts { margin-top:18px; gap:10px; }
+}
+@media(pointer:coarse) { .comic-collection-detail .ccd-caption summary { min-height:44px; } }
+
+/* Fill wide monitors without stretching artwork or paragraph measure. */
+.comic-collection-detail .ccd-desktop-introduction { display:none; }
+@media(min-width:1200px) {
+ .comic-collection-detail .ccd-editorial { max-width:none; grid-template-columns:minmax(0,550px) minmax(0,1fr); gap:clamp(32px,3vw,96px); align-items:stretch; }
+ .comic-collection-detail .ccd-artwork { align-self:center; }
+ .comic-collection-detail .ccd-caption { display:flex; flex-direction:column; justify-content:center; padding:32px clamp(24px,3vw,72px); }
+ .comic-collection-detail .ccd-lead { max-width:65ch; font-size:clamp(23px,1.1vw,30px); }
+ .comic-collection-detail .ccd-description { max-width:85ch; font-size:18px; }
+ .comic-collection-detail .ccd-desktop-introduction { display:block; }
+ .comic-collection-detail .ccd-collapsible-introduction { display:none; }
+ .comic-collection-detail .ccd-no-art { grid-template-columns:minmax(0,1fr); }
+}
+
+/* The existing A–Z/filter rail forms the hero footer. */
+.comic-collection-detail .ccd-intro { border-bottom:0; }
+.comic-collection-detail > .comic-series-browser { margin-top:0; padding-top:0; }
+.comic-collection-detail > .comic-series-browser > .series-controls { margin-top:0; border-top:2px solid var(--ccd-yellow); border-bottom:3px solid #050506; }
+/* Another reader's shared box: Follow and Copy (2026-11-03). */
+.ccd-share-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }

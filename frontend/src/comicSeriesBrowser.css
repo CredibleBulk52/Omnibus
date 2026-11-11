@@ -1,0 +1,92 @@
+/* Current Comic series browser only. Shared shelves and archived skins retain their presentation. */
+.comic-series-browser { min-width:0; --csb-yellow:var(--td-yellow); --csb-ink:#050506; }
+.comic-series-browser .page-header-content { flex-wrap:wrap; }
+.comic-series-browser .page-header-content > div { min-width:0; }
+.comic-series-browser .page-header-actions { flex-wrap:wrap; flex-shrink:1; max-width:100%; }
+.comic-series-browser .page-title { overflow-wrap:anywhere; }
+.comic-series-browser .series-controls { gap:0; }
+.comic-series-browser .csb-toolbar { width:100%; display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:12px 20px; }
+.comic-series-browser .csb-selection-controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; min-width:0; }
+.comic-series-browser .csb-result { margin-left:auto; color:color-mix(in srgb, var(--om-text) 80%, var(--om-base)); font-size:.8rem; }
+.comic-series-browser .series-filter-toggle,
+.comic-series-browser .csb-selection-controls .btn,
+.comic-series-browser .empty-state .btn,
+.comic-series-browser .page-btn { clip-path:none; border:2px solid var(--csb-yellow); border-radius:0; background:color-mix(in srgb, var(--om-base) 95%, white); color:var(--csb-yellow); box-shadow:3px 3px var(--csb-ink); font-family:'Bangers',cursive; font-size:1rem; letter-spacing:.04em; min-height:36px; padding:7px 13px; margin:0; }
+.comic-series-browser .series-filter-toggle,
+.comic-series-browser .csb-selection-controls .btn-primary,
+.comic-series-browser .empty-state .btn,
+.comic-series-browser .page-btn.active { background:var(--csb-yellow); color:var(--csb-ink); border-color:var(--csb-ink); }
+.comic-series-browser .series-filter-toggle { transform:rotate(-1deg); }
+.comic-series-browser .csb-selection-controls .btn:hover:not(:disabled),
+.comic-series-browser .page-btn:hover:not(:disabled),
+.comic-series-browser .series-filter-toggle:hover { background:color-mix(in srgb, var(--td-yellow) 40%, white); color:var(--csb-ink); }
+.comic-series-browser .series-controls .alpha-bar { flex-basis:100%; flex-wrap:wrap; overflow:visible; padding:6px 18px 10px; }
+.comic-series-browser .alpha-btn { color:color-mix(in srgb, var(--td-yellow) 60%, color-mix(in srgb, var(--om-text) 60%, var(--om-base))); }
+.comic-series-browser .alpha-btn.active { color:color-mix(in srgb, var(--td-yellow) 65%, white); }
+.comic-series-browser .csb-filter-state { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:5px 20px 12px; color:color-mix(in srgb, var(--td-yellow) 15%, color-mix(in srgb, var(--om-text) 90%, var(--om-base))); font-size:.8rem; }
+.comic-series-browser .series-filter-clear { color:var(--csb-yellow); font-family:'Boogaloo',cursive; font-size:1rem; text-underline-offset:4px; }
+.comic-series-browser .facet-pill,
+.comic-series-browser .sort-toggle { border-radius:0; font-family:'Boogaloo',cursive; font-size:.95rem; }
+.comic-series-browser .filter-search { max-width:100%; }
+.comic-series-browser .filter-pills { flex-wrap:wrap; }
+.comic-series-browser .filter-count { color:color-mix(in srgb, var(--om-text) 80%, var(--om-base)); }
+.comic-series-browser .shelf-plank-inline { height:82px !important; }
+.comic-series-browser .csb-label { width:100%; display:flex; flex-direction:column; align-items:center; gap:5px; min-width:0; border:0; background:transparent; color:var(--csb-yellow); padding:7px 2px; cursor:pointer; }
+.comic-series-browser .csb-title { width:100%; height:34px; font:1rem/17px 'Boogaloo',cursive; text-transform:uppercase; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.comic-series-browser .csb-meta { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:6px; color:color-mix(in srgb, var(--om-text) 85%, var(--om-base)); font:12px/18px 'Comic Neue',sans-serif; }
+.comic-series-browser .csb-year { color:var(--csb-yellow); background:var(--om-base); border:1px solid color-mix(in srgb, var(--td-yellow) 55%, color-mix(in srgb, var(--om-text) 45%, var(--om-base))); box-shadow:1px 1px #000; padding:0 4px; font:14px/18px 'Boogaloo',cursive; }
+.comic-series-browser button.shelf-book { display:block; border:0; background:none; padding:0; color:inherit; text-align:inherit; cursor:pointer; }
+.comic-series-browser .shelf-book-check { display:block; box-sizing:border-box; left:5px; top:5px; right:auto; width:26px; height:26px; border:2px solid var(--csb-yellow); border-radius:0; background:color-mix(in srgb, var(--om-base) 95%, white); color:var(--csb-yellow); font:19px/22px sans-serif; box-shadow:2px 2px #000; }
+.comic-series-browser .shelf-book.selected .shelf-book-check { background:var(--csb-yellow); color:#050506; }
+.comic-series-browser .shelf-book.selected .shelf-book-cover { outline:3px solid var(--csb-yellow); outline-offset:-3px; }
+.comic-series-browser .shelf-book-placeholder { background:color-mix(in srgb, var(--om-base) 90%, white); color:color-mix(in srgb, var(--om-text) 80%, var(--om-base)); opacity:1; padding:12px; font:1.2rem 'Bangers',cursive; text-align:center; }
+.comic-series-browser .shelf-book-placeholder small { display:block; margin-top:10px; font:13px 'Comic Neue',sans-serif; }
+.comic-series-browser .pagination { flex-wrap:wrap; gap:10px; }
+.csb-facet-menu { box-sizing:border-box; border:2px solid color-mix(in srgb, var(--td-yellow) 45%, color-mix(in srgb, var(--om-text) 35%, var(--om-base))); border-radius:0; box-shadow:4px 4px #050506; }
+.csb-facet-menu .facet-menu-item { white-space:normal; overflow-wrap:anywhere; }
+@media(max-width:768px) {
+  .comic-series-browser .page-header-content { padding:14px 16px; gap:12px; }
+  .comic-series-browser .page-header-actions { margin-left:0; }
+}
+@media(max-width:599px) {
+  .comic-series-browser .csb-toolbar { padding:12px; }
+  .comic-series-browser .series-controls { position:static; }
+  .comic-series-browser .cover-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px 10px; }
+  .comic-series-browser .cover-grid .shelf-book,
+  .comic-series-browser .cover-grid .shelf-book-cover { width:100% !important; height:auto !important; }
+  .comic-series-browser .cover-grid .shelf-book-cover { aspect-ratio:2/3; }
+  .comic-series-browser .cover-grid .shelf-book-cover img { width:100%; height:100%; object-fit:contain; }
+  .comic-series-browser .cover-grid .csb-label { background:linear-gradient(color-mix(in srgb, var(--om-base) 80%, white),color-mix(in srgb, var(--om-base) 95%, white)); min-height:82px; }
+  .comic-series-browser .csb-selection-controls .form-hint { flex-basis:100%; }
+}
+@media(max-width:420px) {
+  .comic-series-browser .cover-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .comic-series-browser .csb-result { flex-basis:100%; margin-left:0; }
+}
+@media(pointer:coarse) {
+  .comic-series-browser .series-filter-toggle,
+  .comic-series-browser .csb-selection-controls .btn,
+  .comic-series-browser .facet-pill,
+  .comic-series-browser .sort-toggle,
+  .comic-series-browser .page-btn { min-height:44px; }
+}
+
+/* One shelf rail when space permits; natural wrapping for zoom and selection. */
+.comic-series-browser .csb-navigation-rail { display:flex; align-items:center; flex-wrap:wrap; width:100%; gap:8px 20px; padding:12px 20px; background:linear-gradient(180deg,color-mix(in srgb, var(--om-base) 90%, white) 0%,color-mix(in srgb, var(--om-base) 95%, white) 35%,var(--om-base) 100%); border-top:1px solid color-mix(in srgb, var(--om-base) 80%, white); border-bottom:3px solid #050506; box-shadow:inset 0 1px color-mix(in srgb, var(--om-text) 3%, transparent); }
+.comic-series-browser .csb-navigation-rail .alpha-bar { flex:1 1 890px; padding:0; }
+.comic-series-browser .csb-navigation-rail .csb-toolbar { width:auto; flex:0 1 auto; margin-left:auto; padding:0; }
+.comic-series-browser .csb-navigation-rail .csb-result { flex-basis:auto; margin:0 6px 0 0; white-space:nowrap; }
+.comic-series-browser .csb-filter-state { flex-basis:100%; }
+@media(max-width:1199px) {
+ .comic-series-browser .csb-navigation-rail .csb-toolbar { flex-basis:100%; justify-content:flex-end; }
+ .comic-series-browser .csb-navigation-rail .csb-result { margin-right:auto; }
+}
+@media(max-width:599px) {
+ .comic-series-browser .csb-navigation-rail { padding:12px; gap:14px; }
+ .comic-series-browser .csb-navigation-rail .csb-toolbar { gap:10px; }
+}
+
+/* Shared cover preference: keep the chosen size, reflow the phone grid. */
+@media(max-width:599px) {
+ .comic-series-browser .cover-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--shelf-cover-width)),var(--shelf-cover-width))); justify-content:space-between; }
+}

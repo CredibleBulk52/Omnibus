@@ -1,0 +1,32 @@
+/* Shared artwork for real page banners and theme thumbnails. */
+.theme-motif { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:hidden; }
+.page-header[data-motif] { isolation:isolate; background:var(--om-secondary); }
+.page-header[data-motif]::before { width:100%; clip-path:none; background:var(--om-secondary); }
+.page-header[data-motif] > .theme-motif { top:0; bottom:0; z-index:1; }
+.page-header[data-motif] .page-header-dots { width:100%; clip-path:none; opacity:.55; }
+.page-header[data-motif] .page-header-dots-r { display:none; }
+.page-header[data-motif] .page-header-content { min-height:72px; }
+.page-header[data-motif] .page-header-actions { padding:7px 12px; background:color-mix(in srgb,var(--om-base) 92%,transparent); border:1px solid color-mix(in srgb,var(--om-highlight) 30%,transparent); }
+.page-header[data-motif] .page-title { position:relative; z-index:2; }
+
+.page-header[data-motif="harley-quinn"] { border-bottom:5px solid #f5ede8; }
+.page-header[data-motif="iron-man"] { border-bottom:5px solid #e9b849; }
+.page-header[data-motif="fantastic-four"] { border-bottom:4px solid #e8f5ff; }
+.page-header[data-motif="x-men"] .page-title,
+.page-header[data-motif="hulk"] .page-title { -webkit-text-stroke:1px #08090c; text-shadow:2px 2px 0 color-mix(in srgb,var(--om-text) 65%,transparent); }
+.ap-body { max-width:1160px; }
+.ap-presets { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); }
+.ap-preset-swatch { height:174px; }
+.ap-sw-themed { position:relative; flex-shrink:0; height:72px; overflow:hidden; clip-path:none; display:flex; align-items:center; padding:7px; }
+.ap-sw-themed .theme-motif { width:100%; }
+.ap-sw-title { position:relative; z-index:1; max-width:60%; font-size:18px; line-height:1.05; paint-order:stroke fill; -webkit-text-stroke:2px #08090c; text-shadow:1px 2px #000; }
+.ap-decoration-switch { margin-bottom:20px; }
+@media(max-width:650px) {
+
+ .page-header[data-motif] .page-header-content { min-height:72px; flex-wrap:wrap; }
+ .page-header[data-motif] .page-header-actions { margin-left:0; max-width:100%; flex-wrap:wrap; }
+ .ap-presets { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .ap-sw-title { font-size:15px; }
+}
+
+

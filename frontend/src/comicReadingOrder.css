@@ -1,0 +1,83 @@
+/* Current Comic only. Archived layouts continue using readingLists.css. */
+.comic-reading-order .rl-chapter-head { gap: 8px 12px; padding: 4px 0 6px; }
+.comic-reading-order .rl-chapter-title { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.comic-reading-order .rl-chapter-num { flex-shrink: 0; }
+.comic-reading-order .rl-note--inline {
+  flex: 0 1 auto; min-width: 0; max-width: min(680px, 100%);
+  margin: 0; padding: 3px 10px; font-size: 0.86rem; overflow-wrap: anywhere;
+}
+.comic-reading-order .rl-chapter-stat { margin-left: 0; white-space: nowrap; }
+.comic-reading-order .rl-chapter-ctrls { flex-wrap: wrap; }
+.comic-reading-order .rl-tierbar { gap: 6px 10px; margin: 2px 0 4px 46px; }
+.comic-reading-order .rl-tierbar .rl-seg { flex-wrap: wrap; }
+.comic-reading-order .rl-tierbar-link { white-space: nowrap; }
+.comic-reading-order .rl-shelf { margin-top: 0; }
+.comic-reading-order .rl-shelf .shelf-wall { padding-top: 0 !important; }
+.comic-reading-order .rl-shelf .issues-books { padding-top: 10px; }
+@media (max-width: 700px) {
+  .comic-reading-order .rl-note--inline { flex-basis: 100%; margin-left: 8px; }
+  .comic-reading-order .rl-tierbar { margin-left: 8px; }
+}
+@media (pointer: coarse) {
+  .comic-reading-order .rl-tierbar button,
+  .comic-reading-order .rl-tierbar-link { min-height: 44px; display: inline-flex; align-items: center; }
+}
+
+.comic-reading-order .rl-shelf .rl-shelf-collapsed { flex-wrap: nowrap; }
+.comic-reading-order .rl-shelf > .rl-shelf-more { display: block; margin: 12px 16px 0 auto; padding: 8px; }
+.comic-reading-order .rl-shelf > .rl-more { margin-top: 12px; }
+
+/* Hero styles: readingOrderHero.css (shared with event and run pages). */
+.comic-reading-order .rl-sec-banner {
+  min-height: 68px; box-sizing: border-box; padding: 16px 56px 16px 18px; gap: 16px;
+  background: linear-gradient(105deg, var(--rl-theme-main) 0%, var(--rl-theme-main) 38%, var(--rl-theme-button) 88%, var(--rl-theme-button) 100%) !important;
+}
+.comic-reading-order .rl-sec-banner::before {
+  background-image: radial-gradient(rgba(0,0,0,.18) 1px, transparent 1.6px);
+}
+.comic-reading-order .rl-sec-part { font-size: 1.05rem; padding: 7px 20px 6px 12px; color: var(--rl-theme-accent); }
+.comic-reading-order .rl-sec-title {
+  font-size: clamp(1.6rem, 2vw, 2rem); line-height: 1.15; overflow-wrap: anywhere;
+  color: var(--om-text) !important; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 2px 2px 0 #000;
+}
+.comic-reading-order .rl-sec-prog { padding: 6px 10px; background: var(--om-base); color: var(--om-text) !important; }
+.comic-reading-order .rl-note {
+  background: color-mix(in srgb, var(--rl-theme-accent) 65%, color-mix(in srgb, var(--om-text) 95%, var(--om-base)));
+  color: var(--om-base); box-shadow: 2px 2px 0 #000; transform: none;
+}
+.comic-reading-order .rl-chapter-ctrls { margin-left: auto; }
+@media (max-width: 650px) {
+
+  .comic-reading-order .rl-sec-banner { padding: 14px 28px 14px 12px; gap: 10px; clip-path: polygon(0 0,100% 0,calc(100% - 16px) 100%,0 100%); }
+  .comic-reading-order .rl-sec-title { min-width: 0; flex-basis: calc(100% - 110px); }
+  .comic-reading-order .rl-sec-prog { margin-left: 0; }
+}
+
+/* Approved cover sequences: chapter grouping replaces the physical shelf. */
+.comic-reading-order .rl-chapter { margin-top:26px; }
+.comic-reading-order .rl-sec + .rl-chapter { margin-top:22px; }
+.comic-reading-order .rl-chapter-head { position:relative; isolation:isolate; padding-bottom:15px; }
+.comic-reading-order .rl-chapter-head::after {
+  content:''; position:absolute; left:0; bottom:3px; width:96px; height:2px;
+  background:var(--rl-theme-button); pointer-events:none;
+}
+.comic-reading-order .rl-shelf .issues-books { padding-left:0; padding-right:0; padding-top:8px; row-gap:20px; }
+.comic-reading-order .rl-shelf > .shelf-plank { display:none; }
+.comic-reading-order .rl-shelf .shelf-wall { background:transparent; box-shadow:none; }
+.comic-reading-order .rl-shelf .issue-number,
+.comic-reading-order .rl-shelf .issue-title { text-shadow:none; }
+/* Title-centered primary glow does not move when annotations change length. */
+.comic-reading-order .rl-chapter-title { position:relative; }
+.comic-reading-order .rl-chapter-title::before {
+  content:''; position:absolute; inset:-18px -60px; z-index:-1; pointer-events:none;
+  background:radial-gradient(ellipse at center,
+    rgba(var(--rl-theme-main-rgb),.32) 0%,
+    rgba(var(--rl-theme-main-rgb),.18) 35%,
+    rgba(var(--rl-theme-main-rgb),.06) 55%,
+    rgba(var(--rl-theme-main-rgb),0) 74%);
+}
+@media (max-width:650px) {
+  .comic-reading-order .rl-chapter { margin-top:24px; }
+  .comic-reading-order .rl-chapter-title::before { left:-30px; right:-20px; }
+}
+

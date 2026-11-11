@@ -1,0 +1,33 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {act} from 'react-dom/test-utils';
+import {MemoryRouter} from 'react-router-dom';
+import HomeFeatures from './HomeFeatures';
+vi.mock('../App',()=>({useLibrary:()=>({activeLibrary:null,libraries:[]}),isAdmin:()=>false}));
+vi.mock('./ReadingTheme',()=>({useReadingTheme:()=>({style:{'--rl-theme-main':'#123456'}})}));
+vi.mock('../pages/EventsPage',()=>({EVENT_TIERS:{1:{label:'Crisis-Level Event',color:'#ee6267'},2:{label:'Major Event',color:'#ffcc00'}}}));
+test('spotlights expose real distinctions and all four fan covers',async()=>{
+ global.IS_REACT_ACT_ENVIRONMENT=true;
+ global.ResizeObserver=class {observe(){} disconnect(){}};
+ const responses={'/api/canon/runs/shelf':{critically_acclaimed:[{id:2,title:'Another run',categories:[]}],recommended:[{id:1,title:'A run',categories:[{category:'award_winning'},{category:'adapted_to_screen'}]}]},'/api/reading-lists?scope=essential':{lists:[{id:27,name:'A journey',visibility:'essential',progress:{total:20,read:4,cover_book_ids:['a','b','c','d']}}]},'/api/events':[{id:1,name:'An event',event_tier:1,year:1985,publisher:'DC'}],'/api/collections':[{id:5,name:'Absolute Universe',description:'The collection description.'}]};
+ global.fetch=vi.fn(async url=>({ok:true,json:async()=>responses[url]}));
+ const host=document.createElement('div');document.body.appendChild(host);const root=createRoot(host);
+ try{await act(async()=>root.render(<MemoryRouter><HomeFeatures discoverSeries={[{id:"series1",name:"Featured series",seriesJson:{description_text:"The edited series description."},metadata:{summary:"Older summary"}}]}/></MemoryRouter>));
+ expect(host.textContent).toContain('Award winning · Adapted to screen');
+ expect(host.textContent).toContain('20 issues in this journey · 4 read');
+ expect(host.textContent).toContain('1985 · Crisis-Level Event · DC');
+ expect(host.querySelectorAll('.hp-feature-essential .rl-fan-cover')).toHaveLength(4);
+ expect(host.textContent).toContain('Read this run');
+ expect(host.textContent).toContain('Journey Through the Timeline');
+ expect(host.querySelector('.hp-meta')).toBeNull();
+ expect(host.querySelector('.hp-browse-series .hp-browse-description').textContent).toContain('The edited series description.');
+ expect(host.querySelector('.hp-browse-box .hp-browse-description').textContent).toContain('The collection description.');
+ expect(host.querySelector('.hp-browse-box .hp-series-reveal-button').getAttribute('href')).toBe('/collections/5');
+ const initialHref=host.querySelector('.hp-feature-run .hp-cta').getAttribute('href');
+ act(()=>host.querySelector('.hp-refresh').click());
+ expect(host.querySelector('.hp-feature-run .hp-cta').getAttribute('href')).not.toBe(initialHref);
+ expect(host.textContent).toContain('Another run');
+ act(()=>host.querySelector('.hp-refresh').click());
+ expect(host.querySelector('.hp-feature-run .hp-cta').getAttribute('href')).toBe(initialHref);
+ }finally{act(()=>root.unmount());host.remove();}
+});

@@ -1,0 +1,72 @@
+.run-shelf-rows .shelf-section {
+  margin: 0 0 27px;
+}
+.run-shelf-rows .shelf-row {
+  display: flex;
+  flex-wrap: nowrap;
+}
+.run-shelf-rows .shelf-wall {
+  background:
+    radial-gradient(color-mix(in srgb, var(--om-text) 2%, transparent) 1px, transparent 1px) 0 0/7px 7px,
+    linear-gradient(0deg, color-mix(in srgb, var(--om-base) 95%, white), var(--om-base)) !important;
+}
+.run-shelf-rows .shelf-plank {
+  background: linear-gradient(
+    color-mix(in srgb, var(--om-base) 80%, white) 0 5px,
+    color-mix(in srgb, var(--om-base) 90%, white) 5px 90%,
+    color-mix(in srgb, var(--om-base) 95%, white) 90%
+  ) !important;
+  border: 0 !important;
+  border-top: 2px solid color-mix(in srgb, var(--om-text) 35%, var(--om-base)) !important;
+  box-shadow: 0 7px 0 #050507 !important;
+  clip-path: none !important;
+  position: relative;
+}
+.run-shelf-rows .shelf-book-label {
+  font-family: 'Boogaloo', cursive !important;
+  font-size: 15px !important;
+  color: #e7ddc7 !important;
+}
+.run-shelf-rows .shelf-book-cover img {
+  object-fit: contain !important;
+}
+.run-preview-note {
+  font: 12px 'Comic Neue';
+  color: color-mix(in srgb, var(--om-text) 55%, var(--om-base));
+  margin: 20px 28px;
+}
+.run-shelf-rows .shelf-book {
+  cursor: default;
+}
+@media (max-width: 650px) {
+  .run-shelf-rows .shelf-row {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  .run-shelf-rows .shelf-plank {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+  .run-shelf-rows .shelf-section {
+    margin-bottom: 20px;
+  }
+}
+.run-original-mobile {
+  display: none;
+}
+@media (max-width: 599px) {
+  #run-shelves {
+    display: none;
+  }
+  .run-original-mobile {
+    display: block;
+  }
+}
+
+.run-shelf-rows .issue-book {
+  flex-shrink: 0;
+}
+.run-shelf-rows .shelf-book-count {
+  font-size: 10px;
+  color: #b9ad94;
+}

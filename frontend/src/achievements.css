@@ -1,0 +1,72 @@
+/* Achievements (pages/AchievementsPage.jsx, components/AchievementToasts.jsx; 2026-11-10).
+   Comic panels: black 3px borders, hard shadows, red section banners in Bangers, the
+   site's colour roots (--om-*, --td-*), so it follows the reader's theme. */
+.ach-wrap { padding-top: 8px; padding-bottom: 48px; }
+.ach-panel { position: relative; background: var(--bg-card, color-mix(in srgb, var(--om-base) 92%, white)); border: 3px solid #000; box-shadow: 5px 5px 0 #000; margin: 0 0 28px; padding: 18px; color: var(--om-text); }
+.ach-banner { display: inline-flex; align-items: baseline; gap: 12px; margin: -30px 0 12px -6px; padding: 4px 16px 4px 12px; background: var(--td-red); color: var(--om-text);
+  border: 3px solid #000; box-shadow: 3px 3px 0 #000; transform: rotate(-1.2deg); font-family: 'Bangers', cursive; font-size: 1.5rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.ach-banner small { font-family: 'DM Sans', system-ui, sans-serif; font-size: 0.8rem; letter-spacing: 0; opacity: 0.85; }
+.ach-blurb { margin: -4px 0 14px; color: color-mix(in srgb, var(--om-text) 70%, var(--om-base)); font-size: 0.9rem; }
+
+.ach-top { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; margin-top: 14px; }
+@media (max-width: 900px) { .ach-top { grid-template-columns: minmax(0, 1fr); } }
+.ach-score { display: flex; gap: 22px; align-items: center; flex-wrap: wrap;
+  background-image: radial-gradient(color-mix(in srgb, var(--td-yellow) 22%, transparent) 1.2px, transparent 1.4px); background-size: 9px 9px; }
+.ach-burst { flex: none; width: 150px; height: 150px; display: grid; place-content: center; text-align: center; color: #000; background: var(--td-yellow);
+  clip-path: polygon(50% 0, 61% 18%, 82% 8%, 80% 30%, 100% 36%, 85% 52%, 98% 70%, 76% 74%, 74% 96%, 56% 84%, 40% 100%, 34% 80%, 12% 88%, 18% 66%, 0 54%, 16% 40%, 6% 18%, 28% 20%, 34% 0, 46% 16%);
+  filter: drop-shadow(4px 4px 0 #000); }
+.ach-burst b { font-family: 'Bangers', cursive; font-size: 3.2rem; line-height: 0.9; font-weight: 400; }
+.ach-burst span { font-weight: 700; font-size: 0.85rem; text-transform: uppercase; }
+.ach-score-text { flex: 1 1 260px; min-width: 0; }
+.ach-score-text h2 { margin: 0 0 4px; font-family: 'Bangers', cursive; font-weight: 400; font-size: 2rem; letter-spacing: 0.04em; color: var(--td-yellow); text-shadow: 2px 2px 0 #000; }
+.ach-score-text p { margin: 0 0 10px; font-size: 0.9rem; color: color-mix(in srgb, var(--om-text) 75%, var(--om-base)); }
+.ach-mini-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: color-mix(in srgb, var(--om-text) 60%, var(--om-base)); margin-bottom: 4px; }
+.ach-mini-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.ach-board ol { list-style: none; margin: 0; padding: 0; }
+.ach-board li { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 7px 4px; border-bottom: 2px dashed color-mix(in srgb, var(--om-text) 14%, transparent); }
+.ach-board li:last-child { border-bottom: 0; }
+.ach-board li.you { background: color-mix(in srgb, var(--td-yellow) 12%, transparent); }
+.ach-board a { color: var(--om-text); text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ach-board a:hover { color: var(--td-yellow); }
+.ach-rank { font-family: 'Bangers', cursive; font-size: 1.3rem; text-align: center; color: var(--td-yellow); text-shadow: 1px 1px 0 #000; }
+.ach-count { font-family: 'Bangers', cursive; font-size: 1.25rem; min-width: 34px; text-align: center; padding: 0 6px; background: var(--td-red); border: 2px solid #000; color: var(--om-text); }
+
+.ach-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 30px; }
+.ach-filter button { font-family: 'Bangers', cursive; font-size: 1.05rem; letter-spacing: 0.05em; padding: 5px 14px; background: var(--om-base); color: var(--om-text); border: 2px solid #000; box-shadow: 3px 3px 0 #000; cursor: pointer; }
+.ach-filter button.on { background: var(--td-yellow); color: #000; }
+.ach-filter button:focus-visible { outline: 3px solid var(--td-yellow); outline-offset: 2px; }
+
+.ach-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.ach-card { display: flex; gap: 12px; align-items: flex-start; padding: 10px; background: color-mix(in srgb, var(--om-base) 70%, transparent); border: 2px solid color-mix(in srgb, var(--om-text) 16%, transparent); }
+.ach-card.earned { border-color: #000; background: color-mix(in srgb, var(--td-yellow) 9%, var(--om-base)); box-shadow: 3px 3px 0 #000; }
+.ach-card .ach-badge { flex: none; }
+.ach-card-body { min-width: 0; flex: 1; }
+.ach-card-name { font-family: 'Bangers', cursive; font-size: 1.2rem; letter-spacing: 0.04em; line-height: 1.1; color: var(--om-text); }
+.ach-card.earned .ach-card-name { color: var(--td-yellow); text-shadow: 1px 1px 0 #000; }
+.ach-card-desc { font-size: 0.82rem; line-height: 1.35; margin: 3px 0 6px; color: color-mix(in srgb, var(--om-text) 78%, var(--om-base)); }
+.ach-card.secret .ach-card-desc { font-style: italic; }
+.ach-card-when { font-size: 0.75rem; color: color-mix(in srgb, var(--om-text) 65%, var(--om-base)); }
+.ach-progress { position: relative; height: 16px; border: 2px solid #000; background: var(--om-base); margin-bottom: 4px; }
+.ach-progress span { position: absolute; inset: 0 auto 0 0; background: var(--td-yellow); background-image: repeating-linear-gradient(-45deg, transparent 0 5px, rgba(0,0,0,0.12) 5px 9px); }
+.ach-progress em { position: relative; display: block; text-align: center; font-style: normal; font-size: 0.7rem; font-weight: 700; line-height: 12px; color: var(--om-text); text-shadow: 0 0 3px #000, 0 0 2px #000; }
+.ach-holders { display: inline-flex; gap: 6px; align-items: center; font-size: 0.72rem; color: color-mix(in srgb, var(--om-text) 60%, var(--om-base)); }
+.ach-rare { font-family: 'Bangers', cursive; font-size: 0.85rem; letter-spacing: 0.05em; padding: 0 6px; background: var(--td-red); color: var(--om-text); border: 1.5px solid #000; transform: rotate(-3deg); }
+
+.ach-badge { display: block; overflow: visible; }
+.ach-badge.locked { filter: grayscale(1); }
+.ach-badge.locked .ach-ribbon > path:nth-child(2) { fill: #37373e; }
+
+/* Toasts: a comic burst at the bottom left, wherever the reader is. */
+.ach-toasts { position: fixed; left: 16px; bottom: 20px; z-index: 10000; display: flex; flex-direction: column-reverse; gap: 10px; pointer-events: none; }
+@media (max-width: 767px) { .ach-toasts { bottom: 84px; left: 10px; right: 10px; } }
+.ach-toast { pointer-events: auto; display: flex; align-items: center; gap: 10px; max-width: 360px; padding: 8px 14px 8px 8px; background: var(--td-yellow); color: #000;
+  border: 3px solid #000; box-shadow: 5px 5px 0 #000; cursor: pointer; transform: rotate(-1.5deg); animation: ach-pop 0.45s cubic-bezier(.2,1.6,.4,1) both; text-align: left; font: inherit; }
+.ach-toast:nth-child(even) { transform: rotate(1deg); }
+.ach-toast:focus-visible { outline: 3px solid var(--td-red); outline-offset: 3px; }
+.ach-toast-text { min-width: 0; }
+.ach-toast-kicker { font-family: 'Bangers', cursive; font-size: 1rem; letter-spacing: 0.06em; color: var(--td-red); -webkit-text-stroke: 0.6px #000; text-transform: uppercase; }
+.ach-toast-name { font-family: 'Bangers', cursive; font-size: 1.35rem; letter-spacing: 0.03em; line-height: 1.05; }
+.ach-toast-more { font-size: 0.78rem; font-weight: 700; }
+@keyframes ach-pop { from { opacity: 0; transform: scale(0.4) rotate(-12deg); } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ach-toast { animation: none; } }

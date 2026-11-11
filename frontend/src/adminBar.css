@@ -1,0 +1,16 @@
+/* Shared admin bar (components/AdminBar.jsx, 2026-10-26): catalog tools on Timeline,
+   Top Shelf and Essentials. Quiet on purpose: a dashed frame below the page title,
+   plain buttons, Comic yellow only for the main action. Only admins see it. */
+.admin-bar { margin: 0 0 22px; border: 2px dashed rgba(255,255,255,0.16); background: rgba(10,10,15,0.55); }
+.admin-bar-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex-wrap: wrap; }
+.admin-bar-label { font: 13px 'Bangers', cursive; letter-spacing: 0.14em; color: color-mix(in srgb, var(--om-text) 55%, var(--om-base)); margin-right: 6px; }
+.admin-bar-btn { background: var(--om-base); color: var(--om-text); border: 1px solid rgba(255,255,255,0.22); border-radius: 0; padding: 5px 12px; font: 0.84rem 'DM Sans', system-ui, sans-serif; cursor: pointer; min-height: 32px; }
+.admin-bar-btn:hover:not(:disabled) { border-color: var(--td-yellow); color: var(--td-yellow); }
+.admin-bar-btn.primary { background: var(--td-yellow); color: color-mix(in srgb, var(--om-base) 90%, black); border-color: var(--td-yellow); font-weight: 700; }
+.admin-bar-btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--td-yellow) 75%, white); color: color-mix(in srgb, var(--om-base) 90%, black); }
+.admin-bar-btn:disabled { opacity: 0.5; cursor: default; }
+.admin-bar-btn:focus-visible { outline: 2px solid var(--td-yellow); outline-offset: 2px; }
+@media (pointer: coarse) { .admin-bar-btn { min-height: 40px; } }
+/* Placement under each catalog's title. */
+.lc-page > .admin-bar { margin: 16px 0 0; }
+.chron .admin-bar { margin: 16px 0 0; }

@@ -1,0 +1,26 @@
+/* Ink silhouettes use theme highlights; fine selected outlines retain the covers and box geometry. */
+.om-nav-art {
+  --nav-cut: #09090c;
+  --nav-outline: #09090c;
+  fill: currentColor;
+  stroke: var(--nav-outline);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  overflow: visible;
+}
+.om-nav-art .cut { fill: var(--nav-cut); stroke: none; }
+.om-nav-art .detail { fill: none; stroke: var(--nav-cut); stroke-width: 2.3; }
+.om-nav-art .light-line { stroke: currentColor; }
+.om-nav-art .burst { fill: currentColor; stroke: none; }
+.sidebar-item.active .om-nav-art,
+.bottom-nav-item.active .om-nav-art {
+  --nav-cut: var(--td-yellow);
+  --nav-outline: var(--td-yellow);
+  stroke-width: 1.4;
+}
+.sidebar-icon:has(.om-nav-art) { width:28px; height:28px; filter:none; }
+.sidebar-icon .om-nav-art { width:28px; height:28px; }
+.bottom-nav-icon:has(.om-nav-art) { width:26px; height:26px; }
+.bottom-nav-icon .om-nav-art { width:26px; height:26px; }
+.mobile-group-links .om-nav-art { width:30px; height:30px; }

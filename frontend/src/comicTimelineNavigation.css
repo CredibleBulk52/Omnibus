@@ -1,0 +1,21 @@
+/* Compact current Comic navigation; other skins retain their original markup. */
+.chron-nav.chron-nav-refined { display:flex; flex-direction:row; align-items:center; flex-wrap:wrap; gap:6px 18px; overflow:visible; padding:7px 14px; }
+.chron-nav-refined .chron-nav-primary,.chron-nav-refined .chron-nav-secondary { display:contents; }
+.chron-nav-refined .chron-pubs { order:0; flex:0 1 auto; min-width:0; flex-wrap:nowrap; overflow-x:auto; padding:4px; border:0; gap:7px; }
+.chron-nav-refined .chron-pubs > span,.chron-nav-refined .chron-decades > span { display:none; }
+.chron-nav-refined .chron-pubs button { flex-shrink:0; font-size:18px; padding:3px 12px; }
+.chron-nav-refined .chron-decades { order:1; flex:1 1 340px; min-width:0; flex-wrap:nowrap; overflow-x:auto; border:0; padding:4px; gap:3px; }
+.chron-nav-refined .chron-decades button { flex-shrink:0; font-size:19px; padding:4px 9px; }
+.chron-nav-refined .chron-tools input { flex:1 1 180px; width:auto; min-width:0; box-sizing:border-box; }
+.chron-nav-refined .chron-tools select { flex:1 1 auto; min-width:0; }
+.chron-nav-refined .chron-tools output { margin-left:auto; }
+.chron-nav-refined button:focus-visible,.chron-nav-refined input:focus-visible,.chron-nav-refined select:focus-visible { outline:2px solid var(--yellow); outline-offset:2px; }
+@media(max-width:850px) {
+ .chron-nav.chron-nav-refined { padding:5px 8px; gap:2px 8px; }
+ .chron-nav-refined .chron-pubs { flex:1 1 0; }
+ .chron-nav-refined .chron-decades { order:2; flex-basis:100%; border-top:1px solid color-mix(in srgb, var(--om-base) 85%, white); padding-top:5px; }
+}
+@media(pointer:coarse) { .chron-nav-refined button,.chron-nav-refined input,.chron-nav-refined select { min-height:44px; box-sizing:border-box; } }
+
+.chron-nav-refined .chron-tools { order:2; flex:1 1 380px; display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:4px; border:0; min-width:0; }
+@media(max-width:850px) { .chron-nav-refined .chron-tools { order:1; flex-basis:100%; } }

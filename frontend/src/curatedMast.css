@@ -1,0 +1,44 @@
+/* Shared curated-page top (components/CuratedMast.jsx), from the Timeline design.
+   Colours: --td-cream text, --td-yellow highlight (App.css). */
+.cm-mast {
+  position: relative; box-sizing: border-box;
+  padding: 6px 0 32px; border-bottom: 4px solid var(--td-cream);
+  color: var(--td-cream); font-family: "DM Sans", sans-serif;
+}
+.cm-mast * { box-sizing: border-box; }
+.cm-mast--inset { margin-top: 34px; }
+.cm-mast h1 {
+  max-width: calc(100% - 260px); margin: 24px 0;
+  font: 400 clamp(58px, 6.7vw, 103px)/0.94 "Bangers", cursive; letter-spacing: 1px; color: var(--td-cream);
+}
+.cm-mast h1 em { font-style: normal; color: var(--td-yellow); }
+.cm-intro { display: flex; align-items: center; gap: 24px; }
+.cm-intro strong {
+  flex-shrink: 0; padding-right: 24px; border-right: 1px solid color-mix(in srgb, var(--om-text) 30%, var(--om-base));
+  font: 27px "Bangers", cursive; letter-spacing: 2px; text-transform: uppercase;
+}
+.cm-intro p { margin: 0; max-width: 680px; font-size: 13px; line-height: 1.7; color: var(--td-cream-muted); }
+.cm-stamp {
+  position: absolute; right: 6%; top: 44px; transform: rotate(8deg);
+  padding: 25px 27px; border: 2px solid var(--td-yellow); box-shadow: 7px 7px 0 #000;
+  background: radial-gradient(color-mix(in srgb, var(--td-yellow) 14%, transparent) 1px, transparent 1px) 0 0/6px 6px;
+  font: 31px/1.06 "Bangers", cursive; text-transform: uppercase; color: var(--td-yellow);
+}
+.cm-stamp b { font-weight: 400; color: var(--td-cream); }
+.cm-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-top: 22px; }
+.cm-actions .home-stats { margin: 0; }
+.cm-actions > .btn-primary { background: var(--td-yellow); color: color-mix(in srgb, var(--om-base) 60%, black); }
+@media (max-width: 1050px) {
+  .cm-mast--inset { margin-top: 25px; }
+  .cm-mast h1 { max-width: calc(100% - 200px); }
+  .cm-stamp { right: 3%; top: 50px; padding: 20px; font-size: 23px; }
+}
+@media (max-width: 650px) {
+  .cm-mast { padding-bottom: 23px; }
+  .cm-mast--inset { margin-top: 24px; }
+  .cm-mast h1 { max-width: none; margin: 22px 0; font-size: 57px; }
+  .cm-stamp { display: none; }
+  .cm-intro { display: block; }
+  .cm-intro strong { border: 0; padding: 0; font-size: 21px; }
+  .cm-intro p { margin-top: 8px; font-size: 11px; }
+}

@@ -1,0 +1,127 @@
+.series-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  background: color-mix(in srgb, var(--om-base) 95%, black);
+  border-bottom: 1px solid color-mix(in srgb, var(--om-base) 85%, white);
+  position: sticky;
+  top: 52px;
+  z-index: 100;
+  margin-bottom: 10px;
+}
+.series-controls .alpha-bar {
+  position: static;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px 10px 28px;
+  gap: 3px;
+  border: 0;
+  background: none;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.series-controls .alpha-bar button {
+  flex-shrink: 0;
+}
+.series-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 0 24px 0 8px;
+  padding: 7px 12px;
+  font:
+    16px "Boogaloo",
+    sans-serif;
+  letter-spacing: 0.03em;
+  color: color-mix(in srgb, var(--td-yellow) 40%, var(--om-text));
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+  border: 1px solid color-mix(in srgb, var(--td-yellow) 30%, color-mix(in srgb, var(--om-text) 20%, var(--om-base)));
+  border-radius: 3px;
+  cursor: pointer;
+}
+.series-filter-toggle:hover,
+.series-filter-toggle[aria-expanded="true"] {
+  background: var(--td-yellow);
+  color: color-mix(in srgb, var(--om-base) 90%, black);
+  border-color: var(--td-yellow);
+}
+.series-filter-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--td-yellow) 35%, white);
+  outline-offset: 3px;
+}
+.series-controls .filter-bar-wrap {
+  width: 100%;
+  flex-basis: 100%;
+  border-top: 1px solid color-mix(in srgb, var(--om-base) 85%, white);
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+}
+.series-controls .filter-bar-wrap[hidden] {
+  display: none;
+}
+.series-controls .filter-bar {
+  padding: 14px 28px;
+  flex-wrap: wrap;
+}
+.series-controls .filter-search {
+  min-width: 230px;
+}
+.main-content:has(.series-controls) {
+  overflow: visible !important;
+}
+@media (max-width: 599px) {
+  .series-controls {
+    top: 46px;
+  }
+  .series-controls .alpha-bar {
+    padding: 8px;
+    gap: 3px;
+  }
+  .series-filter-toggle {
+    margin-right: 10px;
+    margin-left: 4px;
+    padding: 7px 9px;
+  }
+  .series-controls .filter-bar {
+    padding: 12px;
+    gap: 10px;
+  }
+  .series-controls .filter-search {
+    width: 100%;
+    min-width: 0;
+  }
+  .series-controls .filter-pills {
+    flex-wrap: wrap;
+  }
+  .series-controls .filter-bar-divider {
+    display: none;
+  }
+}
+.series-filter-panel {
+  width: 100%;
+  flex-basis: 100%;
+}
+.series-filter-panel[hidden] {
+  display: none;
+}
+.series-controls-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
+}
+.series-filter-clear {
+  background: none;
+  border: 0;
+  color: color-mix(in srgb, var(--td-yellow) 20%, color-mix(in srgb, var(--om-text) 80%, var(--om-base)));
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+}
+.series-sort-state {
+  color: color-mix(in srgb, var(--td-yellow) 20%, color-mix(in srgb, var(--om-text) 80%, var(--om-base)));
+  font-size: 12px;
+}
+
+.series-controls .alpha-bar { scrollbar-color: color-mix(in srgb, var(--td-yellow) 30%, color-mix(in srgb, var(--om-text) 20%, var(--om-base))) var(--om-base); }

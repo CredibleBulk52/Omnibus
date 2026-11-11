@@ -1,0 +1,10 @@
+/* One page width for the curated catalog pages (Timeline, Top Shelf incl. category pages,
+   Essentials, Reading Lists), 2026-10-26: capped at 1500px and centred, same side margins
+   everywhere. The pages' own side margins were removed 2026-10-27, so this is the only rule. */
+.curated-page { --curated-gutter: 32px; }
+@media (max-width: 1050px) { .curated-page { --curated-gutter: 22px; } }
+@media (max-width: 650px)  { .curated-page { --curated-gutter: 16px; } }
+.curated-page.curated-page {
+  max-width: 1500px; margin-left: auto; margin-right: auto; box-sizing: border-box;
+  padding-left: var(--curated-gutter); padding-right: var(--curated-gutter);
+}

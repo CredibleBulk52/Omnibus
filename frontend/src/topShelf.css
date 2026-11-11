@@ -1,0 +1,1430 @@
+.ts-page {
+  --ts-paper: color-mix(in srgb, var(--td-yellow) 40%, white);
+  --ts-ink: color-mix(in srgb, var(--om-base) 60%, black);
+  --ts-yellow: var(--td-yellow);
+  --ts-muted: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+}
+.main-content:has(.ts-page) {
+  overflow: visible;
+}
+.ts-main {
+  padding-bottom: 70px;
+}
+.ts-content {
+  padding: 24px 0 50px;   /* width and side margins: curatedPage.css */
+}
+.ts-front {
+  display: grid;
+  grid-template-columns: 1.65fr 1fr;
+  gap: 22px;
+}
+.ts-feature {
+  min-height: 390px;
+  border: 3px solid #000;
+  box-shadow: 6px 6px #000;
+  background:
+    radial-gradient(ellipse at 82% 60%, #553323 0, transparent 62%), color-mix(in srgb, var(--om-base) 95%, white);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  position: relative;
+  overflow: hidden;
+}
+.ts-feature:before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(color-mix(in srgb, var(--om-text) 7%, transparent) 1px, transparent 1.6px);
+  background-size: 7px 7px;
+  pointer-events: none;
+}
+.ts-feature-copy {
+  position: relative;
+  z-index: 2;
+  padding: 30px 0 26px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.ts-stamp {
+  display: inline-block;
+  transform: rotate(-3deg);
+  padding: 6px 10px;
+  background: var(--ts-yellow);
+  color: color-mix(in srgb, var(--om-base) 65%, black);
+  font:
+    16px 'Bangers',
+    cursive;
+  border: 2px solid #000;
+  box-shadow: 3px 3px #000;
+}
+.ts-feature h2 {
+  font:
+    clamp(40px, 4.1vw, 64px)/0.95 'Bangers',
+    cursive;
+  color: color-mix(in srgb, var(--td-yellow) 20%, white);
+  margin: 24px 0 13px;
+  letter-spacing: 0.02em;
+  text-shadow: 3px 3px #000;
+}
+.ts-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.ts-tags span {
+  color: #e9c674;
+  border-bottom: 1px solid #7b6543;
+  font:
+    13px 'Boogaloo',
+    sans-serif;
+  padding: 3px 0;
+}
+.ts-feature p {
+  font:
+    17px/1.4 'Comic Neue',
+    sans-serif;
+  color: #cec3b2;
+  margin: 17px 0 22px;
+}
+.ts-cta {
+  background: var(--td-red);
+  color: var(--om-text) !important;
+  border: 3px solid #000;
+  padding: 10px 14px;
+  box-shadow: 4px 4px #000;
+  font:
+    19px 'Bangers',
+    cursive;
+  text-decoration: none;
+  display: flex;
+  gap: 18px;
+}
+.ts-cta:hover {
+  background: color-mix(in srgb, var(--td-red) 80%, white);
+}
+.ts-feature small {
+  font:
+    12px 'Boogaloo',
+    sans-serif;
+  color: #c2b39b;
+  letter-spacing: 0.08em;
+  margin-top: 17px;
+}
+.ts-feature-art {
+  position: relative;
+  min-width: 0;
+}
+.ts-feature-art :is(img, .ts-cover-placeholder) {
+  position: absolute;
+  width: 69%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border: 3px solid #000;
+  box-shadow: 10px 12px 0 #0009;
+  top: 50%;
+  left: 12%;
+  transform: translateY(-50%) rotate(6deg);
+}
+.ts-feature-art .ts-back {
+  transform: translateY(-50%) translateX(-28px) rotate(-10deg);
+  opacity: 0.65;
+}
+.ts-seal {
+  position: absolute;
+  right: 12px;
+  bottom: 14px;
+  background: var(--td-yellow);
+  color: #000;
+  border: 4px solid #000;
+  outline: 2px solid var(--td-yellow);
+  display: grid;
+  place-content: center;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  transform: rotate(12deg);
+  text-align: center;
+  font:
+    22px/0.95 'Bangers',
+    cursive;
+}
+.ts-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ts-paths-label {
+  font:
+    13px 'Boogaloo',
+    sans-serif;
+  letter-spacing: 0.15em;
+  color: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+  margin-bottom: 3px;
+}
+.ts-path {
+  --path-color: #7cc0f5;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 17px;
+  background: var(--om-base);
+  color: var(--om-text) !important;
+  text-decoration: none;
+  border: 2px solid #000;
+  border-left: 6px solid var(--path-color);
+  box-shadow: 4px 4px #000;
+  transition: transform 0.15s;
+}
+.ts-path:hover {
+  transform: translateX(-3px);
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+}
+.ts-path-1 {
+  --path-color: var(--td-yellow);
+}
+.ts-path-2 {
+  --path-color: color-mix(in srgb, var(--td-red) 65%, white);
+}
+.ts-path-number {
+  font:
+    32px 'Bangers',
+    cursive;
+  color: var(--path-color);
+  opacity: 0.6;
+}
+.ts-path h2 {
+  font:
+    25px/1 'Bangers',
+    cursive;
+  color: var(--path-color);
+  margin: 0 0 7px;
+  letter-spacing: 0.03em;
+}
+.ts-path p {
+  font:
+    14px/1.25 'Comic Neue',
+    sans-serif;
+  margin: 0 0 9px;
+  color: color-mix(in srgb, var(--om-text) 80%, var(--om-base));
+}
+.ts-path b {
+  font:
+    12px 'Boogaloo',
+    sans-serif;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, var(--om-text) 80%, var(--om-base));
+}
+.ts-arrow {
+  margin-left: auto;
+  font: 24px sans-serif;
+  color: var(--path-color);
+}
+.ts-shelf {
+  margin-top: 38px;
+  scroll-margin-top: 70px;
+}
+.ts-section-head {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 18px;
+}
+.ts-section-index {
+  font:
+    22px 'Bangers',
+    cursive;
+  color: color-mix(in srgb, var(--om-base) 90%, black);
+  background: var(--td-yellow);
+  transform: rotate(-4deg);
+  border: 2px solid #000;
+  padding: 3px 10px;
+}
+.ts-section-head h2 {
+  font:
+    30px 'Bangers',
+    cursive;
+  color: #f3e8cc;
+  margin: 0;
+  letter-spacing: 0.04em;
+}
+.ts-rule {
+  flex: 1;
+  border-top: 2px solid color-mix(in srgb, var(--om-base) 85%, white);
+}
+.ts-section-head > a {
+  font:
+    15px 'Boogaloo',
+    sans-serif;
+  color: var(--td-yellow);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.ts-books {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 20px;
+  padding: 16px 18px 22px;
+  background: linear-gradient(0deg, color-mix(in srgb, color-mix(in srgb, var(--om-base) 95%, white) 33%, transparent), transparent 65%), var(--om-base);
+  border: 2px solid #000;
+  border-bottom: 9px solid color-mix(in srgb, var(--om-base) 90%, white);
+  box-shadow: 0 5px #000;
+}
+.ts-book {
+  min-width: 0;
+}
+.ts-book-link > :is(img, .ts-cover-placeholder) {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border: 3px solid #000;
+  box-shadow: 5px 5px #000;
+}
+.ts-book-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+}
+.ts-book-number {
+  font:
+    15px 'Bangers',
+    cursive;
+  color: #827962;
+}
+.ts-book h3 {
+  font:
+    17px/1.15 'Boogaloo',
+    sans-serif;
+  color: #e8dcc1;
+  margin: 0;
+}
+.ts-owned {
+  font:
+    12px 'Boogaloo',
+    sans-serif;
+  color: #c2ae83;
+}
+.ts-back-link {
+  font:
+    14px 'Boogaloo',
+    sans-serif;
+  color: #bdb3a0 !important;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+}
+.ts-category-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 4px solid var(--td-yellow);
+  padding: 20px 0 24px;
+  margin-bottom: 20px;
+}
+.ts-category-head h1 {
+  font:
+    clamp(38px, 4.3vw, 65px)/0.96 'Bangers',
+    cursive;
+  color: color-mix(in srgb, var(--om-text) 95%, var(--om-base));
+  letter-spacing: 0.025em;
+  margin: 12px 0;
+}
+.ts-category-head h1 em {
+  font-style: normal;
+  color: var(--td-yellow);
+}
+.ts-category-head p {
+  font:
+    18px 'Boogaloo',
+    sans-serif;
+  color: color-mix(in srgb, var(--om-text) 70%, var(--om-base));
+  margin: 12px 0 0;
+}
+.ts-award-seal {
+  width: 140px;
+  height: 140px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+  border: 4px double var(--td-yellow);
+  border-radius: 50%;
+  transform: rotate(8deg);
+  color: var(--td-yellow);
+  font:
+    27px/1 'Bangers',
+    cursive;
+}
+.ts-award-seal span {
+  font-size: 35px;
+  margin-bottom: 5px;
+}
+.ts-result {
+  font:
+    14px 'Boogaloo',
+    sans-serif;
+  color: #c6b886;
+}
+.ts-run-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.ts-run {
+  display: grid;
+  grid-template-columns: 40% 1fr;
+  min-width: 0;
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+  border: 3px solid #000;
+  box-shadow: 6px 6px #000;
+  overflow: hidden;
+}
+.ts-run[hidden] {
+  display: none;
+}
+.ts-run-art {
+  position: relative;
+  padding: 16px;
+  background: radial-gradient(color-mix(in srgb, var(--om-text) 7%, transparent) 1px, transparent 1.5px), color-mix(in srgb, var(--om-base) 90%, white);
+  background-size: 7px 7px;
+  border-right: 3px solid #000;
+}
+.ts-run-art :is(img, .ts-cover-placeholder) {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border: 3px solid #000;
+  box-shadow: 4px 4px #000;
+  display: block;
+}
+.ts-run-index {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: var(--td-yellow);
+  color: #000;
+  padding: 3px 9px;
+  font:
+    16px 'Bangers',
+    cursive;
+  border: 2px solid #000;
+  transform: rotate(-6deg);
+}
+.ts-run-copy {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ts-run-copy h2 {
+  font:
+    30px/1 'Bangers',
+    cursive;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--td-yellow) 40%, white);
+  margin: 10px 0 15px;
+  overflow-wrap: anywhere;
+}
+.ts-award-note {
+  border-top: 1px solid #645534;
+  padding-top: 10px;
+}
+.ts-award-note > span {
+  font:
+    11px 'Boogaloo',
+    sans-serif;
+  letter-spacing: 0.09em;
+  color: #d8b95a;
+}
+.ts-award-note p {
+  font:
+    15px/1.3 'Comic Neue',
+    sans-serif;
+  color: color-mix(in srgb, var(--om-text) 80%, var(--om-base));
+  margin: 8px 0 16px;
+}
+.ts-run-foot {
+  margin-top: auto;
+  padding-top: 15px;
+  font:
+    11px 'Boogaloo',
+    sans-serif;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--om-text) 50%, var(--om-base));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.ts-run-foot span {
+  font: 22px sans-serif;
+  color: var(--td-yellow);
+}
+.ts-footer-note {
+  font:
+    13px 'Boogaloo',
+    sans-serif;
+  color: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+  margin-top: 28px;
+}
+.ts-empty {
+  color: color-mix(in srgb, var(--td-yellow) 40%, white);
+}
+@media (max-width: 1000px) {
+  .ts-front {
+    grid-template-columns: 1fr;
+  }
+  .ts-paths {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .ts-paths-label {
+    grid-column: 1/-1;
+  }
+  .ts-path {
+    padding: 14px 10px;
+    gap: 8px;
+  }
+  .ts-path-number {
+    display: none;
+  }
+  .ts-path h2 {
+    font-size: 22px;
+  }
+  .ts-path p {
+    font-size: 13px;
+  }
+  .ts-arrow {
+    display: none;
+  }
+  .ts-feature {
+    min-height: 350px;
+  }
+  .ts-feature-art :is(img, .ts-cover-placeholder) {
+    width: 56%;
+  }
+  .ts-books {
+    grid-template-columns: repeat(6, 140px);
+    overflow-x: auto;
+  }
+  .ts-run-copy {
+    padding: 13px;
+  }
+  .ts-run-copy h2 {
+    font-size: 25px;
+  }
+  .ts-run-art {
+    padding: 12px;
+  }
+}
+@media (max-width: 700px) {
+  .ts-content {
+    padding-top: 20px;
+    padding-bottom: 30px;
+  }
+  .ts-front {
+    gap: 20px;
+  }
+  .ts-feature {
+    min-height: 330px;
+    grid-template-columns: 55% 45%;
+  }
+  .ts-feature-copy {
+    padding: 23px 0 22px 18px;
+  }
+  .ts-feature h2 {
+    font-size: 43px;
+  }
+  .ts-feature p {
+    font-size: 14px;
+  }
+  .ts-stamp {
+    font-size: 12px;
+  }
+  .ts-feature-art :is(img, .ts-cover-placeholder) {
+    width: 85%;
+    left: 4%;
+  }
+  .ts-feature-art .ts-back {
+    transform: translateY(-50%) translateX(-8px) rotate(-8deg);
+  }
+  .ts-seal {
+    width: 57px;
+    height: 57px;
+    font-size: 17px;
+    bottom: 24px;
+    right: 10px;
+  }
+  .ts-cta {
+    font-size: 15px;
+    padding: 9px;
+    gap: 8px;
+  }
+  .ts-paths {
+    grid-template-columns: 1fr;
+  }
+  .ts-path {
+    padding: 14px;
+    gap: 14px;
+  }
+  .ts-path-number,
+  .ts-arrow {
+    display: block;
+  }
+  .ts-path h2 {
+    font-size: 24px;
+  }
+  .ts-path p {
+    margin-bottom: 5px;
+  }
+  .ts-paths-label {
+    font-size: 11px;
+  }
+  .ts-section-head {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ts-section-head h2 {
+    font-size: 25px;
+  }
+  .ts-section-head > a {
+    font-size: 13px;
+  }
+  .ts-books {
+    gap: 18px;
+    padding: 14px;
+  }
+  .ts-category-head h1 {
+    font-size: 40px;
+  }
+  .ts-category-head p {
+    font-size: 15px;
+  }
+  .ts-award-seal {
+    width: 77px;
+    height: 77px;
+    font-size: 16px;
+  }
+  .ts-award-seal span {
+    font-size: 20px;
+  }
+  .ts-run-grid {
+    grid-template-columns: 1fr;
+  }
+  .ts-run-copy h2 {
+    font-size: 29px;
+  }
+  .ts-run-art {
+    padding: 13px;
+  }
+  .ts-run-copy {
+    padding: 15px;
+  }
+}
+.ts-run {
+  grid-template-columns: 180px 1fr;
+}
+@media (max-width: 1000px) {
+  .ts-run {
+    grid-template-columns: 140px 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .ts-run {
+    grid-template-columns: 130px 1fr;
+  }
+}
+.ts-run {
+  grid-template-columns: 180px 1fr;
+}
+@media (max-width: 1000px) {
+  .ts-run {
+    grid-template-columns: 140px 1fr;
+  }
+}
+@media (max-width: 700px) {
+  .ts-run {
+    grid-template-columns: 130px 1fr;
+  }
+}
+
+/* Refined display shelves: colour follows the category panels above. */
+.ts-shelf {
+  position: relative;
+  margin-top: 44px;
+  padding-top: 8px;
+}
+.ts-section-head {
+  position: relative;
+  gap: 10px;
+  align-items: center;
+  margin: 0 0 -3px;
+  padding: 27px 16px 13px;
+  border: 3px solid #000;
+  border-bottom: 0;
+  background:
+    linear-gradient(100deg, rgba(var(--shelf-rgb), 0.15), transparent 65%),
+    var(--om-base);
+  box-shadow: 6px 0 #000;
+}
+.ts-shelf-kicker {
+  position: absolute;
+  top: 8px;
+  left: 18px;
+  font:
+    10px 'Boogaloo',
+    sans-serif;
+  letter-spacing: 0.2em;
+  color: var(--shelf-colour);
+}
+.ts-section-index {
+  background: var(--shelf-colour);
+  padding: 4px 9px;
+  font-size: 22px;
+  box-shadow: 3px 3px #000;
+  transform: rotate(-7deg);
+}
+.ts-section-head h2 {
+  color: var(--shelf-colour);
+  font-size: 32px;
+  text-shadow: 2px 2px #000;
+}
+.ts-section-head .ts-rule {
+  border-top: 2px dashed rgba(var(--shelf-rgb), 0.25);
+}
+.ts-section-head > a {
+  background: var(--shelf-colour);
+  color: var(--om-base);
+  padding: 5px 11px;
+  border: 2px solid #000;
+  box-shadow: 3px 3px #000;
+  font:
+    16px 'Bangers',
+    cursive;
+  letter-spacing: 0.03em;
+  transform: rotate(-2deg);
+}
+.ts-section-head > a:hover {
+  transform: translateY(-2px) rotate(-2deg);
+}
+.ts-books {
+  position: relative;
+  padding: 26px 20px 30px;
+  gap: 22px;
+  background:
+    radial-gradient(
+      ellipse at 50% 0,
+      rgba(var(--shelf-rgb), 0.14),
+      transparent 72%
+    ),
+    radial-gradient(rgba(var(--shelf-rgb), 0.07) 1px, transparent 1.6px),
+    var(--om-base);
+  background-size:
+    auto,
+    7px 7px,
+    auto;
+  border: 3px solid #000;
+  border-top: 3px solid var(--shelf-colour);
+  border-bottom: 14px solid color-mix(in srgb, var(--om-base) 90%, white);
+  box-shadow:
+    6px 7px #000,
+    inset 0 -4px #785538,
+    inset 0 -7px color-mix(in srgb, var(--om-base) 95%, black);
+}
+.ts-book {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+}
+.ts-book-link > :is(img, .ts-cover-placeholder) {
+  box-shadow:
+    7px 7px #0009,
+    0 10px 16px #000b;
+  border: 3px solid #000;
+  position: relative;
+  z-index: 1;
+  transition: transform 0.15s ease;
+}
+.ts-book-link:hover > :is(img, .ts-cover-placeholder) {
+  transform: translateY(-5px);
+}
+.ts-book-text {
+  display: block;
+  flex: 1;
+  margin: 14px 0 0;
+  padding: 10px 10px 12px;
+  background: #f2dfb2;
+  color: var(--om-base);
+  border: 2px solid #000;
+  border-top: 5px solid var(--shelf-colour);
+  box-shadow: 4px 4px #000;
+  position: relative;
+}
+.ts-book-text:before {
+  content: '';
+  position: absolute;
+  left: 9px;
+  top: -8px;
+  width: 28px;
+  height: 6px;
+  background: var(--shelf-colour);
+  border: 1px solid #000;
+  transform: rotate(-6deg);
+}
+.ts-book h3 {
+  font:
+    18px/1.12 'Boogaloo',
+    sans-serif;
+  color: var(--om-base);
+  overflow-wrap: anywhere;
+}
+.ts-book-note {
+  font:
+    700 12px/1.3 'Comic Neue',
+    sans-serif;
+  color: #645338;
+  margin: 8px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid #9d865b80;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ts-owned {
+  background: color-mix(in srgb, var(--om-base) 90%, black);
+  color: var(--shelf-colour);
+  padding: 3px 6px;
+  align-self: flex-start;
+  border: 1px solid var(--shelf-colour);
+  margin-top: 8px;
+}
+.ts-shelf-creators .ts-books {
+  border-bottom-color: color-mix(in srgb, var(--om-base) 90%, white);
+}
+.ts-shelf-creators .ts-book-link > :is(img, .ts-cover-placeholder) {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 4px solid #000;
+  outline: 2px solid #b9acd955;
+  object-position: center 20%;
+}
+.ts-shelf-creators .ts-book-text {
+  text-align: center;
+  background: color-mix(in srgb, var(--om-text) 95%, var(--om-base));
+}
+@media (max-width: 1000px) {
+  .ts-books {
+    grid-template-columns: repeat(6, 150px);
+    padding: 23px 18px 29px;
+    gap: 22px;
+  }
+}
+@media (max-width: 700px) {
+  .ts-shelf {
+    margin-top: 30px;
+  }
+  .ts-section-head {
+    padding: 27px 10px 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ts-section-head h2 {
+    font-size: 25px;
+  }
+  .ts-section-index {
+    font-size: 18px;
+    padding: 3px 7px;
+  }
+  .ts-section-head > a {
+    font-size: 13px;
+    padding: 4px 7px;
+    margin-left: auto;
+  }
+  .ts-section-head .ts-rule {
+    display: none;
+  }
+  .ts-books {
+    gap: 20px;
+  }
+  .ts-book h3 {
+    font-size: 18px;
+  }
+  .ts-shelf-kicker {
+    left: 12px;
+    font-size: 9px;
+  }
+}
+
+/* Quiet captions: cover art leads; category colour stays on the shelf. */
+.ts-book-text,
+.ts-shelf-creators .ts-book-text {
+  flex: 0 0 auto;
+  margin-top: 13px;
+  padding: 0 2px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: left;
+}
+.ts-book-text:before {
+  display: none;
+}
+.ts-book h3 {
+  font:
+    18px/1.2 'Boogaloo',
+    sans-serif;
+  color: #eee2c8;
+}
+.ts-book-note {
+  margin: 7px 0 0;
+  padding: 0;
+  border: 0;
+  color: #ada28e;
+  font:
+    13px/1.35 'Comic Neue',
+    sans-serif;
+}
+.ts-shelf-creators .ts-book-text {
+  text-align: center;
+}
+.ts-shelf-creators .ts-book h3 {
+  color: color-mix(in srgb, var(--om-text) 95%, var(--om-base));
+}
+
+/* Inked shelf edge: charcoal depth with the category colour on its lip. */
+.ts-books,
+.ts-shelf-creators .ts-books {
+  border-bottom-color: color-mix(in srgb, var(--om-base) 90%, white);
+  box-shadow:
+    6px 7px #000,
+    inset 0 -2px var(--shelf-colour),
+    inset 0 -5px var(--om-base);
+}
+
+/* Production links, loading states and cover fallbacks. Scoped to Top Shelf. */
+.ts-page {
+  padding-bottom: 70px;
+  --shelf-colour: var(--td-yellow);
+  --shelf-rgb: 255, 212, 59;
+}
+.ts-page a {
+  text-decoration: none;
+}
+.ts-page .ts-feature h2 a {
+  color: inherit;
+}
+.ts-page .ts-book-link {
+  display: block;
+  min-width: 0;
+}
+.ts-page .ts-cover-placeholder {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 2/3;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--om-base) 85%, white), var(--om-base));
+  color: #d7cbb1;
+  font:
+    40px 'Bangers',
+    cursive;
+}
+.ts-page .ts-feature-art .ts-cover-placeholder {
+  height: auto;
+}
+.ts-page .ts-front-empty {
+  grid-template-columns: 1fr;
+}
+.ts-page .ts-front-empty .ts-paths {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ts-page .ts-front-empty .ts-paths-label {
+  grid-column: 1/-1;
+}
+.ts-page .ts-owned {
+  margin-top: 8px;
+  font:
+    12px 'Boogaloo',
+    sans-serif;
+  color: #b9ad94;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+.ts-page .ts-run-foot .ts-owned {
+  margin: 0;
+}
+.ts-page .ts-creator-count {
+  text-align: center;
+  margin-top: 6px;
+  color: #b9acd9;
+  font:
+    13px 'Boogaloo',
+    sans-serif;
+}
+.ts-page .ts-empty {
+  grid-column: 1/-1;
+  color: color-mix(in srgb, var(--om-text) 70%, var(--om-base));
+  padding: 32px 14px;
+  font:
+    18px 'Boogaloo',
+    sans-serif;
+}
+.ts-page .ts-clear {
+  border: 2px solid var(--td-yellow);
+  background: transparent;
+  color: var(--td-yellow);
+  font:
+    16px 'Boogaloo',
+    sans-serif;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.ts-page :is(a, button, input, select, [tabindex]):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--td-yellow) 30%, white);
+  outline-offset: 4px;
+}
+.ts-page .ts-run {
+  color: inherit;
+  transition: transform 0.15s;
+}
+.ts-page .ts-run:hover {
+  transform: translateY(-3px);
+}
+.ts-page .ts-award-seal {
+  padding: 10px;
+}
+.ts-page .ts-category-head h1 {
+  color: var(--shelf-colour);
+  overflow-wrap: anywhere;
+}
+.ts-page .ts-category-head {
+  border-color: var(--shelf-colour);
+}
+.ts-page .ts-award-seal {
+  border-color: var(--shelf-colour);
+  color: var(--shelf-colour);
+}
+.ts-page .ts-shelf {
+  scroll-margin-top: 70px;
+}
+.ts-page .ts-books {
+  scrollbar-width: thin;
+  scrollbar-color: var(--shelf-colour) color-mix(in srgb, var(--om-base) 95%, white);
+}
+.ts-page .ts-feature h2 {
+  overflow-wrap: anywhere;
+}
+.ts-page .ts-shelf-creators .ts-book-link > .ts-cover-placeholder {
+  aspect-ratio: 1;
+}
+@media (max-width: 700px) {
+  .ts-page .ts-front-empty .ts-paths {
+    grid-template-columns: 1fr;
+  }
+  .ts-page .ts-books {
+    grid-template-columns: repeat(6, 140px);
+  }
+  .ts-page .ts-run {
+    grid-template-columns: minmax(100px, 35%) minmax(0, 1fr);
+  }
+  .ts-page .ts-run-copy {
+    padding: 12px;
+  }
+  .ts-page .ts-feature h2 {
+    font-size: clamp(28px, 9vw, 43px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ts-page * {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}
+
+.ts-page
+  :is(
+    .ts-eyebrow,
+    .ts-shelf-kicker,
+    .ts-paths-label,
+    .ts-path b,
+    .ts-stamp,
+    .ts-award-note > span
+  ) {
+  text-transform: uppercase;
+}
+
+/* Category shelves: full covers and expandable notes. */
+.main-content:has(.tc-study) {
+  overflow: visible;
+}
+.tc-study {
+  --gold: var(--shelf-colour);
+  --paper: #eee5cc;
+  padding: 0 0 50px;
+  color: var(--paper);
+  font-family: 'Comic Neue', cursive;
+}
+.tc-study * {
+  box-sizing: border-box;
+}
+.tc-study > .tc-content { padding-top: 28px; }   /* width and side margins: curatedPage.css */
+.tc-controls {
+  position: sticky;
+  top: 52px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  flex-wrap: nowrap;
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+  border: 2px solid color-mix(in srgb, var(--om-base) 80%, white);
+  border-top: 0;
+  padding: 10px 13px;
+  box-shadow: 0 6px 0 #000;
+  margin-bottom: 28px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #776a4c color-mix(in srgb, var(--om-base) 95%, white);
+}
+.tc-category {
+  font: 17px 'Bangers';
+  letter-spacing: 0.7px;
+  white-space: nowrap;
+  color: var(--gold);
+  border-right: 1px solid #5b5240;
+  padding-right: 16px;
+}
+.tc-controls input {
+  min-width: 140px;
+  flex: 1;
+  background: color-mix(in srgb, var(--om-base) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--om-text) 30%, var(--om-base));
+  color: var(--paper);
+  padding: 8px 10px;
+  font: 14px 'Comic Neue';
+  border-radius: 2px;
+}
+.tc-controls select {
+  background: color-mix(in srgb, var(--om-base) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--om-text) 30%, var(--om-base));
+  color: var(--paper);
+  font: 14px 'Boogaloo';
+  padding: 8px;
+  min-width: 110px;
+}
+.tc-reset {
+  border: 0;
+  background: none;
+  color: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+  cursor: pointer;
+}
+.tc-controls output {
+  white-space: nowrap;
+  font: 12px 'Boogaloo';
+  color: var(--gold);
+}
+.tc-shelf {
+  border: 3px solid #07080b;
+  box-shadow: 6px 6px #000;
+  background:
+    radial-gradient(rgba(var(--shelf-rgb), 0.045) 1px, transparent 1px) 0 0/7px
+      7px,
+    var(--om-base);
+}
+.tc-shelf-head {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 18px 22px;
+  background: linear-gradient(
+    100deg,
+    rgba(var(--shelf-rgb), 0.15),
+    transparent 70%
+  );
+  border-bottom: 2px solid rgba(var(--shelf-rgb), 0.47);
+}
+.tc-shelf-head > span {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  background: var(--gold);
+  color: color-mix(in srgb, var(--om-base) 90%, black);
+  border: 2px solid #08090b;
+  box-shadow: 3px 3px #000;
+  transform: rotate(-5deg);
+  font-size: 23px;
+}
+.tc-shelf-head h2 {
+  font: 29px 'Bangers';
+  letter-spacing: 0.8px;
+  margin: 0;
+}
+.tc-shelf-head > div {
+  height: 1px;
+  background: rgba(var(--shelf-rgb), 0.27);
+  flex: 1;
+}
+.tc-shelf-head small {
+  font: 11px 'Boogaloo';
+  letter-spacing: 1px;
+  color: #bdb197;
+}
+.tc-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  column-gap: 25px;
+  row-gap: 38px;
+  padding: 27px 25px 35px;
+}
+.tc-book {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tc-cover {
+  display: block;
+  position: relative;
+  aspect-ratio: 2/3;
+  background: color-mix(in srgb, var(--om-base) 65%, black);
+  border: 4px solid #050607;
+  box-shadow: 5px 6px #000;
+  transition: transform 0.15s;
+}
+.tc-cover:hover {
+  transform: translateY(-4px);
+}
+.tc-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.tc-cover > span {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  font: 35px 'Bangers';
+  color: var(--gold);
+}
+.tc-book h3 {
+  font: 23px/1.15 'Boogaloo';
+  margin: 16px 0 9px;
+}
+.tc-book h3 a {
+  color: var(--paper);
+  text-decoration: none;
+}
+.tc-book h3 a:hover {
+  color: var(--gold);
+}
+.tc-recognition {
+  border-top: 1px solid rgba(var(--shelf-rgb), 0.23);
+  padding-top: 9px;
+}
+.tc-recognition > span {
+  font: 10px 'Boogaloo';
+  letter-spacing: 1.5px;
+  color: var(--gold);
+}
+.tc-recognition p {
+  font: 13px/1.45 'Comic Neue';
+  font-weight: 700;
+  color: color-mix(in srgb, var(--om-text) 70%, var(--om-base));
+  margin: 5px 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.tc-recognition.open p {
+  display: block;
+}
+.tc-recognition button {
+  font: 11px 'Boogaloo';
+  padding: 1px 0;
+  border: 0;
+  background: none;
+  color: var(--gold);
+  cursor: pointer;
+}
+.tc-book footer {
+  margin-top: auto;
+  padding-top: 14px;
+  font: 11px 'Boogaloo';
+  letter-spacing: 0.5px;
+  color: color-mix(in srgb, var(--om-text) 55%, var(--om-base));
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+}
+.tc-book footer i {
+  color: #abbd9f;
+  font-style: normal;
+}
+.tc-preview-note {
+  font: 12px/1.6 'Comic Neue';
+  color: color-mix(in srgb, var(--om-text) 60%, var(--om-base));
+  margin-top: 23px;
+}
+.tc-empty {
+  padding: 40px;
+  grid-column: 1/-1;
+}
+.tc-study :focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 4px;
+}
+@media (max-width: 1150px) {
+  .tc-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 30px 21px;
+  }
+  .tc-book h3 {
+    font-size: 22px;
+  }
+}
+@media (max-width: 850px) {
+  .tc-study > .tc-content {
+    padding-top: 24px;
+  }
+  .tc-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 22px 18px;
+  }
+  .tc-category {
+    display: none;
+  }
+  .tc-shelf-head small {
+    display: none;
+  }
+}
+@media (max-width: 550px) {
+  .tc-study > .tc-content {
+    padding-top: 23px;
+  }
+  .tc-controls {
+    gap: 8px;
+    padding: 8px;
+  }
+  .tc-controls input {
+    width: 140px;
+    min-width: 120px;
+  }
+  .tc-controls select {
+    min-width: 90px;
+    font-size: 12px;
+  }
+  .tc-controls output {
+    display: none;
+  }
+  .tc-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 20px 13px;
+    gap: 29px 18px;
+  }
+  .tc-shelf-head {
+    padding: 15px 13px;
+    gap: 12px;
+  }
+  .tc-shelf-head h2 {
+    font-size: 24px;
+  }
+  .tc-book h3 {
+    font-size: 21px;
+  }
+  .tc-recognition p {
+    font-size: 12px;
+  }
+  .tc-book footer {
+    font-size: 10px;
+  }
+}
+
+.tc-book .ts-owned {
+  margin: 0;
+  font-size: 11px;
+  color: color-mix(in srgb, var(--om-text) 55%, var(--om-base));
+}
+.tc-cover .ts-cover-placeholder {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+}
+.tc-study .pagination {
+  margin-top: 28px;
+}
+
+/* Find a run: search in the curated top (CuratedMast). */
+.ts-search {
+  position: relative;
+  width: 260px;
+}
+.ts-search input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.ts-search-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+  border: 1px solid rgba(243, 236, 220, 0.16);
+  border-radius: 6px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+  padding: 6px;
+  z-index: 40;
+}
+.ts-page .ts-search-hit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--om-text) 95%, var(--om-base));
+}
+.ts-page .ts-search-hit.on {
+  background: color-mix(in srgb, var(--td-yellow) 12%, transparent);
+}
+.ts-search-hit img,
+.ts-search-blank {
+  width: 30px;
+  height: 45px;
+  object-fit: cover;
+  border-radius: 2px;
+  flex: none;
+  background: color-mix(in srgb, var(--om-base) 90%, white);
+}
+.ts-search-hit b {
+  display: block;
+  font: 600 14px/1.25 system-ui, sans-serif;
+}
+.ts-search-hit small {
+  display: block;
+  font-size: 12px;
+  color: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+  margin-top: 2px;
+}
+.ts-search-none {
+  padding: 8px;
+  font-size: 13px;
+  color: color-mix(in srgb, var(--om-text) 65%, var(--om-base));
+}
+@media (max-width: 700px) {
+  .ts-search {
+    width: 100%;
+  }
+  .ts-search-list {
+    width: 100%;
+  }
+}
+.ts-content > .cm-mast { margin-bottom: 24px; }
+/* Find a run: in the shared find bar (findBox.css) below the page top. */
+.ts-find-bar .ts-search { width: 100%; max-width: 440px; }
+.ts-find-bar .ts-search-list { left: 0; right: auto; }

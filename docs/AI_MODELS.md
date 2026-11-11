@@ -1,0 +1,99 @@
+# AI models in Omnibus
+
+Documentation status: this guide combines implementation notes with dated comparison results. Model availability, pricing and benchmark figures below are historical observations, not current provider guarantees. For configured task defaults and supported capabilities, inspect [aiModels.js](../backend/ai/aiModels.js), [modelCatalog.js](../backend/modelCatalog.js) and the current Settings UI.
+
+Settings → **AI Models** (admin). Implemented October 12, 2026.
+
+## Structure
+- **Each task has its own recommended model** (2026-10-23; the two top-level models `ai_model_quick` / `ai_model_generation` were retired). The recommendation is a preference list: the first model whose provider key is saved is used. A task uses it unless set to a specific model (`ai_task_<id>`, empty = recommended). Quick / Generation remain only as the two groups on the settings page and in Usage.
+- Retirement (marker `ai_tiers_retired_2026_10`): a task that followed a top-level model whose recommendation differs is set to the model it was using; the two settings are then removed.
+- Settings page: **Save API keys** (keys only) and **Save task models** (task models and trials, inside the Task models drop-down).
+
+| Task id | Label | Group | Recommended (first saved key wins) | Basis | Where it runs |
+|---|---|---|---|---|---|
+| enricher | Enricher | Quick | Haiku → Luna | <0.06¢, no problems | scripts/enricher.py via buildEnricherConfig (descriptions, genres) |
+| annual_validator | Annual Validator | Quick | Haiku → Luna | checked 2026-10-21, no failures | askClaudeForAnnualMatch (annual volume linking) |
+| annual_match | Annual Match Picker | Quick | Haiku → Luna | <0.06¢ | metadata discoverAnnual askClaude (Phase 6.5) |
+| topshelf_categories | Top Shelf – Category Check | Quick | Haiku → Luna | ~1.5¢ a batch vs ~24¢ on Sonnet (2026-10-22) | canonCategories.js |
+| event_notes | Event Tier Notes | Quick | Haiku → Luna | ~0.6¢ | /api/events/:id/reannotate (no web search) |
+| quick_answer | Quick Answers | Quick | Luna → Haiku | in use, median 0.1¢ (not compared with Haiku) | assistant.js quickModel |
+| topshelf | Top Shelf – Run Generator | Generation | Opus → Sol | twice Sonnet's runs at ~71¢ (2026-10-22) | /api/canon/generate |
+| timeline | Timeline – Crossover Event Generator | Generation | Sonnet → Sol | tuned and validated on Sonnet, 19–26¢ an event | /api/events/generate |
+| reading_list | Reading List Generator | Generation | Sol → Sonnet | MODEL_AUDIT Wally West run; median 12¢ | assistant.js listModel |
+| long_answer | Long Answers | Generation | Sol → Sonnet | in use, 1.7–9.4¢ (not compared) | assistant.js longModel (hand_off, recaps) |
+| web_lookup | Web Search | Quick (Lookups) | Gemini 3.8 Flash → Haiku → Luna | lookup comparison 2026-10-20 | ai/webLookup.js |
+| recap_web | Recap – Summary Writer | Quick (Lookups) | Haiku → Luna | honest confidence ratings (2026-10-20) | recaps/synopses.js |
+| recap_reader | Recap – Page Reader | Quick (Lookups) | Gemini 3.8 Flash → Sol → Sonnet | as accurate as Sol at about half the cost; recheck at Google's January 2027 price rise | recaps/synopses.js |
+
+- Code: `backend/ai/aiModels.js` (task registry, routing, migration, settings validation), `backend/ai/aiClient.js` (shared request builder), tests `backend/ai/ai.test.js`.
+- Migration (first start): Quick ← `anthropic_validation_model`, Generation ← `anthropic_event_model`; old `assistant_model` / `assistant_list_model` become pins only if they differed. Old keys are left in the table but unused.
+- API: `GET/POST /api/ai/settings` (admin). Model menu: `GET /api/settings/anthropic-models` returns `modelCatalog.currentModels`: Haiku/Sonnet/Opus/Fable (Mythos hidden), Claude 4+, one id per version, minus anything in `modelCatalog.RETIREMENT` that is retired or retires within 90 days. Each family's newest is flagged; newest Haiku = recommended Quick, newest Sonnet = recommended Generation. The page shows newest-per-family unless "Show older models" is ticked; menus are grouped by family with short labels and the chosen model's note/retirement date beneath. A saved model outside the list is flagged "retired or unavailable" and keeps working until changed.
+- **Retirement table** (`RETIREMENT` in backend/modelCatalog.js, from platform.claude.com model deprecations, checked 2026-10-12): Haiku 4.5 2026-10-15, Opus 4.5 2026-11-24, Sonnet 4.5 2026-11-30 (deprecated), Opus 4.6 2027-02-05, Sonnet 4.6 2027-02-17, Opus 4.7 2027-04-16, Opus 4.8 2027-05-28; Opus 4/4.1 and Sonnet 4 retired. Update it when Anthropic announces changes.
+- **Upgrade (marker `ai_models_upgrade_2026_10`)**: on first start, Quick → `claude-haiku-5-5` if it was an older Haiku, Generation → `claude-sonnet-5-5` if an older Sonnet, and any pinned task on a soon-retiring model → its family's 5.5. Defaults are now Haiku 5.5 / Sonnet 5.5; the enricher's fallback is Haiku 5.5.
+
+## Request consistency
+All server and assistant calls go through `ai.complete()` / `ai.request()`: anthropic-version 2023-06-01, no beta headers (web search is the `web_search_20250305` tool), text joined from all text blocks, `stop_reason` returned and logged on max_tokens. The Python enricher keeps its own client with the same header and text handling.
+
+## OpenAI (added October 12, 2026; full parity same day)
+- Key: `openai_api_key` (or `OPENAI_API_KEY`), on the AI Models tab; Test button per provider (`/api/settings/test/anthropic?model=<any id>` pings any provider).
+- Model ids carry `openai:` (e.g. `openai:gpt-6-luna`). Menus: `GET /api/ai/models` merges Anthropic (`currentModels`) and OpenAI (`currentOpenAIModels`: `gpt-<version>[-astra|sol|terra|luna|mini|nano]`, version ≥ 5.4; newest major version by default; `OPENAI_PRICES` from developers.openai.com Oct 2026). Both providers are listed together, grouped Fast / Balanced / Most capable / Premium.
+- **Adapter** (`backend/ai/openaiAdapter.js`): Claude Messages body → OpenAI Responses (`input` items, `instructions`, `max_output_tokens`, `store:false`; function tools from `input_schema`; Claude web search → `{type:'web_search'}`; tool_choice auto/any/tool → auto/required/function; tool results → `function_call_output` with tool images sent as a following user message; `include: reasoning.encrypted_content` when tools are present). Reply → Claude shape: text blocks (url_citation spans removed, sources returned as a synthetic `web_search_tool_result`), `tool_use` blocks from function calls, `stop_reason` tool_use / end_turn / max_tokens, usage with cached tokens and web-search count. The reply also carries a hidden `openai_items` block; when the assistant turn is sent back, those items (reasoning, function calls, messages, searches) are replayed exactly. `anthropicSafe()` strips hidden/synthetic blocks before any Claude request (escalation can switch provider mid-question).
+- Enricher: `scripts/enricher.py` `OpenAIClient` when the Enricher model starts with `openai:`.
+- `PROVIDER_FEATURES`: both providers have `tools` and `web_search`; `routingProblems` still guards future providers.
+
+## Google Gemini (added October 20, 2026; web lookups only)
+- Why: Google's search finds the reviews and explainers other searches miss (tests: Lois Lane's powers; 100 Bullets #49). Paid tier: 5,000 grounded searches a month free, then $14 per 1,000; content not used to improve Google's products. Plan and test results: project doc FOLLOW_UPS.md, "Gemini Web Lookup".
+- Ids carry `gemini:` (e.g. `gemini:gemini-3.5-flash-lite`). Key: setting `gemini_api_key` or env `GEMINI_API_KEY` (Settings → AI Models → Providers). Menus: `currentGeminiModels` from `GET /v1beta/models`, Flash-Lite / Flash / Pro 3.x that support Grounding with Google Search (3.1 Flash-Lite does not); `GEMINI_PRICES` from ai.google.dev Oct 2026 (Flash doubles Jan 2027).
+- Offered only for tasks marked `gemini: true` in `aiModels.js` (Web Search, Recap – Summary Writer, Recap – Page Reader, Top Shelf – Category Check); `routingProblems` refuses Gemini anywhere else, including as a top-level model. Images are supported (page reading).
+- **Adapter** (`backend/ai/geminiAdapter.js`): Claude Messages body → `models/<id>:generateContent` (`x-goog-api-key`): web search → `googleSearch`, web fetch → `urlContext`, `output_config` json_schema → `responseMimeType` + `responseJsonSchema`, `thinkingLevel: low`, blocked domains named in the system instruction (Google Search has no domain filter). A 400 about an optional feature drops thinking, then the schema (asked for in words), and retries. Reply → Claude shape: `server_tool_use` blocks for queries and url_context pages, a `web_search_tool_result` with the grounding sources (Google redirect links resolved to the real pages, also in the text), usage with search count. Searches cost 0 in estimates (free allowance).
+- **Comic Book Guy's web_lookup tool** (2026-10-20): offered to the Quick Answers role whatever model runs it (Claude or OpenAI), when Comic Book Guy's web search setting is on. One plain question per reader question → Web Search (see Lookups) with up to 2 searches → notes + sources; the sources join the answer's links. Replaces the gatekeeper's built-in search (removed in the reader 2026-10-20). Long Answers and the Reading List Generator keep their built-in search.
+- Recap lookups stay on Haiku (`recap_web`, "Recap – Web Lookup"): in the 2026-10-20 comparison (12 issues with page-read summaries) Gemini was ~35× cheaper but rated 5 incomplete summaries as complete, and returned no search queries when asked for structured output (likely answered from memory).
+
+
+## Lookups (October 20, 2026)
+Three settings in Settings → AI Models → Lookups, each one job. Each default is a preference list: the first model whose provider key is saved is used (`aiModels.js` `fallback` arrays, `createModelRouting(getSetting, { hasProvider })`), so a first deploy works with whatever keys the admin enters, and adding a Gemini key later moves Web Search to Gemini unless the admin chose a model. The page shows the default and why ("Gemini key saved", "no Gemini key saved").
+| Setting (task id) | Job | Default order |
+|---|---|---|
+| Web Search (`web_lookup`) | Finds pages; returns notes and sources. Comic Book Guy's `web_lookup` tool (detail short) and step 1 of recap lookups (detail full). `backend/ai/webLookup.js`. | Gemini 3.8 Flash → Haiku → Luna |
+| Recap – Summary Writer (`recap_web`) | Reads the pages Web Search found (Omnibus downloads them with `ai/pageReader.js`) and writes the issue summary with a confidence rating; does not search. Also writes story-arc summaries. | Haiku → Luna |
+| Recap – Page Reader (`recap_reader`) | Reads the comic's own pages when the web was not good enough. | Gemini 3.8 Flash → Sol → Sonnet |
+- Recap lookup (`recaps/synopses.js viaWeb`): Web Search (plain question; must actually search: `grounded`) → the best 1–2 found pages, wiki/recap pages for the issue first → Summary Writer (no tools) → trust check → else Page Reader. When Web Search did not search (after one retry) or nothing it found could be read, nothing is found and the issue goes to the Page Reader (the Summary Writer no longer searches itself; trimmed 2026-10-21).
+- Story-arc (stretch) summaries use the same two steps since 2026-10-21 (`recaps/arcs.js twoStep`, Web Search detail `arc`); when that finds nothing usable the stretch is marked missing and retried after 30 days.
+- Trust rule (app logic, not a setting): high confidence from a wiki or a source covering the ending; or (since 2026-10-20) medium from a wiki/recap page for that exact issue (`isIssuePage`: fandom "…_Vol_6_34", TV Tropes "Recap/…") that covers the ending. All medium results that missed key events in testing came from reviews.
+- Results 2026-10-20 (14 issues; `_backups/db/lookup-compare-2026-10-20-20-51.json`, `page-compare-2026-10-20-20-51.json`): two-step with Gemini 3.8 Flash finding and its source-backed notes (grounding supports) used by the writer: 4.4¢ for 14 lookups, 5 trusted, no fallbacks (Haiku searching itself: ~2.5¢ each). Page reading on three issues the user has read: Gemini 3.8 Flash 3.3–4.0¢ vs Sol 6.0–7.1¢, as accurate or more (Absolute Green Lantern #13: Gemini had Shade's death, Sol did not). Gemini Flash prices double 2027-01-01 (page read then ~Sol's cost): recheck then. Gemini is offered only for tasks marked `gemini: true` (lookups, Page Reader, Category Check).
+- The comparison routes used for these tests (lookup-test, lookup-compare, page-compare) were removed 2026-10-21. For per-phase costs use `GET /api/admin/ai/calls?minutes=N` (writes `_backups/db/ai-calls-<time>.json`).
+
+## Comic Book Guy routing (October 12, 2026)
+Quick Answers is the first stop for every question and picks one of three paths:
+1. **Answer itself**: facts, short story questions, recommendations, app help, and any reading-order question a saved reading order already covers. It names the saved Timeline event, Top Shelf run, Essentials or public list and links it; it does not list its issues.
+2. **hand_off → Reading List Generator**: a reading order is wanted and nothing saved covers it, or a saved one covers only part (the matches are passed along and used as event/canon_run entries).
+3. **hand_off → Long Answers**: questions that need depth.
+
+Rules:
+- Only the generator makes lists. Quick's and Long Answers' `respond` has no `proposed_list`, and any list they return is dropped.
+- Quick must call `search_reading_lists` before handing a reading-order question to the generator. Quick chooses the search terms (correct spelling, proper name, no filler) and may search twice.
+- `search_reading_lists` (and `search_events`, `search_top_shelf`, and `library_search` when exact words find nothing) use `backend/ai/fuzzyMatch.js`: filler words removed, word-level edit distance, prefixes and plurals, split/joined names, trigram similarity; each result is marked exact, close or partial. Private lists of other users are never searched.
+- Straight to the generator, skipping Quick: revising a list he just proposed, and any question on a reading list page. Personal/own-list requests go through Quick (so a shared hero identity can be clarified first), with a note to hand off once the scope is clear.
+- Shared hero identities (the Flash, Green Lantern, Spider-Man, Captain Marvel…): for reading orders only, Quick asks one in-character question when the character or scope is genuinely unclear, then carries the answer into the search and hand-off.
+- A hand-off restarts the chosen model on the conversation as asked (not Quick's tool calls, which another provider could not read), plus a note with the reason and the saved matches. Saved ids Quick never saw are dropped.
+- `route` (quick, reading_list, quick → reading_list, quick → long_answer) is in the reply, the log line, the usage job detail and the test set.
+- Test set additions: "whats the reading order for blakest nite" (must point to the saved event from Quick, no list) and "What is the read order for DC's Absolute series?" (starts at Quick; saved order or list).
+
+## Comic Book Guy personality (October 12, 2026)
+- Lives in `backend/assistant.js` `systemPrompt()`, CHARACTER through the voice examples. Maximal character, not maximal jokes; seven short varied examples; no stock openers or sign-offs; "Worst. ___. Ever." sparingly (generally once per conversation).
+- NERD REFERENCES section: he actively compares across franchises (Star Trek, Star Wars, Doctor Who, Babylon 5, Battlestar Galactica, For All Mankind, Tolkien/Jackson/Rings of Power, D&D, Transformers 1986), specific and accurate; backstory (folklore and mythology thesis, LoTR in Klingon; NCC-1701 plate). The Green Lantern movie example now shows a cross-franchise comparison.
+- Length comes from the role (`LENGTH_RULE`): Quick 60–150 words (pages up to ~300), Long Answers up to ~600, generator ~150 around the list.
+- Recent phrases: each live answer's opening (first 8 words) and ending (last sentence, 12 words) go in `assistant_phrases` (40 kept per reader). The next question carries the reader's last 8 of each (never other readers': excerpts can name their collections) as a RECENT CHARACTER PERFORMANCE note — a nudge, not a ban. Test runs and page tours are not recorded.
+- Stock phrases ("I am forced to concede", "Kindly refrain", "Verdict"…) used anywhere in an answer are also tracked and listed with counts in the same note. "Worst. ___. Ever." is deliberately not tracked; its own prompt section governs it. Franchises he compares things to (Star Trek, Star Wars, Doctor Who, Babylon 5, BSG, For All Mankind, Tolkien, D&D, Transformers, Firefly, X-Files, Dune) are detected the same way and listed with "reach for a different one when it fits as well."
+- Links: IDs or "Refs:" lines the model writes into the answer are removed; any of those ids it actually found become links. Automatic links for a series name shared by several library volumes (Green Lantern, Starman) are made only when the answer gives that volume's year next to the name.
+
+## Usage tracking (Settings → AI Models → Usage)
+- **Calls** (`ai_calls`: at, day, task, tier, provider, model, source live/test, ok, error, ms, tokens in/out/cached, web searches, `job_id`) are written by `aiClient.request` (`onCall` → `recordAiCall`) and by `scripts/enricher.py` (`log_ai_call`).
+- **Jobs** (`ai_jobs`: one per piece of work — a description, a genre list, an event, a re-annotation, a Top Shelf generation, an annual pick, one Comic Book Guy answer however many calls it took). `recordAiCall` upserts the job (calls, failed calls, summed ms; provider/model of the first call). The code that used the reply sets the **outcome** with `setAiJobOutcome` (Python: `set_ai_job_outcome`): good = `ok`, `matched`, `written`; problems = `error`, `bad_json`, `truncated`, `cut_off`, `no_list`, `unknown`, `no_match`. No outcome = `ok`, or `error` if a call failed. Sites: annual validator (matched / no_match / bad_json), annual match picker (from the `issue_id` reply), Timeline generate (ok or truncated, with issue counts; bad_json) and re-annotate, Top Shelf (ok / truncated / bad_json), enricher description (written / unknown) and genres (written / no_match), Comic Book Guy (ok / cut_off / no_list).
+- `GET /api/ai/usage?days=&source=live|test|all`: per group and per provider — jobs, calls, total cost, cost per job and per 1,000 jobs, good rate and problem counts, median and 90th-percentile job time, tokens, searches. Groups: `byTask` (shown first), `byTier`, `byModel` (display names via `modelCatalog.displayName`), `daily` cost per provider, active `trials`, and `connectionTests` (kept out of the tables). Cost is estimated at read time (`modelCatalog.estimateCost`). `POST /api/ai/usage/reset` sets `ai_usage_since`.
+- **Trial split**: per task `ai_trial_<id>` = `{ model, share }` (10/25/50%). `aiRouting.pick(task)` chooses per job (server `complete()` calls, each Comic Book Guy question, each enricher run via `buildEnricherConfig`). Set on the AI Models tab under each task ("+ Trial split").
+- Comic Book Guy's own `ai_usage` table (per-question log, daily limit, monthly cap) is unchanged; his estimates price OpenAI models too.
+- **Side-by-side tests:** the Comic Book Guy test set runs on Current models, Claude or OpenAI (`POST /api/assistant/selftest {provider}`, `modelCatalog.equivalentModel`: Haiku↔Luna, Sonnet↔Sol, Opus↔Astra); latest run per label shown in columns. Test calls are logged with source `test`.
+
+## Adding another provider
+Model ids with a prefix (`<provider>:…`) are routed by `providerOf`; `request()` rejects unknown providers with `AI_PROVIDER_UNAVAILABLE`. To add one: provider key on the AI Models tab, a branch in `request()` that maps the Messages-style body, and the provider's models in the menu. Tool-using tasks (web search, assistant tools) need provider equivalents.

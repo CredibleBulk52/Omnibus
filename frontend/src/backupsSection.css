@@ -1,0 +1,23 @@
+/* Settings › Backups (pages/BackupsSection.jsx) */
+.bk .bk-h { margin: 22px 0 8px; font: 700 0.95rem 'Boogaloo', cursive; letter-spacing: .03em; color: var(--text-primary); }
+.bk .bk-dir { margin-left: 8px; font: 0.72rem var(--font-mono, monospace); color: var(--text-muted); font-weight: 400; }
+.bk .bk-help { margin: 0 0 10px; font-size: 0.82rem; line-height: 1.5; color: var(--text-muted); max-width: 640px; }
+.bk .bk-help code { font-size: 0.78rem; }
+.bk .bk-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.bk .bk-row .adm-input { flex: 1 1 220px; min-width: 0; max-width: 360px; }
+.bk .bk-status, .bk .bk-ok, .bk .bk-warn, .bk .bk-error, .bk .bk-banner, .bk .bk-empty { margin: 8px 0; font-size: 0.84rem; line-height: 1.5; }
+.bk .bk-status, .bk .bk-empty { color: var(--text-muted); }
+.bk .bk-ok { color: var(--adm-ok, #4caa60); }
+.bk .bk-warn { color: var(--adm-warn, #e0a040); }
+.bk .bk-error { color: var(--adm-err, #e06060); }
+.bk .bk-banner { padding: 10px 14px; border: 2px solid var(--om-highlight); background: color-mix(in srgb, var(--om-highlight) 12%, transparent); color: var(--text-primary); }
+.bk .bk-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+.bk .bk-table th { text-align: left; font-weight: 600; color: var(--text-muted); padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); }
+.bk .bk-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); vertical-align: middle; }
+.bk .bk-actions { text-align: right; white-space: nowrap; }
+.bk .bk-actions .adm-btn { margin-left: 6px; }
+.bk .bk-kind { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 0.74rem; background: var(--adm-g2, #2a2a36); color: var(--text-primary); }
+.bk .bk-kind--pinned { background: color-mix(in srgb, var(--om-highlight) 25%, transparent); }
+.bk .bk-kind--before-restore { background: color-mix(in srgb, var(--om-secondary) 25%, transparent); }
+.bk .bk-note { font-size: 0.74rem; color: var(--text-muted); }
+@media (max-width: 600px) { .bk .bk-table th:nth-child(3), .bk .bk-table td:nth-child(3) { display: none; } .bk .bk-actions .adm-btn { margin: 2px 0 2px 4px; } }

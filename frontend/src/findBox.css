@@ -1,0 +1,15 @@
+/* Page filter boxes ("Find…", 2026-10-26): one look on Series, Timeline, Top Shelf,
+   Essentials and Reading Lists. They narrow what is on the page. The top-bar search
+   stays different on purpose: it searches the whole library. Doubled class names
+   win over each page's older input rules. */
+.find-box.find-box { box-sizing:border-box; background:var(--om-base); color:var(--om-text); border:2px solid #000; border-radius:0; box-shadow:inset 0 0 0 1px rgba(255,255,255,0.14); padding:8px 12px; font:15px 'DM Sans', system-ui, sans-serif; letter-spacing:normal; min-height:40px; }
+.find-box.find-box::placeholder, .find-box.find-box-wrap > input::placeholder { color:color-mix(in srgb, var(--om-text) 55%, var(--om-base)); opacity:1; }
+.find-box.find-box:focus, .find-box.find-box-wrap:focus-within { outline:none; box-shadow:inset 0 0 0 1px var(--td-yellow), 0 0 0 2px color-mix(in srgb, var(--td-yellow) 30%, transparent); }
+.find-box.find-box-wrap { display:flex; align-items:center; gap:8px; padding:0 10px; color:color-mix(in srgb, var(--om-text) 55%, var(--om-base)); }
+.find-box.find-box-wrap > input { flex:1; min-width:0; background:transparent; border:0; outline:none; color:var(--om-text); font:inherit; padding:8px 0; }
+@media (pointer:coarse) { .find-box.find-box { min-height:44px; } }
+
+/* The card the find box sits on ("find bar", 2026-10-27): Top Shelf's look, shared by Timeline,
+   Top Shelf (and its category pages), Essentials and Reading Lists. Sticks under the top bar. */
+.find-bar.find-bar { position:sticky; top:var(--topbar-h, 52px); z-index:20; box-sizing:border-box; display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:0 0 24px; padding:10px 12px; background:var(--om-base); border:3px solid #000; box-shadow:4px 4px 0 #000; }
+.find-bar.find-bar .find-box { flex:1 1 220px; min-width:0; }

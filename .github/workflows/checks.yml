@@ -1,0 +1,39 @@
+name: Checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+      - name: Native notice checks
+        run: node --test scripts/check-native-notices.test.cjs
+      - name: Install archive test tools
+        run: sudo apt-get update && sudo apt-get install -y p7zip-full libarchive-tools unrar-free
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+      - name: Backend tests
+        run: npm test --prefix backend
+      - name: Frontend helper tests
+        run: npm run test:helpers --prefix frontend
+      - name: Frontend component tests
+        run: npm test --prefix frontend
+      - name: Frontend production build
+        run: npm run build --prefix frontend
