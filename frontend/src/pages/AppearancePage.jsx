@@ -19,7 +19,7 @@ export default function AppearancePage() {
       <PageHeader title="APPEARANCE" borderSeed={3} />
       <div className="ap-body">
         <section className="ap-section">
-          <h2>Presets</h2><p className="ap-note">Ten comic-inspired designs. Choose a theme to apply its colors and, when an admin has uploaded it, its character art; reading pages can keep their own character palettes.</p>
+          <h2>Presets</h2><p className="ap-note">Ten comic-inspired designs. Choose a theme to apply its colors and banner art; reading pages can keep their own character palettes.</p>
           {PRESET_GROUPS.map(g => (
             <div key={g.id} className="ap-preset-group">
               {g.label && <h3 className="ap-preset-group-title">{g.label}</h3>}
@@ -42,7 +42,7 @@ export default function AppearancePage() {
 
         <section className="ap-section">
           <h2>Your colours</h2>
-          <label className="ap-switch ap-decoration-switch"><input type="checkbox" role="switch" checked={decorations} disabled={!themeId} onChange={e=>setAppearance({decorations:e.target.checked})}/><span><b>Banner artwork</b><small>Show the character art an admin uploaded for the selected theme (Settings › Branding). Colors stay in place when artwork is off.</small></span></label>
+          <label className="ap-switch ap-decoration-switch"><input type="checkbox" role="switch" checked={decorations} disabled={!themeId} onChange={e=>setAppearance({decorations:e.target.checked})}/><span><b>Banner artwork</b><small>Show the selected theme's banner art, or character art an admin uploaded for it. Colors stay in place when artwork is off.</small></span></label>
           <p className="ap-note">Changes show straight away across the app.</p>
           {colors.action && <button type="button" className="btn btn-ghost ap-action-reset" onClick={()=>{const {action,...linked}=colors;setAppearance({colors:linked});}}>Use Secondary for actions</button>}
           <div className="ap-roles">

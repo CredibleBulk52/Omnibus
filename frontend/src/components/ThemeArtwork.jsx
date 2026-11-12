@@ -1,15 +1,24 @@
 import React from 'react';
 import { useBranding, assetFor, useBrandingImage } from './Branding';
 import { characterThemes } from '../themes/characterThemes';
+import GenericThemeArtwork from './ThemeArtworkGeneric';
 
-// Banner artwork for an app theme (2026-11-11). Omnibus ships no character emblems: a theme
-// shows the character art an admin uploaded under the theme's name (Settings › Branding,
-// kind "character", e.g. "Superman"), the same art Essentials cards use. Nothing uploaded,
-// nothing drawn: the theme keeps its colours.
-export default function ThemeArtwork({ theme }) {
+// Banner artwork for an app theme. In order (2026-11-12):
+// 1. an installation's own ThemeArtwork.local.jsx (git-ignored, never published);
+// 2. character art an admin uploaded for the theme (Branding, kind "character");
+// 3. the built-in generic scene (ThemeArtworkGeneric.jsx: no characters or logos).
+const artworkModules = import.meta.glob('./ThemeArtwork.local.jsx', { eager: true, import: 'default' });
+const LocalArtwork = artworkModules['./ThemeArtwork.local.jsx'];
+
+export default function ThemeArtwork({ theme, span }) {
+  if (LocalArtwork) return <LocalArtwork theme={theme} span={span} />;
+  return <UploadedArtwork theme={theme} span={span} />;
+}
+
+function UploadedArtwork({ theme, span }) {
   const assets = useBranding();
-  const name = characterThemes.find(t => t.id === theme)?.name;
-  const url = useBrandingImage(name ? assetFor(assets, 'character', name) : null);
-  if (!url) return null;
+  const character = characterThemes.find(t => t.id === theme)?.character;
+  const url = useBrandingImage(character ? assetFor(assets, 'character', character) : null);
+  if (!url) return <GenericThemeArtwork theme={theme} span={span} />;
   return <image href={url} x={-120} y={12} width={240} height={216} preserveAspectRatio="xMidYMid meet" opacity=".92" />;
 }

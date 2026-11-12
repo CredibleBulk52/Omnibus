@@ -13,7 +13,7 @@ export const COLOR_ROLES = [
   { key: 'highlight', label: 'Highlight', hint: 'Highlights, active tabs and titles' },
   { key: 'text', label: 'Text', hint: 'Main text' },
 ];
-export const PRESET_GROUPS = [{id:'DC',label:'DC'},{id:'Marvel',label:'Marvel'}];
+export const PRESET_GROUPS = [{id:'all',label:null}];   // one list, no publisher headings (2026-11-12)
 const KEY = 'omnibus.appearance';
 const VAR = { base: '--om-base', secondary: '--om-secondary', highlight: '--om-highlight', text: '--om-text' };
 const HEX = /^#[0-9a-f]{6}$/i;

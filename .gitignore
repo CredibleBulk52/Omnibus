@@ -51,3 +51,4 @@ __pycache__/
 # Scratch work files (databases, archives); kept out of git
 _work/*
 !_work/duplicate-review.html
+/frontend/src/components/ThemeArtwork.local.jsx
