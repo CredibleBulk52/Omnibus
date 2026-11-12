@@ -225,3 +225,13 @@ test('deletion reservations reject a scan observed before the deletion intent', 
   assert.throws(() => f.journal.commitScan(token, () => assert.fail('Must not recreate a reserved book')), code('STALE_SCAN'));
   assert.equal(f.db.prepare('SELECT count(*) AS n FROM fixture_books').get().n, 2);
 });
+test('a long download name still gets working copy names the filesystem accepts', t => {
+  const { journal } = fixture(t);
+  const long = '/downloads/omnibus/' + 'G'.repeat(211) + '.cbz';
+  const a = journal.begin(request({ requestKey: 'long-name', intent: 'initial_arrival', bookId: null, expectedGeneration: undefined, sourcePath: long, destinationPath: '/comics/Series/A 001 (2016).cbz' }));
+  const { staged, backup } = a.operation.payload.artifacts;
+  assert.equal(path.dirname(backup), '/downloads/omnibus');
+  assert.ok(Buffer.byteLength(path.basename(backup)) <= 255, backup);
+  assert.equal(path.basename(backup), `omnibus-${a.operation.id}.backup`);
+  assert.equal(staged, `/comics/Series/A 001 (2016).cbz.omnibus-${a.operation.id}.staged`);
+});

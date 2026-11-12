@@ -113,6 +113,14 @@ function initializeWorkJournal(db, pathPolicy) {
 
 // readBook is a trusted synchronous adapter to the existing scanned/stable-ID records.
 // This module reserves IDs supplied by that authority; it does not allocate/reclaim library IDs.
+// Working copies sit beside the file they belong to. A long download name plus the suffix can pass
+// the 255-byte file name limit (2026-11-12: a 215-character name failed as "Storage is unavailable"),
+// so a name that would not fit drops to the short form in the same folder.
+function artifactPath(file, id, kind) {
+  const suffix = `.omnibus-${id}.${kind}`;
+  if (Buffer.byteLength(file.split(/[\\/]/).pop() + suffix) <= 255) return file + suffix;
+  return file.slice(0, Math.max(file.lastIndexOf('/'), file.lastIndexOf('\\')) + 1) + suffix.slice(1);
+}
 function createWorkJournal({ db, ownerId, pathPolicy, readBook, now = Date.now, leaseMs = 60000 }) {
   string(ownerId, 'ownerId');
   const normalize = normalizer(pathPolicy);
@@ -238,7 +246,7 @@ function createWorkJournal({ db, ownerId, pathPolicy, readBook, now = Date.now, 
       }
       if (bookId) checkBook(bookId, expectedGeneration, source);
       const id = randomUUID();
-      const artifacts = !directory && destination ? { staged: destination + `.omnibus-${id}.staged`, backup: source + `.omnibus-${id}.backup` } : null;
+      const artifacts = !directory && destination ? { staged: artifactPath(destination, id, 'staged'), backup: artifactPath(source, id, 'backup') } : null;
       const resources = paths([{ path: source, scope: directory ? 'tree' : 'file' },
         ...(destination ? [{ path: destination, scope: directory ? 'tree' : 'file' }] : []),
         ...(replacement ? [{ path: replacement.path, scope: 'file' }] : []),
