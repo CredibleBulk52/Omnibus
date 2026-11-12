@@ -53,7 +53,7 @@ Shown with public-domain comics from the 1940s and 1950s (Bulletman, Captain Sci
 - **Back up your comics first.** Omnibus can write metadata into your archives and file downloads into your folders. Try it on a copy of your library before pointing it at the real one.
 - **Comic Vine is slow on purpose.** Matching uses the free Comic Vine API, which limits how often you can ask. The first pass over a large library can take hours, and Omnibus paces itself to stay within the limit.
 - **It comes with no comics.** The download features only connect to services you set up yourself. What you download is your responsibility; follow the law where you live.
-- **Keep it private, or put it behind HTTPS.** No one has done a security audit. Change the admin password, use a reverse proxy with HTTPS if it's reachable from outside your home, and keep `JWT_SECRET` and `OMNIBUS_SECRET` private.
+- **Keep it private, or put it behind HTTPS.** It has had a [focused security review](docs/SECURITY_REVIEW.md) but no independent audit. Change the admin password, use a reverse proxy with HTTPS if it's reachable from outside your home, and keep `JWT_SECRET` and `OMNIBUS_SECRET` private.
 - **Support is best effort.** Issues and suggestions are welcome. It's MIT-licensed and comes with no warranty.
 
 ## Quick start

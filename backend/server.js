@@ -3,7 +3,6 @@ const authSecurity = require('./authSecurity');
 const readerSecurity = require('./readerSecurity');
 const JWT_SECRET = authSecurity.validateSecret(process.env.JWT_SECRET);
 const express = require('express');
-const cors = require('cors');
 const axios = require('axios');
 // Anthropic errors: log the API's own message (status alone hid the cause of
 // the 2026 "Request failed with status code 400" generate failures).
@@ -116,7 +115,13 @@ coordinateLibraryRoutes(app, libraryAccess, {readScope: (route,req) => {
   return null; // Disk covers and unknown archive consumers stay conservative.
 }});
 app.set('trust proxy', 1); // Trust reverse proxy headers (X-Forwarded-For, X-Forwarded-Proto)
-app.use(cors());
+// Security review 2026-11-12: no cross-origin API access (the app and API share one origin;
+// the dev server proxies /api), and basic browser protections on every response.
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');      // never run an upload or file as a script or page
+  res.set('X-Frame-Options', 'SAMEORIGIN');          // no framing by other sites (clickjacking)
+  next();
+});
 // Event generation and the guide-page test may carry a pasted guide page (up to ~60k characters kept).
 app.use((req, res, next) => (/^\/api\/events\/(generate|guide-page\/test)$/.test(req.path) ? express.json({ limit: '1mb' }) : express.json())(req, res, next));
 app.use(require('./metadata/requestDiagnostics').metadataRequestDiagnostics({logger:{warn:(...args)=>logger.warn(...args)}}));
@@ -15568,12 +15573,24 @@ app.get('/api/debug/locg-series-probe', async (req, res) => {
 // ─── Auth routes ──────────────────────────────────────────────────
 
 // POST /api/auth/login — local username/password login
+const loginLimiter = authSecurity.createLoginLimiter();
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body || {};
   if (!authSecurity.validCredentials(username, password)) return res.status(400).json({ error: 'Valid username and password required' });
+  // Too many failed attempts: refuse before checking the password (security review 2026-11-12).
+  const wait = loginLimiter.retryAfter(username, req.ip);
+  if (wait > 0) {
+    logger.warn('auth', 'Sign-in refused after repeated failures', { username: String(username).slice(0, 64), ip: req.ip });
+    res.set('Retry-After', String(wait));
+    return res.status(429).json({ error: `Too many failed sign-ins. Try again in ${Math.ceil(wait / 60)} minute${wait > 60 ? 's' : ''}.` });
+  }
   try {
     const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.toLowerCase().trim());
-    if (!user || !user.password_hash || !await verifyPassword(password, user.password_hash)) return res.status(401).json({ error: 'Invalid credentials' });
+    if (!user || !user.password_hash || !await verifyPassword(password, user.password_hash)) {
+      loginLimiter.fail(username, req.ip);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    loginLimiter.succeed(username);
     // Password verification yields: a concurrent reset/deletion must not mint a fresh session.
     const current = db.prepare('SELECT password_hash, auth_version FROM users WHERE id = ?').get(user.id);
     if (!current || current.password_hash !== user.password_hash || current.auth_version !== user.auth_version) return res.status(401).json({ error: 'Invalid credentials' });

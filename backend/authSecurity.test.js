@@ -20,7 +20,7 @@ function handler(marker, globals = {}) {
   assert.ok(start >= 0 && end > start);
   let route;
   const register = (...args) => {route = args.at(-1)};
-  vm.runInNewContext(source.slice(start,end+4), {app:{post:register,get:register,patch:register}, requireAdmin(){},requireAuth(){},authSecurity:security,logger:{error(){}},...globals});
+  vm.runInNewContext(source.slice(start,end+4), {app:{post:register,get:register,patch:register}, requireAdmin(){},requireAuth(){},authSecurity:security,logger:{error(){},warn(){}},loginLimiter:security.createLoginLimiter(),...globals});
   return route;
 }
 function signed(payload, header = {alg:'HS256',typ:'JWT'}) {
@@ -161,4 +161,29 @@ test('central API guard blocks non-admins on mixed-case admin, debug and import 
   let reached = false;
   guard({path:'/series',method:'GET',user:{role:'user'}},response(),()=>{reached=true});
   assert.equal(reached,true);
+});
+test('login limiter counts failures per account and per address, and expires them', () => {
+  let now=0;const limiter=security.createLoginLimiter({perUser:3,perAddress:5,windowMs:60000,now:()=>now});
+  for(let i=0;i<3;i++){assert.equal(limiter.retryAfter('Admin','1.1.1.1'),0);limiter.fail('Admin','1.1.1.1');now+=1000;}
+  assert.ok(limiter.retryAfter('admin','9.9.9.9')>0,'the account is limited from any address');
+  assert.equal(limiter.retryAfter('other','2.2.2.2'),0);
+  limiter.succeed('ADMIN ');assert.equal(limiter.retryAfter('admin','2.2.2.2'),0,'a correct password clears the account count');
+  for(const name of ['a','b'])limiter.fail(name,'1.1.1.1');
+  assert.ok(limiter.retryAfter('fresh','1.1.1.1')>0,'an address trying many accounts is limited');
+  const wait=limiter.retryAfter('fresh','1.1.1.1');assert.ok(wait>0&&wait<=60);
+  now+=60001;assert.equal(limiter.retryAfter('fresh','1.1.1.1'),0,'failures expire after the window');
+  const small=security.createLoginLimiter({maxKeys:10});for(let i=0;i<50;i++)small.fail('u'+i,'a'+i);
+});
+test('login refuses repeated failures with 429 before checking the password', async t => {
+  const db=fixture(t),tokens=security.createTokens({db,secret});let checks=0;
+  const login=handler("app.post('/api/auth/login'",{db,jwtSign:tokens.sign,loginLimiter:security.createLoginLimiter({perUser:2}),verifyPassword:async()=>{checks++;return false}});
+  for(let i=0;i<2;i++){const res=response();await login({body:{username:'admin',password:'wrong'},ip:'10.0.0.5'},res);assert.equal(res.code,401);}
+  const res=response();await login({body:{username:'admin',password:'wrong'},ip:'10.0.0.5'},res);
+  assert.equal(res.code,429);assert.match(res.body.error,/Too many failed sign-ins/);assert.equal(checks,2,'no password check once limited');
+});
+test('API is same-origin only and responses carry basic browser protections', () => {
+  assert.equal(/app\.use\(cors\(/.test(source), false, 'no open CORS');
+  const start = source.indexOf("res.set('X-Content-Type-Options', 'nosniff')");
+  assert.ok(start > 0 && start < source.indexOf("app.use('/api', (req, res, next) => {"), 'headers set before any API route');
+  assert.ok(source.includes("res.set('X-Frame-Options', 'SAMEORIGIN')"));
 });

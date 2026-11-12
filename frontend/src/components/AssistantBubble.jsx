@@ -380,7 +380,7 @@ function HisReply({ msg, onGo, onRate, onPick, onSetup, onCancelSetup, onBoxSave
       {msg.sources?.length > 0 && (
         <div className="cbg-sources">
           <span>Checked:</span>
-          {msg.sources.map(src => {
+          {msg.sources.filter(src => /^https?:\/\//i.test(String(src.url || ''))).map(src => {   // web links only (2026-11-12)
             let host = src.url; try { host = new URL(src.url).hostname.replace(/^www\./, ''); } catch {}
             return <a key={src.url} href={src.url} target="_blank" rel="noopener noreferrer" title={src.title}>{host}</a>;
           })}

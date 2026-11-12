@@ -1036,7 +1036,7 @@ function IssueRow({ issue, seriesId, selectMode = false, selected = false, onSel
         toast(`Download queued for ${issueLabel} — watch progress bottom-left`, 'success');
       } else {
         setGcGrabbing(prev => ({ ...prev, [downloadUrl]: 'error' }));
-        toast(`DDL failed for ${issueLabel}`, 'error');
+        toast(d.error ? `DDL failed for ${issueLabel}: ${d.error}` : `DDL failed for ${issueLabel}`, 'error');
       }
     } catch (e) {
       setGcGrabbing(prev => ({ ...prev, [downloadUrl]: 'error' }));
@@ -1650,11 +1650,17 @@ function SeriesCard({ series, onRemove, onTypeToggle }) {
   const grabGc = async (downloadUrl, filename) => {
     setGcDownloading(prev => ({ ...prev, [downloadUrl]: true }));
     try {
-      await fetch('/api/getcomics/download', {
+      const r = await fetch('/api/getcomics/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ seriesId: series.id, downloadUrl, filename }),
       });
+      if (!r.ok) {   // e.g. an address that is not on the public internet (2026-11-12)
+        const d = await r.json().catch(() => ({}));
+        setGcDownloading(prev => ({ ...prev, [downloadUrl]: 'error' }));
+        toast(d.error ? `Pack download failed to start: ${d.error}` : 'Pack download failed to start', 'error');
+        return;
+      }
       setGcDownloading(prev => ({ ...prev, [downloadUrl]: 'done' }));
       toast('Pack download started — watch progress bottom-left', 'success');
     } catch {

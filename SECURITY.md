@@ -20,6 +20,8 @@ Only the current `latest` image and the `main` branch get fixes. Older image tag
 
 ## Known limits
 
-- No one has done a security audit of Omnibus.
+- Omnibus has had a focused security review ([docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md)) but no independent audit.
+- The container runs as root. Keep its folders limited to your comics, downloads and backups.
+- By default every signed-in user can use the Download Manager. To limit it to admins, turn on **Restrict Download Manager to admins** in Settings › People › Access Control.
 - API keys saved in the app are encrypted with `OMNIBUS_SECRET`. Anyone with that secret and the database can read them.
 - Omnibus is designed for a household behind a reverse proxy with HTTPS. Change the default `admin` password before exposing it to a network you don't control.

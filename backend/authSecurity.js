@@ -81,6 +81,37 @@ function createOidcState({ now = Date.now, maxPending = 1000 } = {}) {
   }
   return { begin, consume };
 }
+// Failed local sign-ins (security review 2026-11-12). Two windows: one per account
+// (stops guessing one password from many addresses) and one per client address
+// (stops trying many accounts). Kept in memory; a restart clears it.
+function createLoginLimiter({ perUser = 20, perAddress = 30, windowMs = 15 * 60 * 1000, maxKeys = 10000, now = Date.now } = {}) {
+  const failures = new Map();   // key → timestamps of recent failures
+  const keys = (username, address) => [['u:' + String(username || '').toLowerCase().trim(), perUser], ['a:' + String(address || 'unknown'), perAddress]];
+  const recent = key => {
+    const cutoff = now() - windowMs;
+    const list = (failures.get(key) || []).filter(t => t > cutoff);
+    if (list.length) failures.set(key, list); else failures.delete(key);
+    return list;
+  };
+  // Seconds until the caller may try again, or 0 when allowed.
+  function retryAfter(username, address) {
+    let wait = 0;
+    for (const [key, limit] of keys(username, address)) {
+      const list = recent(key);
+      if (list.length >= limit) wait = Math.max(wait, Math.ceil((list[list.length - limit] + windowMs - now()) / 1000));
+    }
+    return wait;
+  }
+  function fail(username, address) {
+    if (failures.size >= maxKeys) {   // drop the oldest entries rather than grow without bound
+      for (const key of [...failures.keys()].slice(0, Math.ceil(maxKeys / 10))) failures.delete(key);
+    }
+    for (const [key] of keys(username, address)) { const list = recent(key); list.push(now()); failures.set(key, list); }
+  }
+  // A correct password clears that account's count; the address count stays.
+  function succeed(username) { failures.delete(keys(username, '')[0][0]); }
+  return { retryAfter, fail, succeed };
+}
 function validCredentials(username, password) {
   return typeof username === 'string' && username.trim().length > 0 && username.length <= 256 &&
     typeof password === 'string' && password.length > 0 && Buffer.byteLength(password) <= 1024;
@@ -99,4 +130,4 @@ function resolveOidcUser(db, claims) {
     .run(id, username, typeof email === 'string' ? email : null, 'user', sub);
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 }
-module.exports = { SessionError, validateSecret, initializeAuthSchema, createTokens, createOidcState, validCredentials, resolveOidcUser };
+module.exports = { SessionError, validateSecret, initializeAuthSchema, createTokens, createOidcState, createLoginLimiter, validCredentials, resolveOidcUser };

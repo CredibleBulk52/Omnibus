@@ -6,6 +6,8 @@
 module.exports.registerGetComicsRoutes = function registerGetComicsRoutes(deps) {
   const missing = ['MANUAL_ONLY_HOSTS', 'THIRD_PARTY_HOST', 'activeDownloads', 'app', 'asArrival', 'axios', 'blacklistAndRetry', 'db', 'downloadThirdParty', 'fetchViaFlareSolverr', 'finalizeCancellation', 'fs', 'getSetting', 'isCancelled', 'logger', 'path', 'pixeldrainBehind', 'postProcessPack', 'pushDownloadProgress', 'pushDownloadUpdate', 'requireAdmin', 'requireDownloadAccess', 'resolveDldsLink', 'runDdlDownload', 'scrapeGcLinks', 'scrapeGcResults', 'sniffDownload', 'stallGuard'].filter(k => deps[k] === undefined);
   if (missing.length) throw new Error(`registerGetComicsRoutes: missing ${missing.join(', ')}`);
+  const { assertPublicHttpUrl } = require('../urlSafety');
+  const isPublicUrl = url => assertPublicHttpUrl(url).then(() => true, () => false);
   const { MANUAL_ONLY_HOSTS, THIRD_PARTY_HOST, activeDownloads, app, asArrival, axios, blacklistAndRetry, db, downloadThirdParty, fetchViaFlareSolverr, finalizeCancellation, fs, getSetting, isCancelled, logger, path, pixeldrainBehind, postProcessPack, pushDownloadProgress, pushDownloadUpdate, requireAdmin, requireDownloadAccess, resolveDldsLink, runDdlDownload, scrapeGcLinks, scrapeGcResults, sniffDownload, stallGuard } = deps;
 
 // Search GetComics
@@ -74,6 +76,9 @@ app.post('/api/getcomics/download', requireDownloadAccess, async (req, res) => {
   const issue = issueId ? db.prepare('SELECT * FROM monitored_issues WHERE id = ?').get(issueId) : null;
   if (issueId && !issue) return res.status(404).json({ error: 'Issue not found' });
   if (issue && String(issue.series_id) !== String(series.id)) return res.status(400).json({ error: 'Issue does not belong to the selected series' });
+  // Only public web addresses: never this server or the home network (security review 2026-11-12).
+  try { await assertPublicHttpUrl(downloadUrl); }
+  catch (e) { return res.status(e.status || 400).json({ error: e.message }); }
 
   res.json({ success: true, message: 'Download started' });
 
@@ -84,7 +89,7 @@ app.post('/api/getcomics/download', requireDownloadAccess, async (req, res) => {
         let resolvedUrl = downloadUrl;
         if (/\/dl?ds\//.test(downloadUrl)) {
           const final = await resolveDldsLink(downloadUrl);
-          if (!final) {
+          if (!final || !await isPublicUrl(final)) {
             await blacklistAndRetry(issue, series, downloadUrl, 'DDL link resolved to unsupported host');
             return;
           }
@@ -110,7 +115,7 @@ app.post('/api/getcomics/download', requireDownloadAccess, async (req, res) => {
         let resolvedUrl = downloadUrl;
         if (/\/dl?ds\//.test(downloadUrl)) {
           const final = await resolveDldsLink(downloadUrl);
-          if (!final) throw new Error('DDL link resolved to unsupported host');
+          if (!final || !await isPublicUrl(final)) throw new Error('DDL link resolved to unsupported host');
           resolvedUrl = final;
         }
 
