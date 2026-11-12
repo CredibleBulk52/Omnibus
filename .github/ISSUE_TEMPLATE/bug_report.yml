@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in Omnibus doesn't work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please don't paste API keys, passwords or personal data.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem, and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The image tag or commit you're running, for example `latest` pulled on 2026-11-11.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is Omnibus installed?
+      options:
+        - Docker on Linux
+        - Docker Desktop on Windows
+        - Docker Desktop on macOS
+        - Unraid, Synology or another NAS
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      multiple: true
+      options:
+        - Library scanning or Comic Vine matching
+        - Reader
+        - Essentials, Top Shelf or Timeline
+        - Reading lists or comic boxes
+        - Downloads
+        - Comic Book Guy or other AI features
+        - Accounts, sign-in or SSO
+        - Settings or backups
+        - Other
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: Relevant lines from Settings › System › Live Logs or the `logs` folder. Remove anything private first.
+      render: text

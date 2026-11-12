@@ -179,6 +179,8 @@ omnibus.yourdomain.com {
 - [AI models](docs/AI_MODELS.md): which tasks use AI, supported providers and recommended models
 - [Development and checks](docs/DEVELOPMENT.md): running the tests and building
 - [Metadata service](backend/metadata/README.md): how matching and tagging protect your files
+- [Contributing](CONTRIBUTING.md): reporting bugs, suggesting ideas and sending changes
+- [Security policy](SECURITY.md): how to report a vulnerability privately
 
 ## License
 
