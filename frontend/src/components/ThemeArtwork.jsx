@@ -9,6 +9,7 @@ import GenericThemeArtwork from './ThemeArtworkGeneric';
 // 3. the built-in generic scene (ThemeArtworkGeneric.jsx: no characters or logos).
 const artworkModules = import.meta.glob('./ThemeArtwork.local.jsx', { eager: true, import: 'default' });
 const LocalArtwork = artworkModules['./ThemeArtwork.local.jsx'];
+export const hasLocalArtwork = !!LocalArtwork;
 
 export default function ThemeArtwork({ theme, span }) {
   if (LocalArtwork) return <LocalArtwork theme={theme} span={span} />;

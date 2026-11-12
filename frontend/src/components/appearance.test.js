@@ -24,7 +24,7 @@ test('setting colours writes the root variables; defaults and sign-out clear the
 });
 
 test('curated character skins support text on both backgrounds and buttons', () => {
-  const skins = PRESETS.filter(p => p.group === 'all');
+  const skins = PRESETS;
   expect(skins).toHaveLength(10);
   expect(new Set(PRESETS.map(p => p.id)).size).toBe(PRESETS.length);
   for (const p of skins) {

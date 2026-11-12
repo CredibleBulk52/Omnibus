@@ -52,3 +52,4 @@ __pycache__/
 _work/*
 !_work/duplicate-review.html
 /frontend/src/components/ThemeArtwork.local.jsx
+/frontend/src/themes/characterThemes.local.js

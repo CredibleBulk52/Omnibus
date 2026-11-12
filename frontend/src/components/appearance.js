@@ -2,7 +2,7 @@
 // (App.css :root --om-*), so a change recolours the app immediately. The choice is cached in
 // this browser (so it applies before the first paint) and saved to the user's account.
 import { useSyncExternalStore } from 'react';
-import { characterThemes } from '../themes/characterThemes.js';
+import { characterThemes, themeGroups } from '../themes/characterThemes.js';
 
 
 export const DEFAULT_COLORS = { base: '#0f0f16', secondary: '#e8151f', highlight: '#f5c518', text: '#f0f0f0' };
@@ -13,7 +13,7 @@ export const COLOR_ROLES = [
   { key: 'highlight', label: 'Highlight', hint: 'Highlights, active tabs and titles' },
   { key: 'text', label: 'Text', hint: 'Main text' },
 ];
-export const PRESET_GROUPS = [{id:'all',label:null}];   // one list, no publisher headings (2026-11-12)
+export const PRESET_GROUPS = themeGroups;   // one list unless an install's local file groups them (2026-11-12)
 const KEY = 'omnibus.appearance';
 const VAR = { base: '--om-base', secondary: '--om-secondary', highlight: '--om-highlight', text: '--om-text' };
 const HEX = /^#[0-9a-f]{6}$/i;

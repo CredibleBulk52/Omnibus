@@ -1,13 +1,15 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
-import ThemeArtwork from './ThemeArtwork';
+import ThemeArtwork, { hasLocalArtwork } from './ThemeArtwork';
 import GenericThemeArtwork from './ThemeArtworkGeneric';
 import { refreshBranding } from './Branding';
 import { PRESETS } from './appearance';
+import { localThemes } from '../themes/characterThemes';
 
 // Without uploads a theme shows its built-in generic scene; uploaded character art replaces it (2026-11-12).
-test('a theme banner shows the generic scene until an admin uploads character art', async () => {
+// An install with its own ThemeArtwork.local.jsx always shows that instead, so this is skipped there.
+test.skipIf(hasLocalArtwork)('a theme banner shows the generic scene until an admin uploads character art', async () => {
   global.IS_REACT_ACT_ENVIRONMENT = true;
   const prevFetch = global.fetch, prevURL = URL.createObjectURL;
   let assets = [];
@@ -39,6 +41,6 @@ test('every theme has a generic scene at narrow and wide spans, and public names
       expect(host.children.length).toBeGreaterThan(0);
       expect(host.innerHTML).not.toMatch(/NaN|undefined/);
     }
-    for (const p of PRESETS) expect(p.name).not.toBe(p.character);
+    if (!localThemes) for (const p of PRESETS) expect(p.name).not.toBe(p.character);   // public names only
   } finally { act(() => root.unmount()); }
 });

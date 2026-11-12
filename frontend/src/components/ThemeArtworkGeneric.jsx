@@ -154,17 +154,14 @@ function Gamma() {
   </>;
 }
 
-// Blue & Gold: slanted blue bands with pale gold between them, on the gold banner.
-function BlueAndGold({L,id}) {
-  const count=Math.ceil((L*2+300)/70);
+// Mind's Eye: one bold ring around a blue field, with ripples spreading from a bright point.
+function MindsEye() {
   return <>
-    <defs><clipPath id={id}><rect x={-L} y="0" width={L*2} height="240"/></clipPath></defs>
-    <g clipPath={'url(#'+id+')'}>
-      {steps(count).map(i=>{
-        const x=-L-150+i*70,w=i%3===1?22:40;
-        return <path key={i} d={'M'+x+' 240 L'+(x+120)+' 0 H'+(x+120+w)+' L'+(x+w)+' 240Z'} fill={i%3===1?'#fff3b0':'#214ca6'} opacity={i%3===1?.9:.95} stroke="#101b38" strokeWidth="3"/>;
-      })}
-    </g>
+    {[0,1,2].map(i=><circle key={i} cy="120" r={142+i*62} fill="none" stroke="#163574" strokeWidth={5-i*1.5} opacity={.4-i*.12}/>)}
+    <circle cy="120" r="106" fill="none" stroke="#08090c" strokeWidth="18"/>
+    <circle cy="120" r="88" fill="#214ca6"/>
+    {[66,46].map((r,i)=><circle key={r} cy="120" r={r} fill="none" stroke="#8eb9ff" strokeWidth={4-i} opacity={.55+i*.2}/>)}
+    <circle cy="120" r="20" fill="#fff3b0"/>
   </>;
 }
 
@@ -196,7 +193,7 @@ export default function GenericThemeArtwork({theme,span=620}) {
     case 'captain-america':return <OldGlory L={L}/>;
     case 'iron-man':return <RedAndGold L={L}/>;
     case 'hulk':return <Gamma/>;
-    case 'x-men':return <BlueAndGold L={L} id={id}/>;
+    case 'x-men':return <MindsEye/>;
     case 'fantastic-four':return <CosmicBlue L={L}/>;
     default:return null;
   }
