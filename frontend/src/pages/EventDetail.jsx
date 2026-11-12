@@ -130,12 +130,13 @@ export default function EventDetail() {
         chips={<>
           <TierBadge tier={event.event_tier} />
           {event.source === 'manual' && <span className="rl-chip rl-chip--copy">✎ Manual</span>}
+          {event.draft ? <span className="rl-chip rl-chip--copy" title="Imported and not yet published: only admins see it">Draft</span> : null}
           <span className="rl-stat-line">{event.publisher && <PublisherLogo name={event.publisher} />}{event.publisher && event.year ? ' · ' : ''}{event.year}</span>
         </>}
         actions={<>
           <RunReadingPanel kind="event" pathLabel={PATH_LABELS[effective]} state={reading} onRead={(issue, restart) => navigate(readUrl(issue.scanned_book_id) + (restart ? '&restart=1' : ''))} />
           <div className="order-secondary-actions">
-            <ReadingOrderActions deletion={isAdmin() ? {endpoint:`/api/events/${id}`,label:"event",name:event.name,onDeleted:()=>navigate("/events")} : null} name={event.name} bookId={issues.find(i => i.scanned_book_id)?.scanned_book_id} onAdd={() => setAddOpen(true)} onEdit={isAdmin() ? () => navigate(`/events/${id}/edit`) : null} onReport={isAdmin() ? null : () => reportProblem({ type: 'event', id: event.id, label: event.name, kinds: ['order', 'metadata', 'other'] })} />
+            <ReadingOrderActions exportItem={isAdmin() ? { kind: 'event', id } : null} deletion={isAdmin() ? {endpoint:`/api/events/${id}`,label:"event",name:event.name,onDeleted:()=>navigate("/events")} : null} name={event.name} bookId={issues.find(i => i.scanned_book_id)?.scanned_book_id} onAdd={() => setAddOpen(true)} onEdit={isAdmin() ? () => navigate(`/events/${id}/edit`) : null} onReport={isAdmin() ? null : () => reportProblem({ type: 'event', id: event.id, label: event.name, kinds: ['order', 'metadata', 'other'] })} />
           </div>
         </>}>
         {event.description && (

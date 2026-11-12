@@ -76,7 +76,7 @@ module.exports = function createEditorAdd({ app, db, requireAuth, cvApiGet, getC
         if (out.yearMatch === 'none' || out.yearMatch === 'near') out.yearMatch = 'exact';
       }
       if (req.query.lists) {
-        const ev = db.prepare(`SELECT id, name, year, publisher, (SELECT COUNT(*) FROM event_issues ei WHERE ei.event_id = events.id) AS n FROM events WHERE ${like('name')} LIMIT 40`).all(...likeP);
+        const ev = db.prepare(`SELECT id, name, year, publisher, (SELECT COUNT(*) FROM event_issues ei WHERE ei.event_id = events.id) AS n FROM events WHERE ${require('./eventDrafts').published(db)} AND ${like('name')} LIMIT 40`).all(...likeP);
         out.events = withYear(ev, yr).list.sort(byScore(qw)).slice(0, 6).map(e => ({ id: String(e.id), name: e.name, year: e.year || null, publisher: e.publisher || null, issues: e.n }));
         const runs = db.prepare(`SELECT id, title AS name, parent_series, issue_range_hint, status, (SELECT COUNT(*) FROM canon_run_issues x WHERE x.run_id = canon_runs.id) AS n
           FROM canon_runs WHERE ${like('title')} ${isAdmin(req) ? '' : "AND status = 'approved'"} LIMIT 40`).all(...likeP);

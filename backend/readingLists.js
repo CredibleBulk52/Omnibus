@@ -1653,6 +1653,118 @@ module.exports = function createReadingLists(deps) {
     for (const e of db.prepare(`SELECT id FROM reading_list_entries WHERE resolve_status = 'pending' AND unpacked = 0`).all()) startResolve(e.id);
   }
 
-  return { reconcile, refreshAll, adjacent, orderedBooks, resumePending, resolveEntry, outline,
+  // ── Export and import (curatedTransfer.js, 2026-11-12) ──────────
+  // A list as a portable file: its details and entries, each with the issues it shows (series,
+  // volume year, number, Comic Vine id), never this library's book or series ids. Entries that
+  // follow a Timeline event or Top Shelf run name it, so an import can follow the same one there.
+  const issueOut = r => ({ series_name: r.series_name || null, volume_year: toInt(r.volume_year), issue_number: r.issue_number == null ? null : String(r.issue_number),
+    issue_title: r.issue_title || null, cv_issue_id: r.cv_issue_id ? String(r.cv_issue_id) : null });
+  function exportList(id) {
+    const list = getList(id);
+    if (!list) throw bad(404, 'Reading list not found');
+    let saved = {}; try { saved = JSON.parse(list.catalog_json || '{}') || {}; } catch {}
+    const entries = listEntries(list.id).map(e => {
+      const out = { type: e.entry_type, label: e.label || null, note: e.note || null };
+      if (e.entry_type === 'section') return out;
+      if (isLinked(e)) {
+        if (e.entry_type === 'event') {
+          const ev = db.prepare('SELECT name, year FROM events WHERE id = ?').get(String(e.ref_id));
+          if (ev) out.source = { kind: 'event', name: ev.name, year: ev.year || null };
+          out.tier_filter = e.tier_filter || null;
+        } else {
+          const run = db.prepare('SELECT title, parent_series FROM canon_runs WHERE id = ?').get(toInt(e.ref_id));
+          if (run) out.source = { kind: 'run', title: run.title, parent_series: run.parent_series || null };
+        }
+      } else {
+        out.unpacked = !!e.unpacked;
+        if (e.resolve_source) out.resolve_source = e.resolve_source;
+        if (e.cv_volume_id) out.cv_volume_id = String(e.cv_volume_id);
+        if (e.issue_start != null) out.issue_start = String(e.issue_start);
+        if (e.issue_end != null) out.issue_end = String(e.issue_end);
+      }
+      out.issues = entryIssues(e).map(issueOut);
+      return out;
+    });
+    return {
+      item: { name: list.name, description: list.description || null, visibility: list.visibility,
+        home_tagline: list.home_tagline || null, home_description: list.home_description || null,
+        collections: collectionRegistry.names(Array.isArray(saved.collections) ? saved.collections : []) || [] },
+      entries,
+    };
+  }
+
+  // Import as the admin's own private list (a draft: readers cannot see it). The editor's Details
+  // panel publishes it (Who can see it: Essential). Event and run entries follow an event or run of
+  // the same name here; without one, they keep the exported issues as a story.
+  function importList(data, user) {
+    const item = data && data.item && typeof data.item === 'object' ? data.item : {};
+    const name = str(item.name, 200);
+    if (!name) throw bad(400, 'The file has no list name');
+    const entriesIn = (Array.isArray(data.entries) ? data.entries : []).filter(x => x && typeof x === 'object').slice(0, MAX_ENTRIES);
+    const collections = (Array.isArray(item.collections) ? item.collections : []).map(v => str(v, 60)).filter(Boolean).slice(0, 20);
+    const issuesOf = x => (Array.isArray(x.issues) ? x.issues : []).filter(i => i && typeof i === 'object' && str(i.series_name, 300) && str(i.issue_number, 40)).slice(0, 1000)
+      .map(i => ({ series_name: str(i.series_name, 300), issue_number: normNum(str(i.issue_number, 40)) || str(i.issue_number, 40), volume_year: toInt(i.volume_year),
+        issue_title: str(i.issue_title, 300), cv_issue_id: str(i.cv_issue_id, 40), manually_matched: 0 }));
+    const findEvent = src => {
+      const rows = db.prepare('SELECT id, year FROM events WHERE lower(name) = lower(?)').all(String(src.name || ''));
+      return rows.find(r => src.year && Number(r.year) === Number(src.year)) || (rows.length === 1 ? rows[0] : null);
+    };
+    const findRun = src => {
+      const rows = db.prepare('SELECT id, parent_series FROM canon_runs WHERE lower(title) = lower(?)').all(String(src.title || ''));
+      return rows.find(r => src.parent_series && String(r.parent_series || '').toLowerCase() === String(src.parent_series).toLowerCase()) || (rows.length === 1 ? rows[0] : null);
+    };
+    const summary = { entries: 0, issues: 0, linked: 0, copied: 0, refreshing: 0 };
+    let listId; const toResolve = [];
+    db.transaction(() => {
+      const catalog = collections.length ? JSON.stringify({ publishers: [], library_ids: [], featured: false, collections: collections.map(c => collectionRegistry.ensure(c)) }) : null;
+      listId = Number(db.prepare(`INSERT INTO reading_lists (name, description, owner_id, visibility, source, catalog_json) VALUES (?,?,?,?,?,?)`)
+        .run(name, str(item.description, 4000), user.sub, 'private', 'import', catalog).lastInsertRowid);
+      require('./homepageFields').write(db, 'reading_lists', listId, { home_tagline: str(item.home_tagline, 120), home_description: str(item.home_description, 400) });
+      const ins = db.prepare(`INSERT INTO reading_list_entries (list_id, sort_order, entry_type, ref_id, cv_volume_id, scanned_series_id,
+          issue_start, issue_end, label, note, unpacked, resolve_status, resolve_source, tier_filter) VALUES (?,?,?,?,?,NULL,?,?,?,?,?,?,?,?)`);
+      let pos = 0;
+      for (const x of entriesIn) {
+        const type = String(x.type || ''), label = str(x.label, 300), note = str(x.note, 2000);
+        if (!ENTRY_TYPES.has(type)) continue;
+        if (type === 'section') { if (label) { ins.run(listId, ++pos, 'section', null, null, null, null, label, note, 0, 'ok', null, null); summary.entries++; } continue; }
+        const issues = issuesOf(x);
+        if (type === 'event' || type === 'canon_run') {
+          const src = x.source && typeof x.source === 'object' ? x.source : {};
+          const target = type === 'event' ? findEvent(src) : findRun(src);
+          if (target) {
+            const tier = TIER_FILTERS.includes(x.tier_filter) ? x.tier_filter : null;
+            ins.run(listId, ++pos, type, String(target.id), null, null, null, label || str(src.name || src.title, 300), note, 0, 'ok', null, type === 'event' ? tier : null);
+            summary.entries++; summary.linked++; continue;
+          }
+          if (!issues.length) continue;
+          const id = Number(ins.run(listId, ++pos, 'story', null, null, null, null, label || str(src.name || src.title, 300) || 'Imported', note, 1, 'ok', 'story', null).lastInsertRowid);
+          insertIssueRows(id, issues); summary.entries++; summary.copied++; summary.issues += issues.length; continue;
+        }
+        const cvVol = str(x.cv_volume_id, 40);
+        // A series or range that follows a Comic Vine volume keeps doing so (refreshed in the background);
+        // anything else keeps exactly the exported issues.
+        const live = (type === 'series' || type === 'range') && !x.unpacked && cvVol;
+        if (!live && !issues.length) continue;
+        const entryType = type === 'issue' || live || x.unpacked ? type : 'story';
+        const id = Number(ins.run(listId, ++pos, entryType, null, live ? cvVol : null, str(x.issue_start, 40), str(x.issue_end, 40),
+          label || (issues[0] ? `${issues[0].series_name} #${issues[0].issue_number}` : 'Imported'), note, live ? 0 : (type === 'issue' ? 0 : 1),
+          live ? 'pending' : 'ok', live ? null : (type === 'issue' ? null : (str(x.resolve_source, 20) || 'story')), null).lastInsertRowid);
+        insertIssueRows(id, type === 'issue' ? issues.slice(0, 1) : issues);
+        if (live) { toResolve.push(id); summary.refreshing++; }
+        summary.entries++; summary.issues += type === 'issue' ? Math.min(1, issues.length) : issues.length;
+      }
+      touch(listId);
+    })();
+    const rows = db.prepare(`SELECT li.*, e.entry_type FROM list_issues li JOIN reading_list_entries e ON e.id = li.owner_id
+      WHERE li.owner_kind = ? AND e.list_id = ? AND li.scanned_book_id IS NULL`).all(OWNER_KIND, listId);
+    matchRows(rows);
+    for (const id of toResolve) startResolve(id);
+    summary.owned = db.prepare(`SELECT COUNT(*) AS n FROM list_issues li JOIN reading_list_entries e ON e.id = li.owner_id
+      WHERE li.owner_kind = ? AND e.list_id = ? AND li.scanned_book_id IS NOT NULL`).get(OWNER_KIND, listId).n;
+    logger?.info?.('reading-lists', 'Reading list imported', { listId, name, ...summary, by: user.username });
+    return { id: listId, name, summary };
+  }
+
+  return { reconcile, refreshAll, adjacent, orderedBooks, resumePending, resolveEntry, outline, exportList, importList,
     _internal: { volumeIssues, matchOne, buildBookIndex, insertEntry, cmpIssues, planApply, planEdits } };
 };

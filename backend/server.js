@@ -123,7 +123,7 @@ app.use((req, res, next) => {
   next();
 });
 // Event generation and the guide-page test may carry a pasted guide page (up to ~60k characters kept).
-app.use((req, res, next) => (/^\/api\/events\/(generate|guide-page\/test)$/.test(req.path) ? express.json({ limit: '1mb' }) : express.json())(req, res, next));
+app.use((req, res, next) => (/^\/api\/events\/(generate|guide-page\/test)$|^\/api\/curated\/import$/.test(req.path) ? express.json({ limit: req.path === '/api/curated/import' ? '5mb' : '1mb' }) : express.json())(req, res, next));
 app.use(require('./metadata/requestDiagnostics').metadataRequestDiagnostics({logger:{warn:(...args)=>logger.warn(...args)}}));
 
 // ─── SSE endpoints ────────────────────────────────────────────────
@@ -390,6 +390,8 @@ function findThumbCache(cacheKey) {
 }
 
 function evictThumbCache(cacheKey) {
+  // A key is a plain file name (a book id or series_<id>); anything else could reach outside the cache.
+  if (!/^[A-Za-z0-9_.-]+$/.test(String(cacheKey || '')) || /^\.+$/.test(String(cacheKey))) return;
   for (const ext of ['.jpg', '.jpeg', '.png', '.webp', '.gif']) {
     const p = path.join(THUMB_CACHE_DIR, `${cacheKey}${ext}`);
     try { fs.unlinkSync(p); } catch {}
@@ -874,6 +876,7 @@ db.exec(`
 try { db.prepare(`ALTER TABLE event_issues ADD COLUMN manually_matched INTEGER DEFAULT 0`).run(); } catch {}
 try { db.prepare(`ALTER TABLE publisher_eras ADD COLUMN folder TEXT`).run(); } catch {}
 try { db.prepare(`ALTER TABLE events ADD COLUMN source TEXT DEFAULT 'auto'`).run(); } catch {}
+require('./eventDrafts').ensure(db);   // events.draft: imported events stay hidden until published (2026-11-12)
 // Event generator v2 (2026-10-20): which sites list each issue (JSON array of codes), why it was
 // moved from release order, a release-position flag, and per event the pages read and the issues
 // left out (JSON). Admin-only, behind "Show sources"; GET /api/events/:id leaves them out.
@@ -2280,9 +2283,10 @@ function mergeSeriesWithJson(series) {
 
   // Derive base title and year from folder name as fallback
   const folderName = seriesPath ? path.basename(seriesPath) : (series.url || series.name || '').split('/').pop().split('\\').pop();
-  const folderMatch = folderName.match(/^(.+?)\s*\((\d{4})\)\s*$/);
-  const folderTitle = folderMatch ? folderMatch[1].trim() : folderName;
-  const folderYear  = folderMatch ? parseInt(folderMatch[2]) : null;
+  // "(YYYY)" anchored at the end only: the old /^(.+?)\s*\((\d{4})\)\s*$/ could backtrack (CodeQL, 2026-11-12).
+  const folderYearMatch = /\((\d{4})\)$/.exec(folderName.trim());
+  const folderTitle = folderYearMatch ? folderName.trim().slice(0, folderYearMatch.index).trim() : folderName;
+  const folderYear  = folderYearMatch ? parseInt(folderYearMatch[1]) : null;
 
   if (!jsonData || !jsonData.metadata) {
     const year = series.year || series.metadata?.year || folderYear;
@@ -3264,9 +3268,10 @@ async function scanSeriesDir(seriesDir, libraryId, upsertSeries, upsertBook, arr
   }
 
   const folderName = path.basename(seriesDir);
-  const folderMatch = folderName.match(/^(.+?)\s*\((\d{4})\)\s*$/);
-  const folderTitle = folderMatch ? folderMatch[1].trim() : folderName;
-  const folderYear  = folderMatch ? parseInt(folderMatch[2]) : null;
+  // "(YYYY)" anchored at the end only: the old /^(.+?)\s*\((\d{4})\)\s*$/ could backtrack (CodeQL, 2026-11-12).
+  const folderYearMatch = /\((\d{4})\)$/.exec(folderName.trim());
+  const folderTitle = folderYearMatch ? folderName.trim().slice(0, folderYearMatch.index).trim() : folderName;
+  const folderYear  = folderYearMatch ? parseInt(folderYearMatch[1]) : null;
 
   const jsonData = readSeriesJson(seriesDir);
   const metaStatus = deriveMetadataStatus(jsonData);
@@ -7003,7 +7008,9 @@ app.delete('/api/publishers/:id/skip-patterns/:patternId', requireAdmin, (req, r
 // config eras (year-range primary, folder field for path construction).
 app.get('/api/publishers/suggest-directory', requireAuth, (req, res) => {
   try {
-    const { publisher, year } = req.query;
+    // A publisher is a folder name, never a path: no "..", slashes or other separators (CodeQL, 2026-11-12).
+    const publisher = typeof req.query.publisher === 'string' ? req.query.publisher.replace(/[/\\:*?"<>|\0]/g, '').replace(/^\.+$/, '').trim().slice(0, 120) : '';
+    const { year } = req.query;
     const yearNum = year ? parseInt(year) : null;
     const publishers = getPublisherConfig();
 
@@ -11095,12 +11102,14 @@ require('./eventGenerator').registerEventGenerator({ ai, aiInfo, aiRunStep, app,
 app.get('/api/events', (req, res) => {
   const { publisher } = req.query;
   let events;
+  // Draft events (imported, not yet published) are listed for admins only, flagged draft: 1.
+  const shown = req.user?.role === 'admin' ? '1 = 1' : require('./eventDrafts').published(db);
   if (publisher) {
     events = db.prepare(
-      "SELECT * FROM events WHERE publisher = ? OR publisher IS NULL ORDER BY year ASC, sort_order ASC, name ASC"
+      `SELECT * FROM events WHERE (publisher = ? OR publisher IS NULL) AND ${shown} ORDER BY year ASC, sort_order ASC, name ASC`
     ).all(publisher);
   } else {
-    events = db.prepare("SELECT * FROM events ORDER BY year ASC, sort_order ASC, name ASC").all();
+    events = db.prepare(`SELECT * FROM events WHERE ${shown} ORDER BY year ASC, sort_order ASC, name ASC`).all();
   }
   // Attach owned/total counts per event
   const countStmt = db.prepare(
@@ -11348,7 +11357,7 @@ app.get('/api/events/book-search', requireAuth, (req, res) => {
 
 app.get('/api/events/:id', requireAuth, (req, res) => {
   const event = db.prepare("SELECT * FROM events WHERE id = ?").get(req.params.id);
-  if (!event) return res.status(404).json({ error: 'Event not found' });
+  if (!event || (event.draft && req.user?.role !== 'admin')) return res.status(404).json({ error: 'Event not found' });   // drafts: admins only
 
   const userId = req.user?.sub || null;
 
@@ -13405,15 +13414,24 @@ app.get('/api/monitor/series/:id/file-paths', requireAdmin, (req, res) => {   //
 
 /** Parse "Series Name (2023)", "Series Name 2023", or "Series Name" from a folder name.
  *  Returns { name, year } */
+// "Action Comics (2016)" → { title: 'Action Comics', year: 2016 }; no "(YYYY)" at the end → the
+// whole name and null. Anchored at the end only, so it cannot backtrack on long names.
+function folderTitleYear(folderName) {
+  const s = String(folderName || '').trim();
+  const m = /\((\d{4})\)$/.exec(s);
+  return m ? { title: s.slice(0, m.index).trim(), year: parseInt(m[1]) } : { title: String(folderName || ''), year: null };
+}
 function parseFolderName(folderName) {
-  // Parenthesised year: "Action Comics (2016)"
-  const mp = folderName.match(/^(.+?)s*((d{4}))s*$/);
-  if (mp) return { name: mp[1].trim(), year: parseInt(mp[2]) };
+  // Parenthesised year: "Action Comics (2016)". (The old patterns had lost their backslashes,
+  // so they never matched; found by CodeQL code scanning, 2026-11-12.)
+  const s = String(folderName || '').trim();
+  const { title, year } = folderTitleYear(s);
+  if (year) return { name: title, year };
   // Bare trailing year: "Action Comics 2016" — only strip when a letter word precedes it
   // so "2000 AD" is not incorrectly parsed as name="2000", year=NaN.
-  const mb = folderName.match(/^(.+?)s+(d{4})s*$/);
-  if (mb && /[a-zA-Z]/.test(mb[1])) return { name: mb[1].trim(), year: parseInt(mb[2]) };
-  return { name: folderName.trim(), year: null };
+  const mb = /\s(\d{4})$/.exec(s);
+  if (mb && /[a-zA-Z]/.test(s.slice(0, mb.index))) return { name: s.slice(0, mb.index).trim(), year: parseInt(mb[1]) };
+  return { name: s, year: null };
 }
 
 /** String similarity score 0-1.
@@ -13860,7 +13878,8 @@ app.post('/api/import/rescan-one', async (req, res) => {
 
     // Detect "name YYYY" pattern — use CV volumes filter API for precise year+name match
     // e.g. "action comics 2016" → filter=name:action comics,start_year:2016
-    const yearSuffixMatch = q.match(/^(.+?)\s+(\d{4})$/);
+    const ys = /\s(\d{4})$/.exec(q);   // linear, unlike /^(.+?)\s+(\d{4})$/ (CodeQL polynomial-redos)
+    const yearSuffixMatch = ys && q.slice(0, ys.index).trim() ? [q, q.slice(0, ys.index).trim(), ys[1]] : null;
     let candidates = [];
 
     if (yearSuffixMatch) {
@@ -17123,6 +17142,9 @@ const readingLists = require('./readingLists')({
   app, db, requireAuth, cvApiGet, getCVKey, logger, IN, bookIndex, acquire: downloadRequests,
   runBackground: (name, fn) => (...a) => cvCtx.run({ lane: 'background', caller: name }, () => fn(...a)),
 });
+// Export and import of Essentials, Timeline events and Top Shelf runs between installs (2026-11-12).
+require('./curatedTransfer').createCuratedTransfer({ app, db, requireAdmin, logger, readingLists,
+  reconcileEvents: () => reconcileEventIssues(false), reconcileRuns: () => canonMatch.reconcile(false) });
 try { readingContexts = require('./readingContexts').create({ db, readingLists }); }
 catch (e) { logger.error('progress', 'Reading contexts unavailable', e.message); }
 // Achievements (2026-11-10): reading log, badges, leaderboard, toasts (achievements.js).

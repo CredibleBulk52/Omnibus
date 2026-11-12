@@ -351,7 +351,7 @@ Reply with only this JSON object: {"runs": [ {"title": "Born Again", "parent_ser
     };
 
     // Load all events and existing canon runs for matching
-    const allEvents    = db.prepare('SELECT id, name FROM events').all();
+    const allEvents    = db.prepare(`SELECT id, name FROM events WHERE ${require('./eventDrafts').published(db)}`).all();
     const existingRuns = db.prepare('SELECT id, title, parent_series FROM canon_runs').all();
 
     const enriched = runs.map(run => {

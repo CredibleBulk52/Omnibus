@@ -134,7 +134,7 @@ export default function CanonRunDetail() {
         actions={<>
           <RunReadingPanel state={reading} onRead={readIssue} />
           <div className="order-secondary-actions">
-            <ReadingOrderActions deletion={isAppAdmin() ? {endpoint:`/api/canon/runs/${id}`,label:"run",name:run.title,onDeleted:()=>navigate("/canon")} : null} name={run.title} bookId={reading.first?.scanned_book_id} onAdd={() => setListOpen(true)} onEdit={isAppAdmin() ? () => navigate(`/canon/run/${id}/edit`) : null} onReport={isAppAdmin() ? null : () => reportProblem({ type: 'run', id: run.id, label: run.title, kinds: ['order', 'metadata', 'other'] })} />
+            <ReadingOrderActions exportItem={isAppAdmin() ? { kind: 'run', id } : null} deletion={isAppAdmin() ? {endpoint:`/api/canon/runs/${id}`,label:"run",name:run.title,onDeleted:()=>navigate("/canon")} : null} name={run.title} bookId={reading.first?.scanned_book_id} onAdd={() => setListOpen(true)} onEdit={isAppAdmin() ? () => navigate(`/canon/run/${id}/edit`) : null} onReport={isAppAdmin() ? null : () => reportProblem({ type: 'run', id: run.id, label: run.title, kinds: ['order', 'metadata', 'other'] })} />
             {run.event && (
               <button className="btn btn-ghost" onClick={() => navigate(`/events/${run.event.id}`)}
                 title="Top Shelf opens this Timeline event when the run is clicked. Change or unlink it in Edit Run.">

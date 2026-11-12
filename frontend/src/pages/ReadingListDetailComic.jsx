@@ -26,6 +26,7 @@ import { reportProblem } from '../components/ReportProblem';
 import AcquireBox, { AcquireDialog } from '../components/AcquireBox';
 import { isAdmin, useAppSettings } from '../App';
 import ManageMenu from '../components/ManageMenu';
+import { ExportMenuItem } from '../components/CuratedTransfer';
 import { useConfirm } from '../components/Confirm';
 
 const COLLAPSE_AT = 12;
@@ -258,6 +259,7 @@ export default function ReadingListDetail() {
             {(canEdit || canShare) && (
               <ManageMenu id="reading-order-manage-menu" open={manageOpen} setOpen={setManageOpen}>
                 {canEdit && <button onClick={() => { setManageOpen(false); openEditor(); }} title="Name, description, order, sections and notes; save once">✎ Open Editor</button>}
+                {isAdmin() && (list.visibility !== 'private' || list.is_owner) && <ExportMenuItem kind="list" id={id} onDone={() => setManageOpen(false)} />}
                 {canShare && <button disabled={busy} onClick={() => { setManageOpen(false); toggleShare(); }}>{list.visibility === 'public' ? 'Stop sharing' : 'Share with other readers'}</button>}
                 {(list.visibility === 'essential' ? isAdmin() : list.is_owner) && <DeleteCatalogAction endpoint={`/api/reading-lists/${id}`} label="reading order" name={list.name} onDeleted={()=>navigate(list.visibility === 'essential' ? '/essentials' : '/collections')} />}
               </ManageMenu>

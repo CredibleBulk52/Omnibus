@@ -8,7 +8,7 @@
 // change order, so they cannot clash with the draft).
 import { useConfirm } from '../Confirm';
 import React, { useState, useEffect, useMemo, useRef, useContext, useCallback } from 'react';
-import { useNavigate, UNSAFE_NavigationContext } from 'react-router-dom';
+import { useNavigate, useLocation, UNSAFE_NavigationContext } from 'react-router-dom';
 import { childOf } from './adapters';
 import DetailsPanel, { detailsDiff, detailsCss } from './DetailsPanel';
 import IssueWindow, { coverUrl, issueWindowCss } from './IssueWindow';
@@ -129,6 +129,7 @@ function Thumb({ bookId, onClick, title }) {
 export default function ListEditor({ adapter, id, backTo }) {
   const confirm = useConfirm();
   const navigate = useNavigate();
+  const imported = useLocation().state?.imported || null;   // summary from Import (curated pages, 2026-11-12)
   const caps = adapter.caps;
   const sKey = draftKey(adapter.kind, id);
   const [base, setBase] = useState(null);          // { title, subtitle, version, rows } as saved
@@ -670,6 +671,12 @@ export default function ListEditor({ adapter, id, backTo }) {
           <button className="le-link" onClick={applyRestore}>Restore them</button>
           <button className="le-link" onClick={() => { store.clear(sKey); setRestore(null); }}>Discard them</button>
         </div>}
+        {base && adapter.draftNote && (() => {
+          const text = adapter.draftNote(base);
+          if (!text && !imported) return null;
+          const got = imported ? `Imported ${imported.issues} issue${imported.issues === 1 ? '' : 's'}${imported.owned != null ? `, ${imported.owned} in your library` : ''}${imported.copied ? `; ${imported.copied} Timeline or Top Shelf entr${imported.copied === 1 ? 'y has' : 'ies have'} no match here, so ${imported.copied === 1 ? 'it keeps' : 'they keep'} the file's issues` : ''}${imported.eventMissing ? '; its Timeline event is not on this install, so it is not linked' : ''}${imported.sameName ? '; one with the same name already exists' : ''}. ` : '';
+          return <div className="le-notice warn le-draft-note"><span>{got}{text}</span></div>;
+        })()}
         {notice && <div className={`le-notice ${notice.tone}`}><span>{notice.text}</span><button className="le-x" onClick={() => setNotice(null)} aria-label="Dismiss">×</button></div>}
         {base && <>
           {details && adapter.fields && <DetailsPanel fields={adapter.fields(base)} base={base.details} draft={details} onChange={setDetails}

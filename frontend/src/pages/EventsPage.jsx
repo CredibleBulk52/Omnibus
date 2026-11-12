@@ -1,5 +1,6 @@
 import { PublisherLogo } from '../components/Branding';
 import AdminBar from '../components/AdminBar';
+import { ImportButton } from '../components/CuratedTransfer';
 import CuratedMast from '../components/CuratedMast';
 import PageHeader from '../components/PageHeader';
 import { NewEntryButton, NewEntryDialog } from '../components/NewEntry';
@@ -208,6 +209,7 @@ export default function EventsPage() {
         {isAdmin() && (
           <AdminBar>
             <NewEntryButton label="New event" onClick={() => setNewTab('generate')} />
+            <ImportButton />
             <TierNotesRefresh />
           </AdminBar>
         )}
@@ -461,6 +463,7 @@ const EventPanel = memo(function EventPanel({ event }) {
           >
             {event.name}
           </a>
+          {event.draft ? <span className="chron-draft" title="Imported and not yet published: only admins see it. Publish it in the editor's Details.">Draft</span> : null}
         </h2>
         {event.description && (
           <p ref={descRef} className="chron-description">

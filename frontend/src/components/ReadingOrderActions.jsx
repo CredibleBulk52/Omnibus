@@ -2,11 +2,12 @@ import DeleteCatalogAction from './DeleteCatalogAction';
 import React, { useState } from 'react';
 import { useReadingTheme } from './ReadingTheme';
 import ManageMenu from './ManageMenu';
+import { ExportMenuItem } from './CuratedTransfer';
 import '../readingOrderActions.css';
 
 // Timeline event and Top Shelf run pages: + Add to a box (and ⚑ Report for readers);
 // for admins the editor sits behind Manage ⌄, as on reading orders and comic boxes (2026-11-04).
-export default function ReadingOrderActions({ name, bookId, onAdd, onEdit, onReport, deletion }) {
+export default function ReadingOrderActions({ name, bookId, onAdd, onEdit, onReport, deletion, exportItem }) {
   const theme = useReadingTheme({ name }, bookId);
   const [open, setOpen] = useState(false);
   return <>
@@ -16,6 +17,7 @@ export default function ReadingOrderActions({ name, bookId, onAdd, onEdit, onRep
     </div>
     {onEdit && <ManageMenu id="order-manage-menu" open={open} setOpen={setOpen}>
       <button onClick={() => { setOpen(false); onEdit(); }}>✎ Open Editor</button>
+      {exportItem && <ExportMenuItem {...exportItem} onDone={() => setOpen(false)} />}
     {deletion && <DeleteCatalogAction {...deletion} />}
     </ManageMenu>}
   </>;

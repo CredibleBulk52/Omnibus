@@ -46,7 +46,10 @@ function publicationBasename(filename){
     const value=(tail[1]||tail[2]).trim();
     // Scan groups: a known collective anywhere in the tag ("Minutemen-Faessla",
     // "AnPymGold - Empire", "Glorith-Novus-HD"); "(F)" is short for fixed.
-    const known=/^(?:digital(?:[- ]hd)?|digital[- ]?rip|webrip|scan|scanned|rescan|c2c|noads|hd|fixed|f|repaired|\d+ covers?|\d{3,4}px|(?:[a-z0-9'.&]+\s*[- ]\s*)*(?:empire|dcp|minutemen|novus)(?:\s*[- ]\s*[a-z0-9'.&]+)*|[a-z0-9]+(?:[- ][a-z0-9]+)*-(?:hd|sd))$/i.test(value);
+    // (A collective is checked as a whole word in a tag of name characters: the old nested
+    // pattern could backtrack exponentially on a crafted file name; CodeQL, 2026-11-12.)
+    const known=/^(?:digital(?:[- ]hd)?|digital[- ]?rip|webrip|scan|scanned|rescan|c2c|noads|hd|fixed|f|repaired|\d+ covers?|\d{3,4}px|[a-z0-9]+(?:[- ][a-z0-9]+)*-(?:hd|sd))$/i.test(value)
+      ||(/^[a-z0-9'.&\s-]+$/i.test(value)&&/(?:^|[\s-])(?:empire|dcp|minutemen|novus)(?=$|[\s-])/i.test(value));
     // A scanner's handle after the (year): "(Flattermann)", "(Punkrat)".
     // One word, no digits, not an edition word, so "(Other #1)", "(Other
     // title)" and "(Variant)" still stop here.

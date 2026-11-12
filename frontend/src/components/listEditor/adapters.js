@@ -50,7 +50,7 @@ export const listAdapter = {
     if (!d.can_edit) throw new Error('You can only edit your own reading lists.');
     return { title: d.list.name, subtitle: d.list.visibility === 'essential' ? 'Essentials list' : 'Reading list', version: d.list.updated_at, rows: d.entries.map(listRow),
       details: { name: d.list.name || '', description: d.list.description || '', visibility: d.list.visibility, home_tagline:d.list.home_tagline || '', home_description:d.list.home_description || '',
-        catalog_collections: d.list.catalog?.collection_ids?.length ? d.list.catalog.collection_ids : collectionsFor(d.list) }, isOwner: !!d.list.is_owner, groupNames: g.collections || [] };
+        catalog_collections: d.list.catalog?.collection_ids?.length ? d.list.catalog.collection_ids : collectionsFor(d.list) }, isOwner: !!d.list.is_owner, groupNames: g.collections || [], source: d.list.source };
   },
   // Hero details (Details panel). Same rules as the old Settings dialog.
   fields(base) {
@@ -71,6 +71,9 @@ export const listAdapter = {
     ];
   },
   titleOf: d => d.name,
+  // An imported list starts as the admin's private draft (curatedTransfer.js, 2026-11-12).
+  draftNote: base => (base.source === 'import' && base.details.visibility === 'private'
+    ? 'Imported draft: only you can see it. To publish it, open Details, set Who can see it to Essential (or Shared), then Save.' : null),
   summary: d => [d.name, firstLine(d.description)].filter(Boolean).join(' — '),
   // Delete the whole list (immediate, after a confirm); where to go afterwards.
   deleteItem: id => delFetch(`/api/reading-lists/${id}`),
@@ -137,7 +140,9 @@ export const eventAdapter = {
   afterDelete: () => '/events',
   // ⋯ › Use as Timeline cover on an owned issue (2026-11-10): details.cover_issue_id.
   coverPick: { field: 'cover_issue_id', label: 'Timeline cover' },
+  draftNote: base => (base.details.draft ? 'Hidden draft: readers cannot see this event yet. To publish it, open Details, turn off Hidden draft, then Save.' : null),
   fields: base => [
+    ...(base && base.details && 'draft' in base.details ? [{ key: 'draft', label: 'Hidden draft', type: 'switch', switchLabel: 'Only admins can see this event (imported, not yet published)' }] : []),
     ...homepageFields,
     { key: 'name', label: 'Name', type: 'text', max: 200 },
     { key: 'event_tier', label: 'Event tier', type: 'select', number: true, options: [[1, 'Crisis-level event'], [2, 'Major event'], [3, 'Crossover arc']] },
@@ -188,6 +193,7 @@ export const runAdapter = {
         single: { id: r.id, owned: r.owned, book_id: r.scanned_book_id, series_name: r.series_name, issue_number: r.issue_number, volume_year: r.volume_year, cv_issue_id: r.cv_issue_id } })) };
   },
   combinable: () => false,
+  draftNote: base => (base.details.status === 'pending' ? 'Pending: this run is not on Top Shelf yet. To publish it, open Details, set Status to Approved, then Save.' : null),
   fields: () => [
     ...homepageFields,
     { key: 'title', label: 'Title', type: 'text', max: 300 },

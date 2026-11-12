@@ -166,7 +166,7 @@ function createSearch({ db, fetchAllSeries, mergeSeriesWithJson, creatorsCache }
     const events = tryAll(`SELECT e.id, e.name, e.year, e.publisher,
         (SELECT COUNT(*) FROM event_issues ei WHERE ei.event_id = e.id) AS total,
         (SELECT ei.scanned_book_id FROM event_issues ei WHERE ei.event_id = e.id AND ei.scanned_book_id IS NOT NULL ORDER BY ei.sort_order LIMIT 1) AS book_id
-      FROM events e`)
+      FROM events e WHERE ${require('./eventDrafts').published(db, 'e')}`)
       .map(e => ({ ...e, score: bestScore(e.name, p) + (p.year && Number(e.year) === p.year ? 25 : 0) })).filter(e => e.score >= 40)
       .sort((a, b) => b.score - a.score).slice(0, 20);
     const runs = tryAll(`SELECT r.id, r.title, r.parent_series,

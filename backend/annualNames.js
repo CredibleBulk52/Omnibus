@@ -14,7 +14,7 @@
 // them (it kept only names with "Annual"). For these the name must be the series' own name, not
 // its end: "Spider-Man '97" is the annual of Spider-Man (1990), not of Sensational Spider-Man.
 
-const YEARLY = /\s*['’‘`](\d\d)\s*$/;
+const YEARLY = /['’‘`](\d\d)\s*$/;   // no leading \s*: it made the match polynomial (CodeQL); callers trim
 const YEARLY_FROM = 1995, YEARLY_TO = 1998;
 
 const norm = s => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/['’]/g, '').replace(/[^a-z0-9]+/g, ' ')
@@ -34,7 +34,7 @@ function annualNameFits(annualName, seriesName) {
   const p = norm(String(seriesName || '').replace(/\((?:19|20)\d\d\)/g, ' '));
   if (!p) return false;
   if (!/\bannual\b/i.test(String(annualName || '')) && yearlyTag(annualName)) {
-    const base = String(annualName).replace(YEARLY, '');
+    const base = String(annualName).replace(YEARLY, '').trim();
     const names = base.includes('/') ? [base, base.split('/')[0]] : [base];
     return names.some(n => norm(n) === p);
   }

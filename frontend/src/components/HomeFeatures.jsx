@@ -50,7 +50,7 @@ export default function HomeFeatures({ discoverSeries = [], releases, controlsTa
   const run = rotatedItem(runPool, dailyItem(publicRuns(data.runs || {})), rotation);
   const listPool = selectLists(data.lists?.lists || [], {library:activeLibrary,libraries});
   const essential = rotatedItem(listPool, featuredList(listPool), rotation);
-  const events = Array.isArray(data.events) ? data.events : [];
+  const events = Array.isArray(data.events) ? data.events.filter(e => !e.draft) : [];   // admins also get drafts; never on Home
   // Match the timeline's unambiguous publisher-library default; other libraries retain the complete timeline.
   const pub = /^(dc|marvel)(?: comics)?$/i.test(activeLibrary?.name || '') ? activeLibrary.name.replace(/ comics$/i,'').toLowerCase() : null;
   const eventPool = pub ? events.filter(e => String(e.publisher || '').replace(/ comics$/i,'').toLowerCase() === pub) : events;

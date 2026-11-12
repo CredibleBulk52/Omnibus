@@ -914,3 +914,6 @@
   .chron-pubs { gap: 6px; padding: 10px 0 8px; }
   .chron-pubs button { font-size: 17px; padding: 2px 11px 1px; }
 }
+
+/* Draft events (imported, not yet published; admins only), 2026-11-12 */
+.chron-draft { display: inline-block; margin-left: 10px; padding: 1px 8px; border: 1px dashed currentColor; border-radius: 3px; font: 600 12px/1.6 "DM Sans", sans-serif; letter-spacing: .04em; text-transform: uppercase; vertical-align: middle; opacity: .8; }

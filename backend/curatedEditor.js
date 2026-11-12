@@ -56,7 +56,9 @@ module.exports = function createCuratedEditor({ app, db, requireAdmin, logger })
   }
   let tierReasonCol = null;   // event_issues.tier_reason (added by the event generator; absent in older databases)
   const hasTierReason = () => (tierReasonCol ??= db.prepare('PRAGMA table_info(event_issues)').all().some(c => c.name === 'tier_reason'));
-  const eventDetails = id => db.prepare('SELECT home_tagline, home_description, name, publisher, year, description, event_tier, sort_order, cover_image, cover_issue_id FROM events WHERE id = ?').get(String(id));
+  // draft: an imported event still hidden from readers (eventDrafts.js); only where the column exists.
+  const drafts = require('./eventDrafts');
+  const eventDetails = id => db.prepare(`SELECT home_tagline, home_description, name, publisher, year, description, event_tier, sort_order, cover_image, cover_issue_id${drafts.hasDraft(db) ? ', COALESCE(draft, 0) AS draft' : ''} FROM events WHERE id = ?`).get(String(id));
   const eventVersion = (rows, d) => hash([rows.map(r => [r.id, r.sort_order, r.tier, r.tier_note, r.phase]), d]);
   function eventDetailsNext(cur, d, eventId) {
     const n = { ...cur, ...require('./homepageFields').changes(d) };
@@ -67,6 +69,7 @@ module.exports = function createCuratedEditor({ app, db, requireAdmin, logger })
     if ('event_tier' in d) { n.event_tier = int(d.event_tier); if (![1, 2, 3].includes(n.event_tier)) throw new Bad('Event tier must be 1, 2 or 3.'); }
     if ('sort_order' in d) { n.sort_order = int(d.sort_order) ?? 0; if (Number.isNaN(n.sort_order) || n.sort_order < 0) throw new Bad('Order within the year must be 0 or more.'); }
     if ('cover_image' in d) n.cover_image = txt(d.cover_image, 1000);
+    if ('draft' in d && 'draft' in cur) n.draft = d.draft ? 1 : 0;
     if ('cover_issue_id' in d) {
       n.cover_issue_id = d.cover_issue_id == null || d.cover_issue_id === '' ? null : int(d.cover_issue_id);
       if (n.cover_issue_id != null && (Number.isNaN(n.cover_issue_id) || !db.prepare('SELECT 1 FROM event_issues WHERE id = ? AND event_id = ?').get(n.cover_issue_id, String(eventId))))
@@ -143,6 +146,7 @@ module.exports = function createCuratedEditor({ app, db, requireAdmin, logger })
         if (details) require('./homepageFields').write(db, 'events', ev.id, details);
         if (details) db.prepare('UPDATE events SET name = ?, publisher = ?, year = ?, description = ?, event_tier = ?, sort_order = ?, cover_image = ?, cover_issue_id = ? WHERE id = ?')
           .run(details.name, details.publisher, details.year, details.description, details.event_tier ?? 2, details.sort_order ?? 0, details.cover_image, details.cover_issue_id ?? null, String(ev.id));
+        if (details && 'draft' in details) db.prepare('UPDATE events SET draft = ? WHERE id = ?').run(details.draft ? 1 : 0, String(ev.id));
         const del = db.prepare('DELETE FROM event_issues WHERE id = ? AND event_id = ?');
         for (const id of remove) del.run(id, String(ev.id));
         // A removed issue stops being the Timeline cover (the automatic cover comes back).

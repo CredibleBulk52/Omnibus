@@ -146,7 +146,7 @@ module.exports.createAchievements = function createAchievements(deps) {
         by.get(String(r.event_id)).push(r);
       }
       const out = [];
-      for (const e of db.prepare('SELECT id, name, event_tier FROM events').all()) {
+      for (const e of db.prepare(`SELECT id, name, event_tier FROM events WHERE ${require('./eventDrafts').published(db)}`).all()) {   // not draft events
         const rows = by.get(String(e.id)) || [];
         const ess = rows.filter(r => r.tier === 'essential');
         const essential = done(ess.filter(r => r.have).map(r => r.b), ess.length);
@@ -302,7 +302,7 @@ module.exports.createAchievements = function createAchievements(deps) {
   add({ id: 'box_builder', group: 'milestones', icon: 'box', tier: 1, label: 'BOX', name: 'Longbox Architect', desc: 'Make a comic box of your own.',
     check: F => ({ have: Math.min(1, since('collections', "owner_id = ? AND COALESCE(purpose, '') <> 'pull' AND created_at >= ?", F.userId, launchedAt)), need: 1 }) });
   add({ id: 'list_maker', group: 'milestones', icon: 'list', tier: 1, label: 'LIST', name: 'The Curator', desc: 'Make a reading list of your own.',
-    check: F => ({ have: Math.min(1, since('reading_lists', "owner_id = ? AND COALESCE(source, 'manual') <> 'ai' AND created_at >= ?", F.userId, launchedAt)), need: 1 }) });
+    check: F => ({ have: Math.min(1, since('reading_lists', "owner_id = ? AND COALESCE(source, 'manual') NOT IN ('ai', 'import') AND created_at >= ?", F.userId, launchedAt)), need: 1 }) });
   add({ id: 'trendsetter', group: 'milestones', icon: 'heart', tier: 2, label: 'FOLLOW', name: 'Trendsetter', desc: 'Another reader follows a reading list of yours.',
     check: F => ({ have: hasTable('reading_list_follows') ? Math.min(1, db.prepare(`SELECT COUNT(*) AS n FROM reading_list_follows f JOIN reading_lists l ON l.id = f.list_id
       WHERE l.owner_id = ? AND f.user_id <> ? AND f.followed_at >= ?`).get(F.userId, F.userId, launchedAt).n) : 0, need: 1 }) });

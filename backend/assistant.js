@@ -563,7 +563,7 @@ ${role === 'reading_list' ? LIST_RULES : role === 'gatekeeper' ? ROUTING_RULES :
       for (const r of db.prepare('SELECT DISTINCT event_id, series_name FROM event_issues WHERE series_name IS NOT NULL').all()) {
         const a = series.get(r.event_id) || []; if (a.length < 12) a.push(r.series_name); series.set(r.event_id, a);
       }
-      for (const e of db.prepare('SELECT id, name, year, publisher FROM events').all())
+      for (const e of db.prepare(`SELECT id, name, year, publisher FROM events WHERE ${require('./eventDrafts').published(db)}`).all())   // not draft events (2026-11-12)
         items.push({ type: 'event', id: e.id, title: e.name, year: e.year, publisher: e.publisher, also: series.get(e.id) || [] });
     }
     if (kinds.has('top_shelf')) {
@@ -745,7 +745,7 @@ ${role === 'reading_list' ? LIST_RULES : role === 'gatekeeper' ? ROUTING_RULES :
           }
           return best?.r || null;
         };
-        const allEvents = db.prepare('SELECT id, name, year FROM events').all();
+        const allEvents = db.prepare(`SELECT id, name, year FROM events WHERE ${require('./eventDrafts').published(db)}`).all();
         const allRuns = db.prepare('SELECT id, title, parent_series, status FROM canon_runs').all().filter(runOk);
         // Issues of every event and run, loaded once per call (only if needed).
         let evIss = null, runIss = null;
@@ -1022,7 +1022,7 @@ ${role === 'reading_list' ? LIST_RULES : role === 'gatekeeper' ? ROUTING_RULES :
         found.sort((a, b) => (b.year || 0) - (a.year || 0));   // newest first: recent relaunches matter most
         const series = found.slice(0, 20).map(s => ({ series_id: mark('series', s.id), name: s.name, year: s.year, owned_issues: ownedCount(s.id) }));
         const ws = words(nm);
-        const events = ws.length ? db.prepare(`SELECT id, name, year FROM events WHERE ${ws.map(() => "(lower(name) LIKE ? OR lower(COALESCE(description,'')) LIKE ?)").join(' AND ')} LIMIT 8`)
+        const events = ws.length ? db.prepare(`SELECT id, name, year FROM events WHERE ${require('./eventDrafts').published(db)} AND ${ws.map(() => "(lower(name) LIKE ? OR lower(COALESCE(description,'')) LIKE ?)").join(' AND ')} LIMIT 8`)
           .all(...ws.flatMap(w => [`%${w}%`, `%${w}%`])) : [];
         return { series_featuring: series, total_series_featuring: found.length, events_mentioning: events.map(e => ({ event_id: mark('event', e.id), name: e.name, year: e.year })) };
       }
@@ -1278,7 +1278,7 @@ ${role === 'reading_list' ? LIST_RULES : role === 'gatekeeper' ? ROUTING_RULES :
           break;
         }
         case 'timeline': {
-          const evs = db.prepare('SELECT id, name, year FROM events ORDER BY year, name').all();
+          const evs = db.prepare(`SELECT id, name, year FROM events WHERE ${require('./eventDrafts').published(db)} ORDER BY year, name`).all();
           L.push(`Timeline page (all ${evs.length} events, by year): ` + cap(evs.map(e => `${e.name} ${e.year || ''} [event_id ${mark('event', e.id)}]`), 60).join('; ') + '.');
           break;
         }
@@ -1333,7 +1333,7 @@ ${role === 'reading_list' ? LIST_RULES : role === 'gatekeeper' ? ROUTING_RULES :
     return String(t)
       // OpenAI web-search citation markers: private-use characters around
       // "cite turn6search1 turn2view1" (and the same text once the characters are lost).
-      .replace(/\uE200cite(?:\uE202[^\uE200\uE201]*)+\uE201/g, '')
+      .replace(/\uE200cite(?:\uE202[^\uE200\uE201\uE202]*)+\uE201/g, '')
       .replace(/[\uE200-\uE2FF]/g, '')
       .replace(/\s*\bcite(?:turn\d+(?:search|view|news|image|fetch|open|find)\d+)+\b/gi, '')
       .replace(/\(?<\/?cite\b[^>]*>\)?/gi, '')
@@ -2413,7 +2413,7 @@ ${role === 'reading_list' ? LIST_RULES : role === 'gatekeeper' ? ROUTING_RULES :
   });
   app.post('/api/assistant/avatar', requireAdmin, express.raw({ type: () => true, limit: '8mb' }), async (req, res) => {
     try {
-      if (!req.body || !req.body.length) return res.status(400).json({ error: 'No image received' });
+      if (!Buffer.isBuffer(req.body) || !req.body.length) return res.status(400).json({ error: 'No image received' });
       let buf = req.body;
       try {
         const sharp = require('sharp');

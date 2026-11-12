@@ -89,7 +89,7 @@ docker compose up -d
 2. Go to **Library › Libraries & scanning › + Add Library**, point it at a folder under `/comics` (for example `/comics` or `/comics/DC Comics`), and choose **Add & Scan**.
 3. Optional: add a Comic Vine key in **Settings › Connections** for metadata, and an AI key in **Settings › AI & Comic Book Guy** for the assistant and generators.
 
-Essentials, Top Shelf and the Timeline start empty. Admins fill them with the **+ New** button on each page, by hand or drafted by AI and then reviewed.
+Essentials, Top Shelf and the Timeline start empty. Admins fill them with the **+ New** button on each page, by hand or drafted by AI and then reviewed, or with **⇧ Import**, which loads a reading order exported from another Omnibus install (Manage › ⇩ Export) as a draft to review and publish.
 
 **Building from source** instead of using the published image:
 
