@@ -1410,8 +1410,7 @@ input,select,textarea { font-family:inherit; }
 .cbox-section-rail::after {
   content: '';
   position: absolute; top: 0; left: 0; right: 0; height: 0;
-  background: transparent
-  );
+  background: transparent;
 }
 .cbox-section-header {
   display: flex;

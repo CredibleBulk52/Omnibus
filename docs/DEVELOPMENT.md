@@ -1,6 +1,6 @@
 # Development and checks
 
-Use Node.js 22 (the container and CI major version) and npm. Some tests use `node:sqlite`; use a recent Node 22 release that provides it. Node 24 can also run the fixture suites, but that does not replace container verification.
+Use Node.js 22.13 or later (the container and CI major version) and npm. The frontend build and test tools (Vite 8, Vitest 5, jsdom 29) need at least 22.13, and some tests use `node:sqlite`. Node 24 can also run the fixture suites, but that does not replace container verification.
 
 ## Install from the repository root
 
@@ -11,7 +11,7 @@ npm ci --prefix frontend
 
 Both packages have committed lockfiles. Docker uses `npm ci` as well. Change dependency manifests and lockfiles together and commit both; do not regenerate dependency versions just to run a build.
 
-The frontend is built with Vite (`frontend/vite.config.mjs`; replaced Create React App 2026-11-03). Output keeps CRA's layout: `frontend/build/`, hashed files in `build/static/`, and an `asset-manifest.json` that `public/sw.js` reads. `npm run dev` starts the dev server on port 3000 with `/api` proxied to `localhost:9810`. The frontend also declares the Babel and jsdom tooling used by its Node-based helper tests.
+The frontend is built with Vite 8 (`frontend/vite.config.mjs`; replaced Create React App 2026-11-03; upgraded from Vite 5 on 2026-11-12, whose stricter CSS minifier rejects malformed rules). Output keeps CRA's layout: `frontend/build/`, hashed files in `build/static/`, and an `asset-manifest.json` that `public/sw.js` reads. `npm run dev` starts the dev server on port 3000 with `/api` proxied to `localhost:9810`. The frontend also declares the Babel and jsdom tooling used by its Node-based helper tests.
 
 ## Run checks
 
