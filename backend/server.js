@@ -10811,18 +10811,26 @@ setInterval(() => {
 }, 15 * 60 * 1000);
 
 // ─── CV poller (weekly) ───────────────────────────────────────────
+const libraryStatus = require('./libraryStatus');
+let cvPollStartedAt = 0;   // while the weekly poll runs, the library status check stands aside
 // Every Monday at 03:00, check each active monitored series for new
 // CV issues not yet in our DB. Respects the 2 req/sec CV rate limit.
 cron.schedule('0 3 * * 2', async () => {
   logger.info('cvpoller', 'Weekly CV poll starting (Tuesday catch-all)');
   const CV_API_KEY = getCVKey();
 
-  const activeSeries = db.prepare(`SELECT * FROM monitored_series WHERE status = 'active' AND (series_status = 'ongoing' OR series_status = 'unknown' OR series_status IS NULL)`).all();
+  // Least recently checked first, and when the hourly allowance runs out the poll waits for it to
+  // reset and carries on (2026-11-12): it used to fail the rest of the list, always the same series.
+  cvPollStartedAt = Date.now();
+  const pollWait = { waits: 0 };
+  const activeSeries = db.prepare(`SELECT * FROM monitored_series WHERE status = 'active' AND (series_status = 'ongoing' OR series_status = 'unknown' OR series_status IS NULL)
+    ORDER BY last_cv_check IS NOT NULL, last_cv_check ASC`).all();
   logger.info('cvpoller', `Checking ${activeSeries.length} active non-ended series`);
   // Metron is the second opinion on each series' status (seriesStatus.js); off without a token or after it refuses.
   let metronOn = !!(getSetting('metron_api_token') || process.env.METRON_API_TOKEN);
 
-  for (const series of activeSeries) {
+  for (let pi = 0; pi < activeSeries.length; pi++) {
+    const series = activeSeries[pi];
     try {
       let offset = 0;
       let fetched = 0;
@@ -10917,6 +10925,7 @@ cron.schedule('0 3 * * 2', async () => {
 
       await new Promise(resolve => setTimeout(resolve, 600)); // rate limit between series
     } catch (e) {
+      if (await libraryStatus.waitForCvReset(e, pollWait, { sleep: sleepMs, logger })) { pi--; continue; }
       logger.error('cvpoller', `Failed for series ${series.id} (${series.name})`, e.message);
     }
   }
@@ -10930,7 +10939,8 @@ cron.schedule('0 3 * * 2', async () => {
 
   logger.info('cvpoller', `Checking ${annualLinks.length} linked annual volumes`);
 
-  for (const annual of annualLinks) {
+  for (let ai = 0; ai < annualLinks.length; ai++) {
+    const annual = annualLinks[ai];
     try {
       let offset = 0, fetched = 0, newCount = 0, total = Infinity;
       while (fetched < total) {
@@ -10988,10 +10998,12 @@ cron.schedule('0 3 * * 2', async () => {
       }
       await new Promise(r => setTimeout(r, 600));
     } catch (e) {
+      if (await libraryStatus.waitForCvReset(e, pollWait, { sleep: sleepMs, logger })) { ai--; continue; }
       logger.error('cvpoller', `Failed for annual ${annual.annual_series_id}`, e.message);
     }
   }
 
+  cvPollStartedAt = 0;
   logger.info('cvpoller', 'Weekly CV poll complete');
 });
 
@@ -12011,6 +12023,48 @@ app.post('/api/monitor/series-json-refresh/run', requireAdmin, (req, res) => {
   if (sjRefreshRunning) return res.json({ ok: false, message: 'Already running' });
   setImmediate(() => runSeriesJsonRefresh('manual').catch(e => logger.error('sj-refresh', 'Run failed', e.message)));
   res.json({ ok: true, message: 'series.json refresh started — see server log (sj-refresh)' });
+});
+
+// ─── Library series status check (hourly, 2026-11-12) ────────────
+// Unmonitored library series whose series.json still says "Continuing" (libraryStatus.js).
+// Metron first when a token is set; one Comic Vine request otherwise. Ended series are not checked.
+let libraryMetronOn = true;
+async function libraryStatusLookup(comicid, { name, year } = {}) {
+  let m = null;
+  if (libraryMetronOn && (getSetting('metron_api_token') || process.env.METRON_API_TOKEN)) {
+    try { m = await metron.seriesStatus(comicid, { name, year }); }
+    catch (e) {
+      if (e.code === 'METRON_AUTH' || e.code === 'METRON_TOKEN_MISSING') libraryMetronOn = false;
+      logger.warn('library-status', `Metron check failed for "${name}" — using Comic Vine`, e.message);
+    }
+  }
+  if (m && m.status === 'ended') return { metron: m, yearEnd: m.yearEnd || null };
+  const r = await cvApiGet('https://comicvine.gamespot.com/api/issues/', {
+    params: { api_key: getCVKey(), format: 'json', filter: `volume:${comicid}`, sort: 'cover_date:desc', limit: 1, field_list: 'id,cover_date,store_date' },
+    headers: { 'User-Agent': 'Omnibus/1.0' }, timeout: 15000,
+  });
+  const i = (r.data?.results || [])[0] || null;
+  const dates = i ? [i.store_date, i.cover_date].filter(Boolean).sort() : [];
+  const count = parseInt(r.data?.number_of_total_results, 10);
+  return { latestDate: dates.length ? dates[dates.length - 1] : null, lastCover: i?.cover_date || null,
+    issueCount: Number.isFinite(count) ? count : null, metron: m, yearEnd: m?.yearEnd || null };
+}
+const runLibraryStatusCheck = libraryStatus.createLibraryStatusCheck({
+  db, lookup: libraryStatusLookup, logger,
+  readSeriesJson: dir => JSON.parse(fs.readFileSync(path.join(dir, 'series.json'), 'utf8')),
+  writeSeriesJson: (dir, data) => writeSeriesJsonSynced(dir, data),
+  pause: () => sleepMs(1100),
+});
+// Manual run (admin): one batch now; results go to the server log (library-status).
+app.post('/api/monitor/library-status/run', requireAdmin, (req, res) => {
+  if (!getCVKey()) return res.status(400).json({ error: 'Set a Comic Vine API key first' });
+  setImmediate(() => runLibraryStatusCheck().catch(e => logger.error('library-status', 'Run failed', e.message)));
+  res.json({ ok: true, message: 'Library status check started — see server log (library-status)' });
+});
+cron.schedule('23 * * * *', () => {
+  if (!getCVKey()) return;
+  if (cvPollStartedAt && Date.now() - cvPollStartedAt < 6 * 60 * 60 * 1000) return;
+  runLibraryStatusCheck().catch(e => logger.error('library-status', 'Run failed', e.message));
 });
 
 // ─── Admin: location on disk ─────────────────────────────────────
