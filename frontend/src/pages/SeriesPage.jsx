@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useLibrary, useSeriesCache, isAdmin, useAppSettings } from '../App';
+import { filterSeriesView, viewCounts } from '../components/seriesViews';
 import RequestSeriesDialog from '../components/RequestSeries';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ShelfView from '../components/ComicSeriesShelfView';
@@ -79,28 +80,19 @@ function SeriesLibraryPage({ maintenance }) {
   const filterName = characterFilter || creatorFilter;
   const filterPhrase = characterFilter ? 'featuring' : 'by';
 
-  // Series grouping (2026-11-13): series shelved under a home (tie-ins) leave the browser; the
-  // filter row shows them again, and admins can list the one-shots that have no shelf yet.
-  // A search shows everything, with each grouped series labelled with its home.
-  const [groupView, setGroupView] = useViewState('series:group', 'main');
-  const issuesOf = s => s.displayTotalIssues ?? s.seriesJson?.total_issues ?? s.book_count ?? 0;
-  const groupCounts = useMemo(() => ({
-    hidden: characterFiltered.filter(s => s.group?.hidden).length,
-    grouped: characterFiltered.filter(s => s.group).length,
-    homeless: characterFiltered.filter(s => !s.group && issuesOf(s) === 1).length,
-  }), [characterFiltered]);
-  const groupFiltered = useMemo(() => {
-    if (search.trim()) return characterFiltered;
-    if (groupView === 'grouped') return characterFiltered.filter(s => s.group);
-    if (groupView === 'homeless') return characterFiltered.filter(s => !s.group && issuesOf(s) === 1);
-    return characterFiltered.filter(s => !s.group?.hidden);
-  }, [characterFiltered, groupView, search]);
+  // Browser views (components/seriesViews.js): Series | One-shots | Tie-ins, for everyone.
+  // A search shows everything, with each shelved series labelled with its home.
+  const [groupViewRaw, setGroupView] = useViewState('series:group', 'main');
+  const groupView = groupViewRaw === 'homeless' ? 'oneshots' : groupViewRaw;   // the older view name
+  const groupCounts = useMemo(() => viewCounts(characterFiltered), [characterFiltered]);
+  const groupFiltered = useMemo(() => (search.trim() ? characterFiltered : filterSeriesView(characterFiltered, groupView)),
+    [characterFiltered, groupView, search]);
   const currentSeries = activeTab === 'all' ? groupFiltered : noMetaSeries;
   // The view switch sits in the toolbar beside the count (2026-11-13).
-  const views = [['main', 'Series', null, 'Your series, without the tie-ins kept on a home series\' Specials tab'],
-    ['grouped', 'Shelved', groupCounts.grouped, 'Series shown on another series\' Specials tab'],
-    ...(isAdmin() ? [['homeless', 'No shelf', groupCounts.homeless, 'One-shots not on any Specials shelf yet']] : [])];
-  const viewSwitch = activeTab === 'all' && (groupCounts.grouped > 0 || (isAdmin() && groupCounts.homeless > 0)) && !search.trim()
+  const views = [['main', 'Series', null, 'Ongoing series and minis'],
+    ['oneshots', 'One-shots', groupCounts.oneShots, 'Single-issue books that are not on a Specials shelf'],
+    ['grouped', 'Tie-ins', groupCounts.tieIns, 'Event tie-ins and other series kept on a home series\' Specials tab']];
+  const viewSwitch = activeTab === 'all' && (groupCounts.tieIns > 0 || groupCounts.oneShots > 0) && !search.trim()
     ? <div className="csb-view-switch" role="radiogroup" aria-label="Which series to show">
         {views.map(([k, label, n, tip]) => <button key={k} type="button" role="radio" aria-checked={groupView === k} title={tip}
           onClick={() => { setGroupView(k); setPage(0); }}>{label}{n != null && <b>{n.toLocaleString()}</b>}</button>)}

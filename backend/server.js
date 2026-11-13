@@ -4091,7 +4091,9 @@ app.get('/api/series/:id/thumbnail', async (req, res) => {
 //   1. books whose ComicInfo <Series> is a different title are pushed back
 //   2. issue number exactly 1, then the lowest number above 1, then the rest
 //   3. a ComicInfo match, no " - Subtitle" in the filename, reading order
-// Annuals and specials are skipped unless nothing else exists.
+// Annuals and specials are skipped unless nothing else exists. Previews, ashcans and samplers
+// (X-Men Ashcan #1 filed as X-Men #1) go last (2026-11-13).
+const PROMO_BOOK = /\b(preview|previews|ashcan|sampler)\b/i;
 function pickSeriesCoverBook(seriesId) {
   const books = db.prepare('SELECT id, path, filename, issue_number, sort_order, is_special, comicinfo FROM scanned_books WHERE series_id = ?').all(seriesId);
   if (!books.length) return null;
@@ -4116,7 +4118,8 @@ function pickSeriesCoverBook(seriesId) {
     if (!Number.isFinite(n) && fm && b.issue_number) n = parseFloat(fm[2]); // e.g. issue_number "HC"
     const tier = n === 1 ? 0 : (Number.isFinite(n) && n > 1 ? 1 : 2);
     const dash = /\s-\s/.test(b.filename) ? 1 : 0;
-    return { b, key: [match === 2 ? 1 : 0, tier, Number.isFinite(n) ? n : 1e9, match, dash, b.sort_order ?? 1e9] };
+    const promo = PROMO_BOOK.test(b.filename) || PROMO_BOOK.test(((b.comicinfo || '').match(/<Title>([^<]*)<\/Title>/i) || [])[1] || '') ? 1 : 0;
+    return { b, key: [promo, match === 2 ? 1 : 0, tier, Number.isFinite(n) ? n : 1e9, match, dash, b.sort_order ?? 1e9] };
   });
   ranked.sort((x, y) => {
     for (let i = 0; i < x.key.length; i++) if (x.key[i] !== y.key[i]) return x.key[i] - y.key[i];

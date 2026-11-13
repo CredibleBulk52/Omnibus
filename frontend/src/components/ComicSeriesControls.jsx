@@ -3,7 +3,7 @@ import React, { useEffect, useId, useRef } from 'react';
 import { useViewState } from '../hooks/useViewState';
 import '../seriesControls.css';
 
-// viewSwitch: a segmented view choice beside the count (series browser: Series · Shelved · No shelf).
+// viewSwitch: a segmented view choice beside the count (series browser: Series · One-shots · Tie-ins).
 // moreMenu: occasional actions (Select, Add a series) under "⋯", with the cover size; without it,
 // the cover size keeps its own button (2026-11-13).
 export default function ComicSeriesControls({ compact, viewKey, activeCount, recent, onClear, alpha, children, selectionControls, resultCount, viewSwitch = null, moreMenu = null }) {
