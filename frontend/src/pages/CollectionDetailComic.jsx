@@ -28,6 +28,7 @@ export default function CollectionDetail() {
   const [collection, setCollection] = useState(null);
   const [allSeries, setAllSeries] = useState([]);
   const [matchedSeries, setMatchedSeries] = useState([]);
+  const [showGrouped, setShowGrouped] = useState(false);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useViewState(`collection:${id}:page`, 0);
   const [search, setSearch] = useViewState(`collection:${id}:search`, '');
@@ -235,6 +236,9 @@ export default function CollectionDetail() {
   );
 
   const isManual = collection.collectionType === 'manual' || collection.collection_type === 'manual';
+  // Smart boxes leave out series shelved under a home (tie-ins); manual boxes show what was added (2026-11-13).
+  const groupedOut = isManual ? 0 : matchedSeries.filter(s => s.group?.hidden).length;
+  const boxSeries = isManual || showGrouped || search.trim() ? matchedSeries : matchedSeries.filter(s => !s.group?.hidden);
   const userId = getUser()?.id;
   const canEdit = collection.owner_id ? collection.owner_id === userId : isAdmin();
   const othersBox = !!collection.owner_id && collection.owner_id !== userId;   // a shared box of another user
@@ -302,7 +306,7 @@ export default function CollectionDetail() {
 
       {/* Series shelf */}
       <ShelfView
-        series={matchedSeries}
+        series={boxSeries}
         loading={loading}
         page={page}
         onPageChange={p => { setPage(p); window.scrollTo(0,0); }}
@@ -315,7 +319,11 @@ export default function CollectionDetail() {
         selectable={selectable}
         selected={selected}
         onSelectionChange={setSelected}
-        extraControls={<SeriesSelectControls selectable={selectable} setSelectable={setSelectable} selected={selected} setSelected={setSelected} />}
+        extraControls={<>
+          <SeriesSelectControls selectable={selectable} setSelectable={setSelectable} selected={selected} setSelected={setSelected} />
+          {groupedOut > 0 && <button type="button" className="btn btn-ghost" onClick={() => setShowGrouped(v => !v)}
+            title="Tie-ins shelved under their home series' Specials tab">{showGrouped ? 'Hide grouped tie-ins' : `Show ${groupedOut} grouped tie-in${groupedOut === 1 ? '' : 's'}`}</button>}
+        </>}
         seriesMenu={canEdit && isManual ? { onRemove: s => removeSeries(s.id) } : {}}
       />
       {/* Recommended series the library lacks: placeholders with Add / Request (2026-11-04). */}

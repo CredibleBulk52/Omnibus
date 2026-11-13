@@ -696,6 +696,7 @@ function SeriesLabel({ series, onClick }) {
   return <button type="button" className="csb-label" onClick={onClick} title={fullTitle} aria-label={`Open ${fullTitle}`}>
     <span className="csb-title">{title}</span>
     <span className="csb-meta">{year && <span className="csb-year">{year}</span>}{series.book_count > 0 && <span>{series.book_count} issue{series.book_count !== 1 ? 's' : ''}</span>}</span>
+    {series.group?.homeName && <span className="csb-home" title={`On the Specials shelf of ${series.group.homeName}`}>in {series.group.homeName}</span>}
   </button>;
 }
 function CoverGrid({ items, onBookClick, selected, selectable, seriesMenu }) {

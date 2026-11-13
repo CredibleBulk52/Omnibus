@@ -79,7 +79,23 @@ function SeriesLibraryPage({ maintenance }) {
   const filterName = characterFilter || creatorFilter;
   const filterPhrase = characterFilter ? 'featuring' : 'by';
 
-  const currentSeries = activeTab === 'all' ? characterFiltered : noMetaSeries;
+  // Series grouping (2026-11-13): series shelved under a home (tie-ins) leave the browser; the
+  // filter row shows them again, and admins can list the one-shots that have no shelf yet.
+  // A search shows everything, with each grouped series labelled with its home.
+  const [groupView, setGroupView] = useViewState('series:group', 'main');
+  const issuesOf = s => s.displayTotalIssues ?? s.seriesJson?.total_issues ?? s.book_count ?? 0;
+  const groupCounts = useMemo(() => ({
+    hidden: characterFiltered.filter(s => s.group?.hidden).length,
+    grouped: characterFiltered.filter(s => s.group).length,
+    homeless: characterFiltered.filter(s => !s.group && issuesOf(s) === 1).length,
+  }), [characterFiltered]);
+  const groupFiltered = useMemo(() => {
+    if (search.trim()) return characterFiltered;
+    if (groupView === 'grouped') return characterFiltered.filter(s => s.group);
+    if (groupView === 'homeless') return characterFiltered.filter(s => !s.group && issuesOf(s) === 1);
+    return characterFiltered.filter(s => !s.group?.hidden);
+  }, [characterFiltered, groupView, search]);
+  const currentSeries = activeTab === 'all' ? groupFiltered : noMetaSeries;
   const currentLoading = activeTab === 'all' ? loading : noMetaLoading;
   const appSettings = useAppSettings();
   const canDownload = isAdmin() || appSettings.download_manager_admin_only !== 'true';
@@ -110,6 +126,25 @@ function SeriesLibraryPage({ maintenance }) {
         </div>
       )}
 
+        {activeTab === 'all' && (groupCounts.grouped > 0 || (isAdmin() && groupCounts.homeless > 0)) && (
+          <div className="series-group-row" role="group" aria-label="Which series to show">
+            {[['main', 'Series', null, `Grouped tie-ins are on their home's Specials tab (${groupCounts.hidden} kept out of this list)`],
+              ['grouped', 'On a Specials shelf', groupCounts.grouped, 'Series shown on another series\' Specials tab'],
+              ...(isAdmin() ? [['homeless', 'One-shots with no shelf', groupCounts.homeless, 'One-shots not on any Specials shelf yet: open one and use Manage › Put on a Specials shelf']] : [])]
+              .map(([k, label, n, tip]) => (
+                <button key={k} type="button" className={`series-group-chip${groupView === k ? ' on' : ''}`} title={tip}
+                  onClick={() => { setGroupView(k); setPage(0); }}>{label}{n != null ? <b>{n}</b> : null}</button>))}
+            {search.trim() && <small>Searching shows every series.</small>}
+            <style>{`
+              .series-group-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 24px 0; }
+              .series-group-row small { color: var(--text-muted); }
+              .series-group-chip { display: inline-flex; gap: 6px; align-items: center; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border-subtle);
+                background: transparent; color: var(--text-muted); font: inherit; font-size: 0.8rem; cursor: pointer; }
+              .series-group-chip b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+              .series-group-chip.on { border-color: var(--td-yellow, var(--color-primary)); color: var(--text-primary); }
+            `}</style>
+          </div>
+        )}
         <ShelfView
           seriesMenu={SERIES_MENU}
           compactControls={activeTab === 'all'}
@@ -125,11 +160,14 @@ function SeriesLibraryPage({ maintenance }) {
           pageStatsKey={activeTab==='all' && !filterName ? 'series' : undefined}
           pageStatsLibraryId={activeLibrary?.id}
           pageSize={60}
-          viewKey={`series:${activeTab}:${filterKey}`}
+          viewKey={`series:${activeTab}:${filterKey}:${groupView}`}
           selectable={selectable}
           selected={selected}
           onSelectionChange={setSelected}
           extraControls={<>
+            {activeTab === 'no-metadata' && isAdmin() && <CreateFromFiles libraryId={activeLibrary?.id || null}
+              onFinished={() => { setNoMetaLoaded(false); setNoMetaSeries([]); fetch('/api/series/no-metadata' + (activeLibrary ? `?libraryId=${activeLibrary.id}` : ''))
+                .then(r => r.json()).then(d => { setNoMetaSeries(d.content || []); setNoMetaLoaded(true); }).catch(() => {}); }} />}
             <SeriesSelectControls selectable={selectable} setSelectable={setSelectable} selected={selected} setSelected={setSelected} />
             {/* Not in the library: users who may download add it; others ask the admin (2026-10-28). */}
             {canDownload
@@ -141,3 +179,43 @@ function SeriesLibraryPage({ maintenance }) {
   );
 }
 
+
+// Series without details › "Create from files" (2026-11-13): for every folder without a series.json,
+// the Comic Vine volume of its comics (Metron first), then the normal create and enrich, one at a time.
+function CreateFromFiles({ libraryId, onFinished }) {
+  const { invalidate } = useSeriesCache();
+  const [job, setJob] = useState(null);
+  const [error, setError] = useState('');
+  const poll = () => fetch('/api/series/no-metadata/create-from-files').then(r => r.json()).then(setJob).catch(() => {});
+  useEffect(() => { poll(); }, []);
+  useEffect(() => {
+    if (!job?.running) return;
+    const t = setInterval(async () => {
+      const d = await fetch('/api/series/no-metadata/create-from-files').then(r => r.json()).catch(() => null);
+      if (!d) return;
+      setJob(d);
+      if (!d.running) { clearInterval(t); invalidate(null); onFinished?.(); }
+    }, 3000);
+    return () => clearInterval(t);
+  }, [job?.running]);
+  const start = async () => {
+    setError('');
+    const r = await fetch('/api/series/no-metadata/create-from-files', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ libraryId }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) setError(d.error || `HTTP ${r.status}`); else setJob(d);
+  };
+  const running = !!job?.running;
+  return <span className="create-from-files">
+    {running
+      ? <><small>Creating {job.done} of {job.total}{job.current ? ` · ${job.current}` : ''}</small>
+          <button type="button" className="btn btn-ghost" onClick={() => fetch('/api/series/no-metadata/create-from-files/stop', { method: 'POST' }).then(poll)}>Stop</button></>
+      : <button type="button" className="btn btn-ghost" onClick={start}
+          title="For each folder here: find its Comic Vine series from the comics inside (Metron first), then create and enrich its series.json, one folder at a time">✦ Create from files</button>}
+    {!running && job?.finishedAt && <small> Last run: {job.created} created{job.skipped?.length ? `, ${job.skipped.length} skipped` : ''}{job.note ? ` · ${job.note}` : ''}</small>}
+    {!running && job?.skipped?.length > 0 && <details className="create-from-files-skipped"><summary>Skipped</summary>
+      {job.skipped.map(x => <div key={x.id}>{x.name}: {x.reason}</div>)}</details>}
+    {error && <small style={{ color: 'var(--td-red, #e55)' }}> {error}</small>}
+    <style>{`.create-from-files { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; } .create-from-files small { color: var(--text-muted); }
+      .create-from-files-skipped { font-size: 0.8rem; color: var(--text-muted); max-height: 200px; overflow: auto; }`}</style>
+  </span>;
+}

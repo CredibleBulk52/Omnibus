@@ -3665,8 +3665,23 @@ app.get('/api/scan/status', (req, res) => {
 // 7 of ~12 MB for 2,300 series). The list pages use the display* fields; seriesJson is only a
 // fallback for these keys (ConditionBuilder, comic box rules, shelf search), and nothing on
 // them reads the description. A series page loads the full record from /api/series/:id.
+// Series grouping (seriesGrouping.js, 2026-11-13): each list item carries its homes and whether it
+// is hidden from the browser. Built once per change; any link change clears it and the series cache.
+const seriesGrouping = require('./seriesGrouping').createSeriesGrouping({ db, logger,
+  onChange: () => { seriesGroupCache = null; invalidateSeriesCache(); } });
+let seriesGroupCache = null;
+function seriesGroupOf(id) {
+  if (!seriesGroupCache) { try { seriesGroupCache = seriesGrouping.groupMap(); } catch (e) { logger.warn('grouping', 'Group map failed', e.message); seriesGroupCache = new Map(); } }
+  return seriesGroupCache.get(id) || null;
+}
 const SERIES_LIST_JSON_KEYS = ['name', 'year', 'era', 'publisher', 'imprint', 'genres', 'characters', 'status', 'writers', 'artists'];
 function seriesListItem(merged) {
+  const item = seriesListItemCore(merged);
+  const group = typeof seriesGroupOf === 'function' ? seriesGroupOf(item.id) : null;
+  if (group) item.group = group;
+  return item;
+}
+function seriesListItemCore(merged) {
   const { series_json, displayDescription, seriesJson, ...rest } = merged;
   if (!seriesJson || typeof seriesJson !== 'object' || Array.isArray(seriesJson)) return { ...rest, seriesJson: seriesJson || null };   // a few series.json files hold a list: passed on as before
   const slim = {};
@@ -6285,33 +6300,25 @@ app.get('/api/monitor/mass-json/status', requireAdmin, (req, res) => {
 });
 
 
-// ─── Create series.json via Python script (fetches full CV data) ──
-app.post('/api/series/:id/create-json', requireAdmin, async (req, res) => {
-  try {
-    const { volumeId } = req.body;
-    if (!volumeId) return res.status(400).json({ error: 'volumeId required' });
-    // With a Metron token the enricher answers from Metron when Comic Vine is at its limit, so only
-    // a Comic Vine-only install is told to wait.
-    const busy = (getSetting('metron_api_token') || process.env.METRON_API_TOKEN) ? null : cvBusyUntil();
-    if (busy) {
-      const at = new Date(busy).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: process.env.TZ || 'UTC' });
-      return res.status(429).json({ error: `Comic Vine's hourly limit is used up. Try again after ${at}.`, retryAt: busy });
-    }
-
-    const scanned = db.prepare('SELECT path FROM scanned_series WHERE id = ?').get(req.params.id);
-    const monitored = !scanned ? db.prepare('SELECT directory as path FROM monitored_series WHERE id = ?').get(req.params.id) : null;
+// ─── Create series.json from a Comic Vine volume (enricher create) ──
+// Used by the series page's create / re-link and by "Create from files" (2026-11-13).
+// Returns { path, name, comicid } or { status, error }.
+async function createSeriesJsonFromVolume(seriesId, volumeId, userId = null) {
+    const scanned = db.prepare('SELECT path FROM scanned_series WHERE id = ?').get(seriesId);
+    const monitored = !scanned ? db.prepare('SELECT directory as path FROM monitored_series WHERE id = ?').get(seriesId) : null;
     const folderPath = scanned?.path || monitored?.path;
-    if (!folderPath) return res.status(404).json({ error: 'Series not found' });
-    if (!fs.existsSync(folderPath)) return res.status(404).json({ error: `Series folder not found: ${folderPath}` });
+    if (!folderPath) return { status: 404, error: 'Series not found' };
+    if (!fs.existsSync(folderPath)) return { status: 404, error: `Series folder not found: ${folderPath}` };
 
-    const configPath = path.join(path.dirname(DB_PATH), 'create_tmp_config.yaml');
-    const aiRun = startEnricherRun(`Create series.json: ${path.basename(folderPath)}`, req.user?.sub || null);
+    // One config file per run: a click and the "Create from files" job may overlap.
+    const configPath = path.join(path.dirname(DB_PATH), `create_tmp_config_${process.pid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.yaml`);
+    const aiRun = startEnricherRun(`Create series.json: ${path.basename(folderPath)}`, userId);
     fs.writeFileSync(configPath, yaml.dump(buildEnricherConfig(false, aiRun)));
 
     const enricherPath = path.join(SCRIPTS_PATH, 'enricher.py');
     const args = [enricherPath, 'create', folderPath, String(volumeId), '--config', configPath];
 
-    logger.info('create-json', `spawning enricher create`, { seriesId: req.params.id, volumeId, folderPath });
+    logger.info('create-json', `spawning enricher create`, { seriesId: seriesId, volumeId, folderPath });
 
     const output = await new Promise((resolve, reject) => {
       const proc = spawn('python3', args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
@@ -6332,14 +6339,32 @@ app.post('/api/series/:id/create-json', requireAdmin, async (req, res) => {
     try { result = JSON.parse(output); }
     catch (parseErr) {
       console.error('[create-json] stdout:', output);
-      return res.status(500).json({ error: 'Script did not return valid JSON. Check server logs.' });
+      return { status: 500, error: 'Script did not return valid JSON. Check server logs.' };
     }
 
-    if (!result.success) return res.status(500).json({ error: result.error || 'Script failed' });
+    if (!result.success) return { status: 500, error: result.error || 'Script failed' };
 
-    syncSeriesJsonRow({ seriesId: req.params.id });
-    logger.info('create-json', `library row refreshed`, { seriesId: req.params.id });
-    res.json({ success: true, path: result.path, name: result.name, comicid: result.comicid });
+    syncSeriesJsonRow({ seriesId });
+    logger.info('create-json', `library row refreshed`, { seriesId });
+    return { path: result.path, name: result.name, comicid: result.comicid };
+}
+
+// ─── Create series.json via Python script (fetches full CV data) ──
+app.post('/api/series/:id/create-json', requireAdmin, async (req, res) => {
+  try {
+    const { volumeId } = req.body;
+    if (!volumeId) return res.status(400).json({ error: 'volumeId required' });
+    // With a Metron token the enricher answers from Metron when Comic Vine is at its limit, so only
+    // a Comic Vine-only install is told to wait.
+    const busy = (getSetting('metron_api_token') || process.env.METRON_API_TOKEN) ? null : cvBusyUntil();
+    if (busy) {
+      const at = new Date(busy).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: process.env.TZ || 'UTC' });
+      return res.status(429).json({ error: `Comic Vine's hourly limit is used up. Try again after ${at}.`, retryAt: busy });
+    }
+
+    const out = await createSeriesJsonFromVolume(req.params.id, volumeId, req.user?.sub || null);
+    if (out.status) return res.status(out.status).json({ error: out.error });
+    res.json({ success: true, path: out.path, name: out.name, comicid: out.comicid });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -9527,7 +9552,8 @@ function scheduleReconcile(scanChanged = false) {
       .catch(e => logger.error('events', 'Reconcile failed', { error: e.message }))
       .finally(() => Promise.resolve(canonMatch.reconcile(changed))
         .catch(e => logger.error('canon', 'Reconcile failed', { error: e.message }))
-        .finally(() => readingLists.reconcile(changed)));
+        .finally(() => Promise.resolve(readingLists.reconcile(changed))
+          .finally(() => { try { seriesGrouping.run('reconcile'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } })));
   }, 2000);
 }
 
@@ -12102,6 +12128,71 @@ const runLibraryStatusCheck = libraryStatus.createLibraryStatusCheck({
   writeSeriesJson: (dir, data) => writeSeriesJsonSynced(dir, data),
   pause: () => sleepMs(1100),
 });
+// ─── Series without details: create series.json from the files (2026-11-13) ─
+// Library page › Series without details › "Create from files". For each folder without a
+// series.json, the Comic Vine volume of its comics (the largest ComicInfo series group; saved
+// lookups, the monitored issue lists, Metron, then Comic Vine outside the reserve), then the normal
+// create and enrich (Metron first, one Comic Vine volume request). One folder at a time.
+const filesJob = { running: false, stop: false, total: 0, done: 0, created: 0, skipped: [], current: null, startedAt: null, finishedAt: null, note: null };
+async function volumeForFolder(seriesId) {
+  const groups = new Map();
+  for (const b of db.prepare('SELECT filename, comicinfo, cv_issue_id FROM scanned_books WHERE series_id = ? AND COALESCE(is_special, 0) = 0').all(seriesId)) {
+    if (/annual/i.test(b.filename || '') || !b.cv_issue_id) continue;
+    const m = /<Series>([^<]*)<\/Series>/.exec(b.comicinfo || '');
+    const key = (m ? m[1] : '').trim().toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(String(b.cv_issue_id));
+  }
+  const main = [...groups.values()].sort((a, b) => b.length - a.length)[0];
+  if (!main) return { reason: 'no Comic Vine IDs in its files' };
+  for (const issueId of main.slice(0, 2)) {
+    const saved = db.prepare('SELECT volume_id, volume_name FROM cv_issue_volume WHERE issue_id = ?').get(issueId);
+    if (saved?.volume_id) return { id: saved.volume_id, name: saved.volume_name };
+    const mon = db.prepare('SELECT series_id FROM monitored_issues WHERE id = ?').get(issueId);
+    if (mon) return { id: String(mon.series_id), name: null };
+    const v = await volumeOfIssueAnySource(issueId);
+    db.prepare('INSERT OR REPLACE INTO cv_issue_volume (issue_id, volume_id, volume_name, at) VALUES (?, ?, ?, ?)').run(issueId, v?.id || null, v?.name || null, Date.now());
+    if (v?.id) return v;
+  }
+  return { reason: 'its Comic Vine issue was not found' };
+}
+async function runCreateFromFiles(libraryId, userId) {
+  const rows = db.prepare(`SELECT id, name, path FROM scanned_series WHERE metadata_status = 'none' ${libraryId ? 'AND library_id = ?' : ''} ORDER BY name`).all(...(libraryId ? [libraryId] : []))
+    .filter(r => r.path && !fs.existsSync(path.join(r.path, 'series.json')));
+  Object.assign(filesJob, { running: true, stop: false, total: rows.length, done: 0, created: 0, skipped: [], current: null, startedAt: Date.now(), finishedAt: null, note: null });
+  try {
+    for (const r of rows) {
+      if (filesJob.stop) { filesJob.note = 'Stopped.'; break; }
+      filesJob.current = r.name;
+      try {
+        const v = await volumeForFolder(r.id);
+        if (!v.id) { filesJob.skipped.push({ id: r.id, name: r.name, reason: v.reason }); continue; }
+        const out = await createSeriesJsonFromVolume(r.id, v.id, userId);
+        if (out.status) filesJob.skipped.push({ id: r.id, name: r.name, reason: out.error });
+        else { filesJob.created++; logger.info('create-from-files', `${r.name} → ${out.name} (Comic Vine ${out.comicid})`); }
+      } catch (e) {
+        if (e.code === 'CV_HEADROOM' || e.code === 'CV_RATE_LIMIT') {
+          filesJob.skipped.push({ id: r.id, name: r.name, reason: 'Comic Vine is at its limit; run again later for this one' });
+        } else filesJob.skipped.push({ id: r.id, name: r.name, reason: e.message });
+      } finally { filesJob.done++; }
+    }
+  } finally {
+    filesJob.running = false; filesJob.current = null; filesJob.finishedAt = Date.now();
+    invalidateSeriesCache();
+    try { seriesGrouping.run('create from files'); } catch {}
+    logger.info('create-from-files', 'Finished', { total: filesJob.total, created: filesJob.created, skipped: filesJob.skipped.length });
+  }
+}
+app.get('/api/series/no-metadata/create-from-files', requireAdmin, (req, res) => res.json(filesJob));
+app.post('/api/series/no-metadata/create-from-files', requireAdmin, (req, res) => {
+  if (filesJob.running) return res.json(filesJob);
+  if (!anyProvider()) return res.status(400).json({ error: 'Set a Comic Vine API key or a Metron token first (Settings → Connections)' });
+  setImmediate(() => runCreateFromFiles(req.body?.libraryId || null, req.user?.sub || null).catch(e => logger.error('create-from-files', 'Failed', e.message)));
+  filesJob.running = true;
+  res.json(filesJob);
+});
+app.post('/api/series/no-metadata/create-from-files/stop', requireAdmin, (req, res) => { filesJob.stop = true; res.json(filesJob); });
+
 // Manual run (admin): one batch now; results go to the server log (library-status).
 app.post('/api/monitor/library-status/run', requireAdmin, (req, res) => {
   if (!anyProvider()) return res.status(400).json({ error: 'Set a Comic Vine API key or a Metron token first (Settings → Connections)' });
@@ -12140,19 +12231,22 @@ async function metronVolumeOfIssue(cvIssueId) {
     return null;
   }
 }
+// The Comic Vine volume of one Comic Vine issue: Metron first, then one Comic Vine request outside
+// the reserve kept for clicks (throws CV_HEADROOM inside it). Shared by the link check and
+// "Create from files".
+async function volumeOfIssueAnySource(issueId) {
+  const m = await metronVolumeOfIssue(issueId);
+  if (m) return m;
+  if (!getCVKey()) return null;   // Metron-only install: unknown for now
+  if (cvWindow('issue').used >= CV_CAP_BACKGROUND - CV_LINK_RESERVE)
+    throw Object.assign(new Error('Comic Vine allowance kept for clicks'), { code: 'CV_HEADROOM' });
+  const r = await cvApiGet(`https://comicvine.gamespot.com/api/issue/4000-${issueId}/`, {
+    params: { api_key: getCVKey(), format: 'json', field_list: 'id,volume' }, headers: { 'User-Agent': 'Omnibus/1.0' }, timeout: 10000 });
+  const v = r.data?.results?.volume;
+  return v?.id ? { id: String(v.id), name: v.name || null } : null;
+}
 const seriesLinkCheck = require('./seriesLinkCheck').createSeriesLinkCheck({
-  db, logger, pause: () => sleepMs(1100),
-  volumeOfIssue: async issueId => {
-    const m = await metronVolumeOfIssue(issueId);
-    if (m) return m;
-    if (!getCVKey()) return null;   // Metron-only install: unknown for now
-    if (cvWindow('issue').used >= CV_CAP_BACKGROUND - CV_LINK_RESERVE)
-      throw Object.assign(new Error('Comic Vine allowance kept for clicks'), { code: 'CV_HEADROOM' });
-    const r = await cvApiGet(`https://comicvine.gamespot.com/api/issue/4000-${issueId}/`, {
-      params: { api_key: getCVKey(), format: 'json', field_list: 'id,volume' }, headers: { 'User-Agent': 'Omnibus/1.0' }, timeout: 10000 });
-    const v = r.data?.results?.volume;
-    return v?.id ? { id: String(v.id), name: v.name || null } : null;
-  },
+  db, logger, pause: () => sleepMs(1100), volumeOfIssue: volumeOfIssueAnySource,
 });
 // A re-link (enricher create) waits up to an hour when Comic Vine is at its limit; say so instead.
 // Returns null when Comic Vine can take the re-link's requests now, else the time it can.
@@ -17190,6 +17284,22 @@ async function requestRowFor(src, owner, issue) {
 }
 // Problem reports from users (problemReports.js); the admin's Reports tab in the Download Manager.
 const problemReports = require('./problemReports')({ app, db, requireAuth, requireAdmin, logger });
+// ─── Series grouping routes (2026-11-13) ──────────────────────────
+const groupingRoute = fn => (req, res) => { try { res.json(fn(req) ?? { ok: true }); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
+app.get('/api/grouping', requireAdmin, groupingRoute(() => seriesGrouping.summary()));
+app.post('/api/grouping/run', requireAdmin, groupingRoute(() => seriesGrouping.run('manual')));
+app.post('/api/grouping/events/confirm-all', requireAdmin, groupingRoute(() => seriesGrouping.confirmAll()));
+app.post('/api/grouping/events/:id', requireAdmin, groupingRoute(req => seriesGrouping.setEvent(req.params.id, {
+  homeSeriesId: req.body?.homeSeriesId, initiative: req.body?.initiative, confirm: !!req.body?.confirm })));
+// The series page: its own homes and the series on its shelf.
+app.get('/api/series/:id/grouping', requireAuth, groupingRoute(req => ({ homes: seriesGrouping.homesOf(req.params.id), members: seriesGrouping.members(req.params.id),
+  keepVisible: !!seriesGroupOf(req.params.id)?.keepVisible })));
+app.post('/api/series/:id/shelf', requireAdmin, groupingRoute(req => { seriesGrouping.link(req.params.id, String(req.body?.homeId || '')); }));
+app.delete('/api/series/:id/shelf/:homeId', requireAdmin, groupingRoute(req => ({ ok: seriesGrouping.unlink(req.params.id, req.params.homeId) })));
+app.post('/api/series/:id/keep-visible', requireAdmin, groupingRoute(req => { seriesGrouping.keepVisible(req.params.id, !!req.body?.on); }));
+setTimeout(() => { try { seriesGrouping.run('startup'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } }, 60000);
+cron.schedule('17 * * * *', () => { try { seriesGrouping.run('hourly'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } });
+
 const libraryHealth = require('./libraryHealth')({ app, db, requireAdmin, logger,
   seriesLinkMismatches: () => seriesLinkCheck.count(),
   // Bulk duplicate cleanup: retag by filename through the normal retag runtime

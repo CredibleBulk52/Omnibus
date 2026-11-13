@@ -19,6 +19,7 @@ import { markSeriesRead } from './seriesReading.mjs';
 import '../seriesDetail.css';
 import ComicSeriesHero from '../components/ComicSeriesHero';
 import { AiInfo } from '../components/AiInfo';
+import { useSeriesGrouping, ShelfHomes, LinkedSeriesShelf, PutOnShelfDialog, SeriesShelfStyles } from '../components/SeriesShelf';
 
 // ─── SaveOfflineBtn ───────────────────────────────────────────────
 // Per-issue download button. Shows: 📥 (not saved) → progress → ✓ (saved) → 🗑 (on hover)
@@ -118,6 +119,9 @@ export default function SeriesDetailComic() {
   const navigate = useNavigate();
   const location = useLocation();
   const { invalidate } = useSeriesCache();
+  // Specials shelf (2026-11-13): the series this one is shelved under, and the series shelved under it.
+  const [grouping, reloadGrouping] = useSeriesGrouping(id);
+  const [shelfOpen, setShelfOpen] = useState(false);
   const [series, setSeries] = useState(null);
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -802,7 +806,7 @@ export default function SeriesDetailComic() {
           Annuals{annuals?.books?.length > 0 ? ` (${annuals.books.length})` : ''}
         </button>
         <button className={`series-tab ${tab==='specials'?'active':''}`} onClick={() => setTab('specials')}>
-          Specials{specials?.books?.length > 0 ? ` (${specials.books.length})` : ''}
+          Specials{((specials?.books?.length || 0) + (grouping.members?.length || 0)) > 0 ? ` (${(specials?.books?.length || 0) + (grouping.members?.length || 0)})` : ''}
         </button>
         <button className={`series-tab ${tab==='metadata'?'active':''}`} onClick={() => setTab('metadata')}>
           Details <InfoTip text="Series details: publisher, era, genres, characters, creators and the full description." position="bottom" />
@@ -836,6 +840,8 @@ export default function SeriesDetailComic() {
                 {forceRescanning ? '⏳ Rescanning…' : '↺ Rescan'}
               </button>}
               {isAdmin() && <ReidentifySeriesButton seriesId={id} />}
+              {isAdmin() && <button className="btn btn-ghost" onClick={() => { setManageOpen(false); setShelfOpen(true); }}
+                title="Show this series on another series' Specials tab and keep it out of the series browser">⇲ Put on a Specials shelf…</button>}
               {isAdmin() && hasJson && <button className="btn btn-ghost" disabled={findingAnnuals}
                 title="Search Comic Vine for this series' annual volumes (an AI check confirms them); missing annuals then show on the Annuals tab"
                 onClick={findAnnuals}>{findingAnnuals ? '⏳ Finding annuals…' : '◈ Find annuals'}</button>}
@@ -893,6 +899,9 @@ export default function SeriesDetailComic() {
       {/* ── Tab bodies ── */}
       <div className="series-body">
 
+        <ShelfHomes seriesId={id} homes={grouping.homes} onChanged={reloadGrouping} />
+        <SeriesShelfStyles />
+        {shelfOpen && <PutOnShelfDialog seriesId={id} seriesName={title} onClose={() => setShelfOpen(false)} onDone={reloadGrouping} />}
         {/* ── Issues — bookshelf layout ── */}
         {tab === 'issues' && (
           books.length === 0
@@ -1058,11 +1067,12 @@ export default function SeriesDetailComic() {
         })()}
 
         {/* ── Specials ── */}
+        {tab === 'specials' && <LinkedSeriesShelf homeId={id} members={grouping.members} onChanged={reloadGrouping} />}
         {tab === 'specials' && (
           specialsLoading
             ? <div className="loading"><div className="spinner" /><span>Loading specials…</span></div>
             : (!specials?.books?.length)
-              ? <div className="empty-state"><div className="empty-icon">◈</div><div className="empty-title">No specials found</div><div className="empty-subtitle">Issues with "Special" or "One-Shot" in the filename appear here automatically. You can also mark any issue as a special via its Details popup.</div></div>
+              ? grouping.members?.length ? null : <div className="empty-state"><div className="empty-icon">◈</div><div className="empty-title">No specials found</div><div className="empty-subtitle">Issues with "Special" or "One-Shot" in the filename appear here automatically. You can also mark any issue as a special via its Details popup.</div></div>
               : (
                 <div className="issues-shelf-section">
                   <div className="issues-bookshelf">

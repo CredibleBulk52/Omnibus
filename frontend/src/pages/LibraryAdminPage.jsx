@@ -9,6 +9,7 @@ import { CharacterVerification } from './CVAdminPage';
 import { LibrariesSection, PostProcessingSection, PublisherSection, WeeklySection, SettingsStyles, InventoryDownloadBtn } from './SettingsPage';
 import { useLibrary } from '../App';
 import { AttentionList, DuplicatesPanel, SeriesLinksPanel } from '../components/LibraryHealth';
+import { SeriesGroupingPanel } from '../components/SeriesShelf';
 import GenreRetag from '../components/GenreRetag';
 
 // ─── LibraryAdminPage (/library) ──────────────────────────────────
@@ -57,6 +58,7 @@ export default function LibraryAdminPage() {
         {group('duplicates', 'Duplicate copies', 'The same Comic Vine issue in more than one file', <DuplicatesPanel onOpen={openFrom} />, health && <span className="library-group-status">{health.needsYou.duplicates ? `${health.needsYou.duplicates} flagged` : 'None flagged'}</span>)}
         {group('series-links', 'Series linked to the wrong volume', "Folders whose series.json names a different Comic Vine series than their comics", <SeriesLinksPanel />,
           health && health.needsYou.seriesLinks ? <span className="library-group-status">{health.needsYou.seriesLinks} to check</span> : null)}
+        {group('grouping', 'Specials shelves', 'Event minis and one-shots grouped under their home series, and the event homes to check', <SeriesGroupingPanel />)}
         {group('series', 'Series without details', 'Series folders with no series.json yet',
           <SeriesPage maintenance="no-metadata" />, health && <span className="library-group-status">{health.info.seriesWithoutDetails} series</span>)}
         {group('genres', 'Genres', 'The genre list, and retagging series with it (AI)', <GenreRetag />)}
