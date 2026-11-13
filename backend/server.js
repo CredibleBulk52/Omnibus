@@ -3670,6 +3670,12 @@ app.get('/api/scan/status', (req, res) => {
 const seriesGrouping = require('./seriesGrouping').createSeriesGrouping({ db, logger,
   onChange: () => { seriesGroupCache = null; invalidateSeriesCache(); } });
 let seriesGroupCache = null;
+// Run the Specials-shelf rules shortly after a change (several creates in a row run them once).
+let groupingTimer = null;
+function scheduleGroupingRun(reason) {
+  clearTimeout(groupingTimer);
+  groupingTimer = setTimeout(() => { try { seriesGrouping.run(reason); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } }, 10000);
+}
 function seriesGroupOf(id) {
   if (!seriesGroupCache) { try { seriesGroupCache = seriesGrouping.groupMap(); } catch (e) { logger.warn('grouping', 'Group map failed', e.message); seriesGroupCache = new Map(); } }
   return seriesGroupCache.get(id) || null;
@@ -4928,6 +4934,7 @@ app.put('/api/series/:id/series-json', requireAdmin, (req, res) => {
     const newStatus = deriveMetadataStatus(parsed);
     db.prepare('UPDATE scanned_series SET metadata_status = ?, series_json = ? WHERE id = ?').run(newStatus, content, req.params.id);
     invalidateSeriesCache();
+    scheduleGroupingRun('series.json edited');
     res.json({ success: true, path: jsonPath });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -6346,6 +6353,7 @@ async function createSeriesJsonFromVolume(seriesId, volumeId, userId = null) {
 
     syncSeriesJsonRow({ seriesId });
     logger.info('create-json', `library row refreshed`, { seriesId });
+    scheduleGroupingRun('series.json created');   // a new series.json can put the series on a Specials shelf
     return { path: result.path, name: result.name, comicid: result.comicid };
 }
 
