@@ -175,15 +175,16 @@ def derive_status(pub_run: Optional[str]) -> str:
         return "Continuing"
     if "Present" in pub_run:
         return "Continuing"
-    if " - " in pub_run:
-        end_part = pub_run.split(" - ")[-1].strip()
-        try:
-            end_date = datetime.strptime(end_part, "%B %Y").date()
-            cutoff = date.today().replace(day=1) - timedelta(days=90)
-            if end_date < cutoff:
-                return "Ended"
-        except ValueError:
-            pass
+    # The end of the run; a one-issue run ("April 1998") is its own end (2026-11-12: one-shots
+    # were left "Continuing" because only "start - end" runs were read).
+    end_part = pub_run.split(" - ")[-1].strip()
+    try:
+        end_date = datetime.strptime(end_part, "%B %Y").date()
+        cutoff = date.today().replace(day=1) - timedelta(days=90)
+        if end_date < cutoff:
+            return "Ended"
+    except ValueError:
+        pass
     return "Continuing"
 
 
@@ -356,9 +357,14 @@ class ComicVineClient:
         fi = result.get("first_issue") or {}
         li = result.get("last_issue") or {}
         fd = self._issue_date(fi.get("id"))
-        ld = self._issue_date(li.get("id")) if li else None
+        # A one-shot's first and last issue are the same issue: its run is that one month.
+        # (Before 2026-11-12 an equal first and last date fell through to "- Present".)
+        same = bool(li) and li.get("id") == fi.get("id")
+        ld = fd if same else (self._issue_date(li.get("id")) if li else None)
         if fd and ld and fd != ld:
             pub_run = f"{fd} - {ld}"
+        elif fd and ld:
+            pub_run = fd
         elif fd:
             pub_run = f"{fd} - Present"
         # A continuing series shows "Present" as its end, matching the server's
