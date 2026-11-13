@@ -18,6 +18,7 @@
 // Manual links (source 'manual', "Put on a Specials shelf…") and overrides (reject, keep visible)
 // always win; the rules never redo what the admin undid.
 const MAX_ISSUES = 12;
+const YEAR_WINDOW = 3;            // a home named like the event started within 3 years of it
 const RECENT_DAYS = 7;
 const LANDMARK = /elseworld|prestige|black label|graphic novel|deluxe|earth one/i;
 const PRELUDE = /prelude|prologue|lead[- ]?in|road to|countdown/i;
@@ -57,6 +58,16 @@ function initSeriesGrouping(db) {
   }
   if (!cols.has('home_series_id')) db.exec('ALTER TABLE events ADD COLUMN home_series_id TEXT');
   if (!cols.has('home_confirmed')) db.exec('ALTER TABLE events ADD COLUMN home_confirmed INTEGER NOT NULL DEFAULT 0');
+  if (!cols.has('home_source')) {
+    // home_source: 'chosen' (Change home) or 'approved' (Looks right locks the rule's home).
+    // Homes approved before locking existed are locked to the home their shelf has now.
+    db.exec('ALTER TABLE events ADD COLUMN home_source TEXT');
+    db.exec("UPDATE events SET home_source = 'chosen' WHERE home_series_id IS NOT NULL");
+    db.exec(`UPDATE events SET home_source = 'approved', home_series_id = (SELECT l.home_id FROM series_links l WHERE l.event_id = events.id AND l.source = 'rule'
+        GROUP BY l.home_id ORDER BY COUNT(*) DESC LIMIT 1)
+      WHERE home_confirmed = 1 AND home_series_id IS NULL AND COALESCE(initiative, 0) = 0
+        AND EXISTS (SELECT 1 FROM series_links l WHERE l.event_id = events.id AND l.source = 'rule')`);
+  }
 }
 
 function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = () => {} }) {
@@ -89,32 +100,59 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     return out;
   }
 
-  // Events with their proposed and effective homes.
+  // Events with their proposed and effective homes (2026-11-13 rules):
+  //   1. name   a series named like the event, started within YEAR_WINDOW years of it (Age of
+  //             Apocalypse (2015) is not the home of the 1995 event).
+  //   2. title  a series whose title contains the event's name, with main-story issues that are
+  //             not lead-ins; earliest in the reading order (X-Men: Age of Revelation Overture,
+  //             Batman: No Man's Land).
+  //   3. most   the series with the most main-story issues; ties go to the one read first.
+  // A home the admin chose or approved (events.home_series_id) is never moved by the rules.
   function eventHomes(S, bookSeries, bookEvents) {
     if (!has('events') || !has('event_issues')) return [];
     const byName = new Map();
     for (const s of S.values()) { if (!s.hasJson) continue; const k = norm(s.name); if (!byName.has(k)) byName.set(k, []); byName.get(k).push(s); }
-    const essential = new Map();   // event → Map(series → n)
+    const essential = new Map();   // event → Map(series → { n, first, lead })
     for (const [bookId, list] of bookEvents) for (const x of list) if (x.tier === 'essential') {
       const sid = bookSeries.get(bookId); if (!sid) continue;
       if (!essential.has(x.eventId)) essential.set(x.eventId, new Map());
-      const m = essential.get(x.eventId); m.set(sid, (m.get(sid) || 0) + 1);
+      const m = essential.get(x.eventId);
+      const c = m.get(sid) || { n: 0, first: Infinity, lead: 0 };
+      c.n++; c.first = Math.min(c.first, x.order ?? Infinity); if (PRELUDE.test(x.phase)) c.lead++;
+      m.set(sid, c);
     }
-    return db.prepare('SELECT id, name, year, initiative, home_series_id, home_confirmed FROM events WHERE COALESCE(draft, 0) = 0').all().map(e => {
-      let proposed = null, how = 'none';
-      const cores = byName.get(norm(e.name));
+    const near = (s, ey) => !ey || !s.year || Math.abs(s.year - ey) <= YEAR_WINDOW;
+    return db.prepare('SELECT id, name, year, initiative, home_series_id, home_confirmed, home_source FROM events WHERE COALESCE(draft, 0) = 0').all().map(e => {
+      let proposed = null, how = 'none', why = 'No series in the library fits';
       const ey = parseInt(e.year, 10) || null;
-      if (cores && cores.length) {
-        proposed = cores.slice().sort((a, b) => (ey ? Math.abs((a.year || 0) - ey) - Math.abs((b.year || 0) - ey) : 0) || size(b) - size(a))[0].id;
-        how = 'name';
-      } else if (essential.has(e.id)) {
-        proposed = [...essential.get(e.id)].sort((a, b) => b[1] - a[1])[0][0];
-        how = 'essential';
+      const en = norm(e.name);
+      const cores = (byName.get(en) || []).filter(s => near(s, ey));
+      const ess = essential.get(e.id);
+      if (cores.length) {
+        const s = cores.slice().sort((a, b) => (ey ? Math.abs((a.year || ey) - ey) - Math.abs((b.year || ey) - ey) : 0) || size(b) - size(a))[0];
+        proposed = s.id; how = 'name'; why = `Named like the event${s.year ? ` · ${s.year}` : ''}`;
+      } else if (ess) {
+        const titled = en ? [...ess].filter(([sid, c]) => {
+          const s = S.get(sid);
+          return s && c.n > c.lead && near(s, ey) && ` ${norm(s.name)} `.includes(` ${en} `);
+        }) : [];
+        if (titled.length) {
+          const [sid] = titled.sort((a, b) => a[1].first - b[1].first || b[1].n - a[1].n)[0];
+          proposed = sid; how = 'title'; why = 'Its title has the event\'s name and it starts the main story';
+        } else {
+          const [sid, c] = [...ess].sort((a, b) => b[1].n - a[1].n || a[1].first - b[1].first)[0];
+          const tied = [...ess.values()].filter(x => x.n === c.n).length;
+          proposed = sid; how = 'essential';
+          why = tied > 1 ? `Most main-story issues (${c.n}, tied with ${tied - 1} more; read first)` : `Most main-story issues (${c.n})`;
+        }
       }
       const chosen = e.home_series_id && S.has(e.home_series_id) ? e.home_series_id : null;
       const home = chosen || (e.initiative ? null : proposed);
+      if (e.initiative && !chosen) why = 'Initiative: its series stay on their own';
+      else if (chosen && chosen !== proposed) why = e.home_source === 'approved' ? 'Approved by you' : 'Chosen by you';
+      else if (chosen) why = `${why} · approved`;
       return { id: e.id, name: e.name, year: e.year, initiative: !!e.initiative, confirmed: !!e.home_confirmed,
-        proposed, how, chosen, home };
+        proposed, how, why, chosen, source: chosen ? (e.home_source || 'chosen') : null, home };
     });
   }
 
@@ -127,10 +165,10 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     }
     const bookEvents = new Map();
     if (has('event_issues') && has('events')) {
-      for (const r of db.prepare(`SELECT ei.event_id, ei.scanned_book_id, ei.tier, ei.phase FROM event_issues ei
+      for (const r of db.prepare(`SELECT ei.event_id, ei.scanned_book_id, ei.tier, ei.phase, ei.sort_order FROM event_issues ei
           JOIN events e ON e.id = ei.event_id WHERE ei.scanned_book_id IS NOT NULL AND COALESCE(e.draft, 0) = 0`).all()) {
         if (!bookEvents.has(r.scanned_book_id)) bookEvents.set(r.scanned_book_id, []);
-        bookEvents.get(r.scanned_book_id).push({ eventId: r.event_id, tier: r.tier || '', phase: r.phase || '' });
+        bookEvents.get(r.scanned_book_id).push({ eventId: r.event_id, tier: r.tier || '', phase: r.phase || '', order: r.sort_order });
       }
     }
     const events = eventHomes(S, bookSeries, bookEvents);
@@ -244,7 +282,31 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     db.prepare('DELETE FROM series_links WHERE series_id = ? AND home_id = ?').run(seriesId, homeId);
     if (l.source === 'rule') db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'reject', ?)").run(seriesId, homeId, now());
     onChange();
-    return true;
+    return l.source;   // 'rule' | 'manual' (Undo: restore a rule link, link a manual one again)
+  }
+
+  // ── Undo (2026-11-13) ──
+  // Series the admin took off a rule's shelf, newest first. Restore lets the rules put them back.
+  function removed() {
+    const S = loadSeries();
+    return db.prepare("SELECT series_id, home_id, created_at FROM series_link_overrides WHERE action = 'reject' ORDER BY created_at DESC").all()
+      .filter(r => S.has(r.series_id))
+      .map(r => ({ seriesId: r.series_id, name: label(S.get(r.series_id)), homeId: r.home_id, homeName: label(S.get(r.home_id)) || 'a series no longer in the library', at: r.created_at }));
+  }
+  function restore(items = []) {
+    const del = db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND home_id = ? AND action = 'reject'");
+    let n = 0;
+    for (const it of items) if (it && it.seriesId && it.homeId) n += del.run(String(it.seriesId), String(it.homeId)).changes;
+    const r = run('restore');
+    if (!(r.added || r.removed)) onChange();
+    return { restored: n };
+  }
+  // Take every series the rules put on an event's shelf off it (they go to Removed).
+  function emptyEvent(eventId) {
+    const rows = db.prepare("SELECT series_id, home_id FROM series_links WHERE event_id = ? AND source = 'rule'").all(eventId);
+    const out = [];
+    for (const r of rows) if (unlink(r.series_id, r.home_id)) out.push({ seriesId: r.series_id, homeId: r.home_id });
+    return { removed: out };
   }
   function keepVisible(seriesId, on) {
     if (on) db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, '', 'keep_visible', ?)").run(seriesId, now());
@@ -252,20 +314,58 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     onChange();
   }
 
-  function setEvent(eventId, { homeSeriesId, initiative, confirm } = {}) {
-    const e = db.prepare('SELECT id FROM events WHERE id = ?').get(eventId);
-    if (!e) throw Object.assign(new Error('Event not found'), { status: 404 });
+  const eventState = id => {
+    const r = db.prepare('SELECT id, home_series_id, home_confirmed, home_source, initiative FROM events WHERE id = ?').get(id);
+    return r && { id: r.id, chosen: r.home_series_id || null, confirmed: !!r.home_confirmed, source: r.home_source || null, initiative: !!r.initiative };
+  };
+  const writeEvent = db.prepare('UPDATE events SET home_series_id = ?, home_confirmed = ?, home_source = ?, initiative = ? WHERE id = ?');
+  const putState = st => writeEvent.run(st.chosen || null, st.confirmed ? 1 : 0, st.chosen ? (st.source || 'chosen') : null, st.initiative ? 1 : 0, st.id);
+
+  // One event's home. Every call returns `previous`, the state before it, for Undo.
+  //   confirm     Looks right: locks the rule's current home so later rule changes never move it.
+  //   homeSeriesId  Change home (null: back to the rule's guess, unconfirmed).
+  //   reset       Not right: back to the rule's guess, waiting in To check.
+  //   restore     Undo: put back a previous state exactly.
+  function setEvent(eventId, { homeSeriesId, initiative, confirm, reset, restore: back } = {}) {
+    const previous = eventState(eventId);
+    if (!previous) throw Object.assign(new Error('Event not found'), { status: 404 });
+    const next = { ...previous };
+    if (back) Object.assign(next, { chosen: back.chosen || null, confirmed: !!back.confirmed, source: back.source || null, initiative: !!back.initiative });
+    if (reset) Object.assign(next, { chosen: null, confirmed: false, source: null });
     if (homeSeriesId !== undefined) {
       if (homeSeriesId && !db.prepare('SELECT 1 FROM scanned_series WHERE id = ?').get(homeSeriesId)) throw Object.assign(new Error('Series not found'), { status: 404 });
-      db.prepare('UPDATE events SET home_series_id = ?, home_confirmed = 1 WHERE id = ?').run(homeSeriesId || null, eventId);
+      Object.assign(next, homeSeriesId ? { chosen: homeSeriesId, confirmed: true, source: 'chosen' } : { chosen: null, confirmed: false, source: null });
     }
-    if (initiative !== undefined) db.prepare('UPDATE events SET initiative = ? WHERE id = ?').run(initiative ? 1 : 0, eventId);
-    if (confirm) db.prepare('UPDATE events SET home_confirmed = 1 WHERE id = ?').run(eventId);
-    return run('event setting');
+    if (initiative !== undefined) next.initiative = !!initiative;
+    if (confirm) {
+      next.confirmed = true;
+      if (!next.chosen && !next.initiative) {
+        const e = computeRuleLinks().events.find(x => x.id === eventId);
+        if (e && e.proposed) Object.assign(next, { chosen: e.proposed, source: 'approved' });
+      }
+    }
+    putState(next);
+    return { ...run('event setting'), previous };
   }
+  // "All look right": approve and lock every event still waiting.
   function confirmAll() {
-    const n = db.prepare('UPDATE events SET home_confirmed = 1 WHERE COALESCE(home_confirmed, 0) = 0').run().changes;
-    return { confirmed: n };
+    const previous = [];
+    const events = computeRuleLinks().events.filter(e => !e.confirmed);
+    db.exec('BEGIN');
+    try {
+      for (const e of events) {
+        const st = eventState(e.id); previous.push(st);
+        putState(!st.chosen && !st.initiative && e.proposed ? { ...st, confirmed: true, chosen: e.proposed, source: 'approved' } : { ...st, confirmed: true });
+      }
+      db.exec('COMMIT');
+    } catch (err) { db.exec('ROLLBACK'); throw err; }
+    run('confirm all');
+    return { confirmed: events.length, previous };
+  }
+  // Undo of "All look right".
+  function restoreEvents(states = []) {
+    for (const st of states) if (st && st.id && eventState(st.id)) putState({ id: st.id, chosen: st.chosen, confirmed: st.confirmed, source: st.source, initiative: st.initiative });
+    return run('undo');
   }
 
   // Library page: counts and every event with its home and the series on its shelf.
@@ -284,14 +384,16 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
       counts: Object.fromEntries(counts.map(c => [c.source, { links: c.n, hidden: c.hidden || 0 }])),
       events: events.map(e => {
         const members = (byEvent.get(e.id) || []).sort((a, b) => String(a.name).localeCompare(String(b.name)));
-        return { id: e.id, name: e.name, year: e.year, initiative: e.initiative, confirmed: e.confirmed, how: e.how,
-          proposed: e.proposed, chosen: e.chosen, home: e.home, homeName: nm(e.home), members,
+        // An approved home the rules would now place elsewhere: shown as a one-line hint.
+        const suggest = e.source === 'approved' && e.proposed && e.proposed !== e.home ? { id: e.proposed, name: nm(e.proposed) } : null;
+        return { id: e.id, name: e.name, year: e.year, initiative: e.initiative, confirmed: e.confirmed, how: e.how, why: e.why,
+          proposed: e.proposed, proposedName: nm(e.proposed), chosen: e.chosen, source: e.source, suggest, home: e.home, homeName: nm(e.home), members,
           newMembers: members.filter(m => m.at >= recentSince).length };
       }).sort((a, b) => (a.confirmed - b.confirmed) || (b.members.length - a.members.length) || String(a.name).localeCompare(String(b.name))),
     };
   }
 
-  return { run, groupMap, members, homesOf, link, unlink, keepVisible, setEvent, confirmAll, summary, computeRuleLinks };
+  return { run, groupMap, members, homesOf, link, unlink, keepVisible, setEvent, confirmAll, restoreEvents, removed, restore, emptyEvent, summary, computeRuleLinks };
 }
 
-module.exports = { createSeriesGrouping, initSeriesGrouping, norm, MAX_ISSUES };
+module.exports = { createSeriesGrouping, initSeriesGrouping, norm, MAX_ISSUES, YEAR_WINDOW };

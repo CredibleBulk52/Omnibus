@@ -75,3 +75,40 @@ test('the Library panel shows each event as covers: home first, then its shelf; 
     expect(global.fetch).toHaveBeenCalledWith('/api/grouping/events/e1', expect.objectContaining({ method: 'POST', body: JSON.stringify({ confirm: true }) }));
   } finally { act(() => root.unmount()); global.fetch = prev; }
 });
+
+test('each row says why and links to the reading order; every action offers Undo; Removed restores', async () => {
+  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const summary = { counts: { rule: { links: 1, hidden: 1 } }, events: [
+    { id: 'aor', name: 'Age of Revelation', year: 2025, initiative: false, confirmed: false, how: 'title', why: "Its title has the event's name and it starts the main story",
+      home: 'ovt', homeName: 'X-Men: Age of Revelation Overture (2025)', chosen: null, proposed: 'ovt', members: [{ id: 'amz', name: 'Amazing X-Men (2025)', role: 'core', hidden: false }] }] };
+  const previous = { id: 'aor', chosen: null, confirmed: false, source: null, initiative: false };
+  const removed = [{ seriesId: 'cold', name: 'Citizen Cold (2011)', homeId: 'fp', homeName: 'Flashpoint (2011)', at: 1 }];
+  const prev = global.fetch;
+  global.fetch = vi.fn(async (url, opts = {}) => ({ ok: true, json: async () => {
+    if (url === '/api/grouping') return summary;
+    if (url === '/api/grouping/removed') return { items: removed };
+    if (url === '/api/grouping/events/aor' && JSON.parse(opts.body || '{}').confirm) return { previous };
+    if (url.startsWith('/api/series/amz/shelf/ovt')) return { ok: true, source: 'rule' };
+    return { ok: true };
+  } }));
+  const { host, root } = mount(<SeriesGroupingPanel />);
+  const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)); });
+  const button = t => [...host.querySelectorAll('button')].find(b => b.textContent.trim() === t);
+  try {
+    await tick();
+    expect(host.querySelector('.gp-why').textContent).toMatch(/Its title has the event's name.*Reading order ›/);
+    await act(async () => { button('✓ Looks right').click(); }); await tick();
+    expect(host.querySelector('.gp-undo').textContent).toMatch(/Approved X-Men: Age of Revelation Overture \(2025\) for Age of Revelation/);
+    await act(async () => { button('Undo').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/events/aor', expect.objectContaining({ body: JSON.stringify({ restore: previous }) }));
+    // ✕ on a cover, then Undo puts the rule's link back.
+    await act(async () => { host.querySelector('.gp-x').click(); }); await tick();
+    await act(async () => { button('Undo').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/restore', expect.objectContaining({ body: JSON.stringify({ items: [{ seriesId: 'amz', homeId: 'ovt' }] }) }));
+    // Removed tab.
+    await act(async () => { [...host.querySelectorAll('[role=tab]')].find(b => /Removed/.test(b.textContent)).click(); });
+    expect(host.querySelector('.gp-rm').textContent).toMatch(/Citizen Cold \(2011\)from Flashpoint \(2011\)/);
+    await act(async () => { button('↺ Restore').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/restore', expect.objectContaining({ body: JSON.stringify({ items: [{ seriesId: 'cold', homeId: 'fp' }] }) }));
+  } finally { act(() => root.unmount()); global.fetch = prev; }
+});

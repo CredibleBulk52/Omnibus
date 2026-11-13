@@ -17301,13 +17301,19 @@ const groupingRoute = fn => (req, res) => { try { res.json(fn(req) ?? { ok: true
 app.get('/api/grouping', requireAdmin, groupingRoute(() => seriesGrouping.summary()));
 app.post('/api/grouping/run', requireAdmin, groupingRoute(() => seriesGrouping.run('manual')));
 app.post('/api/grouping/events/confirm-all', requireAdmin, groupingRoute(() => seriesGrouping.confirmAll()));
+// Undo (2026-11-13): put back the event states an action returned as `previous`.
+app.post('/api/grouping/events/restore', requireAdmin, groupingRoute(req => seriesGrouping.restoreEvents(Array.isArray(req.body?.states) ? req.body.states : [])));
+app.post('/api/grouping/events/:id/empty', requireAdmin, groupingRoute(req => seriesGrouping.emptyEvent(req.params.id)));
 app.post('/api/grouping/events/:id', requireAdmin, groupingRoute(req => seriesGrouping.setEvent(req.params.id, {
-  homeSeriesId: req.body?.homeSeriesId, initiative: req.body?.initiative, confirm: !!req.body?.confirm })));
+  homeSeriesId: req.body?.homeSeriesId, initiative: req.body?.initiative, confirm: !!req.body?.confirm,
+  reset: !!req.body?.reset, restore: req.body?.restore && typeof req.body.restore === 'object' ? req.body.restore : undefined })));
+app.get('/api/grouping/removed', requireAdmin, groupingRoute(() => ({ items: seriesGrouping.removed() })));
+app.post('/api/grouping/restore', requireAdmin, groupingRoute(req => seriesGrouping.restore(Array.isArray(req.body?.items) ? req.body.items : [])));
 // The series page: its own homes and the series on its shelf.
 app.get('/api/series/:id/grouping', requireAuth, groupingRoute(req => ({ homes: seriesGrouping.homesOf(req.params.id), members: seriesGrouping.members(req.params.id),
   keepVisible: !!seriesGroupOf(req.params.id)?.keepVisible })));
 app.post('/api/series/:id/shelf', requireAdmin, groupingRoute(req => { seriesGrouping.link(req.params.id, String(req.body?.homeId || '')); }));
-app.delete('/api/series/:id/shelf/:homeId', requireAdmin, groupingRoute(req => ({ ok: seriesGrouping.unlink(req.params.id, req.params.homeId) })));
+app.delete('/api/series/:id/shelf/:homeId', requireAdmin, groupingRoute(req => { const source = seriesGrouping.unlink(req.params.id, req.params.homeId); return { ok: !!source, source: source || null }; }));
 app.post('/api/series/:id/keep-visible', requireAdmin, groupingRoute(req => { seriesGrouping.keepVisible(req.params.id, !!req.body?.on); }));
 setTimeout(() => { try { seriesGrouping.run('startup'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } }, 60000);
 cron.schedule('17 * * * *', () => { try { seriesGrouping.run('hourly'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } });

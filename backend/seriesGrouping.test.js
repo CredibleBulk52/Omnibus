@@ -9,7 +9,7 @@ function fixture() {
   db.exec(`CREATE TABLE scanned_series (id TEXT PRIMARY KEY, name TEXT, year INTEGER, series_json TEXT, book_count INTEGER);
     CREATE TABLE scanned_books (id TEXT PRIMARY KEY, series_id TEXT, is_special INTEGER DEFAULT 0);
     CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT, year INTEGER, draft INTEGER DEFAULT 0);
-    CREATE TABLE event_issues (id INTEGER PRIMARY KEY, event_id TEXT, scanned_book_id TEXT, tier TEXT, phase TEXT);`);
+    CREATE TABLE event_issues (id INTEGER PRIMARY KEY, event_id TEXT, scanned_book_id TEXT, tier TEXT, phase TEXT, sort_order INTEGER);`);
   let n = 0;
   const series = (id, name, year, issues, { json = true, status = 'Ended', desc = '', books = issues } = {}) => {
     db.prepare('INSERT INTO scanned_series VALUES (?, ?, ?, ?, ?)').run(id, name, year,
@@ -19,7 +19,7 @@ function fixture() {
     return ids;
   };
   const inEvent = (event, bookIds, tier = 'tie-in', phase = '') => bookIds.forEach(b =>
-    db.prepare('INSERT INTO event_issues (id, event_id, scanned_book_id, tier, phase) VALUES (?, ?, ?, ?, ?)').run(++n, event, b, tier, phase));
+    db.prepare('INSERT INTO event_issues (id, event_id, scanned_book_id, tier, phase, sort_order) VALUES (?, ?, ?, ?, ?, ?)').run(++n, event, b, tier, phase, n));
   return { db, series, inEvent };
 }
 
@@ -80,7 +80,7 @@ test('by-hand shelving, removal that sticks, and keep visible', () => {
   assert.deepEqual([g.groupMap().get('lobo').homes[0].role, g.groupMap().get('lobo').hidden], ['special', true]);
   assert.throws(() => g.link('amalgam', 'lobo'), /already on this one's shelf/);
   // Removing a rule's link is remembered: the next run does not bring it back.
-  assert.equal(g.unlink('cold', 'fp'), true);
+  assert.equal(g.unlink('cold', 'fp'), 'rule');
   g.run();
   assert.equal(g.groupMap().has('cold'), false);
   // Putting it back by hand clears that.
@@ -90,4 +90,118 @@ test('by-hand shelving, removal that sticks, and keep visible', () => {
   g.keepVisible('cold', true);
   assert.equal(g.groupMap().get('cold').hidden, false);
   assert.ok(changes >= 4);
+});
+
+test('a home named like the event must start within 3 years of it; ties go to the series read first', () => {
+  const { db, series, inEvent } = fixture();
+  db.prepare("INSERT INTO events (id, name, year) VALUES ('aoa', 'Age of Apocalypse', 1995)").run();
+  series('aoa2015', 'Age of Apocalypse', 2015, 5);                   // Secret Wars, 20 years later
+  inEvent('aoa', series('gen', 'Generation Next', 1995, 4), 'essential');
+  inEvent('aoa', series('ast', 'Astonishing X-Men', 1995, 4), 'essential');
+  inEvent('aoa', series('omega', 'X-Men: Omega', 1995, 1));
+  const g = createSeriesGrouping({ db });
+  g.run();
+  const e = g.summary().events[0];
+  assert.deepEqual([e.home, e.how], ['gen', 'essential']);
+  assert.match(e.why, /Most main-story issues \(4, tied with 1 more; read first\)/);
+  assert.equal(g.groupMap().get('omega').homes[0].id, 'gen');
+  assert.equal(g.groupMap().has('aoa2015'), false);
+});
+
+test('a series whose title has the event name and starts the main story comes before the most-issues series', () => {
+  const { db, series, inEvent } = fixture();
+  db.prepare("INSERT INTO events (id, name, year) VALUES ('aor', 'Age of Revelation', 2025), ('nml', 'No Man''s Land', 1999)").run();
+  inEvent('aor', series('road', 'Road to Age of Revelation', 2025, 1), 'essential', 'Prelude');   // a lead-in: never the home
+  inEvent('aor', series('ovt', 'X-Men: Age of Revelation Overture', 2025, 1), 'essential');
+  inEvent('aor', series('amz', 'Amazing X-Men', 2025, 3), 'essential');
+  inEvent('aor', series('book', 'X-Men: Book of Revelation', 2025, 3), 'essential');
+  inEvent('nml', series('sotb', 'Batman: Shadow of the Bat', 1992, 30).slice(0, 22), 'essential');
+  inEvent('nml', series('bnml', "Batman: No Man's Land", 1999, 2), 'essential');
+  const g = createSeriesGrouping({ db });
+  g.run();
+  const ev = Object.fromEntries(g.summary().events.map(e => [e.id, e]));
+  assert.deepEqual([ev.aor.home, ev.aor.how], ['ovt', 'title']);
+  assert.deepEqual([ev.nml.home, ev.nml.how], ['bnml', 'title']);
+  assert.equal(g.groupMap().get('amz').homes[0].id, 'ovt');
+});
+
+test('Looks right locks the home; Not right, Change home and Undo', () => {
+  const { db, series, inEvent } = fixture();
+  db.prepare("INSERT INTO events (id, name, year) VALUES ('si', 'Siege', 2010)").run();
+  inEvent('si', series('a', 'Siege: Embedded', 2010, 4), 'essential');
+  inEvent('si', series('t', 'Siege: Loki', 2010, 1));
+  const g = createSeriesGrouping({ db });
+  g.run();
+  const r = g.setEvent('si', { confirm: true });
+  assert.deepEqual(r.previous, { id: 'si', chosen: null, confirmed: false, source: null, initiative: false });
+  // A series named like the event arrives later: the approved home stays, with a hint.
+  inEvent('si', series('core', 'Siege', 2010, 4), 'essential');
+  g.run();
+  let e = g.summary().events[0];
+  assert.deepEqual([e.home, e.source, e.suggest && e.suggest.id], ['a', 'approved', 'core']);
+  assert.equal(g.groupMap().get('t').homes[0].id, 'a');
+  // Not right: back to the rule's guess, waiting to be checked.
+  const back = g.setEvent('si', { reset: true }).previous;
+  e = g.summary().events[0];
+  assert.deepEqual([e.home, e.confirmed, e.suggest], ['core', false, null]);
+  // Undo puts the approved state back exactly.
+  g.setEvent('si', { restore: back });
+  e = g.summary().events[0];
+  assert.deepEqual([e.home, e.confirmed, e.source], ['a', true, 'approved']);
+  // Change home, then back to the rule's guess.
+  g.setEvent('si', { homeSeriesId: 't' });
+  assert.deepEqual([g.summary().events[0].home, g.summary().events[0].why], ['t', 'Chosen by you']);
+  g.setEvent('si', { homeSeriesId: null });
+  assert.deepEqual([g.summary().events[0].home, g.summary().events[0].confirmed], ['core', false]);
+});
+
+test('All look right locks every waiting event, and Undo restores them', () => {
+  const { db, series, inEvent } = fixture();
+  db.prepare("INSERT INTO events (id, name, year) VALUES ('x', 'Fear Itself', 2011), ('y', 'Shadowland', 2010)").run();
+  inEvent('x', series('fi', 'Fear Itself', 2011, 7), 'essential');
+  inEvent('y', series('sl', 'Shadowland', 2010, 5), 'essential');
+  const g = createSeriesGrouping({ db });
+  g.run();
+  const r = g.confirmAll();
+  assert.equal(r.confirmed, 2);
+  assert.deepEqual(db.prepare("SELECT id, home_series_id, home_source FROM events ORDER BY id").all().map(x => ({ ...x })),
+    [{ id: 'x', home_series_id: 'fi', home_source: 'approved' }, { id: 'y', home_series_id: 'sl', home_source: 'approved' }]);
+  g.restoreEvents(r.previous);
+  assert.deepEqual({ ...db.prepare('SELECT SUM(home_confirmed) AS c, COUNT(home_series_id) AS h FROM events').get() }, { c: 0, h: 0 });
+});
+
+test('Removed list, Restore, and Empty this shelf', () => {
+  const { db, series, inEvent } = fixture();
+  db.prepare("INSERT INTO events (id, name, year) VALUES ('fp', 'Flashpoint', 2011)").run();
+  inEvent('fp', series('fp', 'Flashpoint', 2011, 5), 'essential');
+  inEvent('fp', series('cold', 'Flashpoint: Citizen Cold', 2011, 3));
+  inEvent('fp', series('abin', 'Flashpoint: Abin Sur', 2011, 3));
+  const g = createSeriesGrouping({ db });
+  g.run();
+  g.unlink('cold', 'fp');
+  assert.deepEqual(g.removed().map(r => [r.seriesId, r.homeName]), [['cold', 'Flashpoint (2011)']]);
+  g.restore([{ seriesId: 'cold', homeId: 'fp' }]);
+  assert.equal(g.groupMap().get('cold').homes[0].id, 'fp');
+  assert.equal(g.removed().length, 0);
+  const out = g.emptyEvent('fp');
+  assert.equal(out.removed.length, 2);
+  g.run();
+  assert.equal(g.groupMap().size, 0);
+  g.restore(out.removed);
+  assert.equal(g.groupMap().size, 2);
+});
+
+test('homes approved before locking existed are locked to the home their shelf has now', () => {
+  const { db, series, inEvent } = fixture();
+  db.exec(`ALTER TABLE events ADD COLUMN initiative INTEGER NOT NULL DEFAULT 0; ALTER TABLE events ADD COLUMN home_series_id TEXT;
+    ALTER TABLE events ADD COLUMN home_confirmed INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE series_links (series_id TEXT NOT NULL, home_id TEXT NOT NULL, source TEXT NOT NULL, role TEXT NOT NULL, hidden INTEGER NOT NULL DEFAULT 0,
+      reason TEXT, created_at INTEGER NOT NULL, event_id TEXT, PRIMARY KEY (series_id, home_id));`);
+  db.prepare("INSERT INTO events (id, name, year, home_confirmed) VALUES ('aoa', 'Age of Apocalypse', 1995, 1), ('w', 'Waiting', 2000, 0)").run();
+  series('aoa2015', 'Age of Apocalypse', 2015, 5);
+  inEvent('aoa', series('gen', 'Generation Next', 1995, 4), 'essential');
+  db.prepare("INSERT INTO series_links VALUES ('gen', 'aoa2015', 'rule', 'core', 0, 'x', 1, 'aoa')").run();
+  createSeriesGrouping({ db });
+  assert.deepEqual({ ...db.prepare("SELECT home_series_id, home_source FROM events WHERE id = 'aoa'").get() }, { home_series_id: 'aoa2015', home_source: 'approved' });
+  assert.deepEqual({ ...db.prepare("SELECT home_series_id, home_source FROM events WHERE id = 'w'").get() }, { home_series_id: null, home_source: null });
 });
