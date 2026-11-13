@@ -6290,7 +6290,9 @@ app.post('/api/series/:id/create-json', requireAdmin, async (req, res) => {
   try {
     const { volumeId } = req.body;
     if (!volumeId) return res.status(400).json({ error: 'volumeId required' });
-    const busy = cvBusyUntil();
+    // With a Metron token the enricher answers from Metron when Comic Vine is at its limit, so only
+    // a Comic Vine-only install is told to wait.
+    const busy = (getSetting('metron_api_token') || process.env.METRON_API_TOKEN) ? null : cvBusyUntil();
     if (busy) {
       const at = new Date(busy).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: process.env.TZ || 'UTC' });
       return res.status(429).json({ error: `Comic Vine's hourly limit is used up. Try again after ${at}.`, retryAt: busy });

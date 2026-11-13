@@ -558,6 +558,11 @@ class ComicVineClient:
             return self._from_metron(volume_id, m)
         if not self.api_key:
             return None
+        if self.metron and not m and not self.pool.available("volume"):
+            # With Metron set up, don't wait out Comic Vine's hour for a series Metron doesn't know.
+            print("  [CV] volume allowance used up and Metron does not know this series", file=sys.stderr)
+            self.limited = True
+            return None
         fields = "id,name,start_year,publisher,count_of_issues,image,description,characters,concepts"
         if not (m and m.get("first")):
             fields += ",first_issue,last_issue"
@@ -571,11 +576,13 @@ class ComicVineClient:
         pub_run = None
         fi = result.get("first_issue") or {}
         li = result.get("last_issue") or {}
-        fd = self._issue_date(fi.get("id"))
+        # Issue dates need the single-issue allowance; with Metron set up, skip them rather than wait.
+        dates_ok = not self.metron or self.pool.available("issue")
+        fd = self._issue_date(fi.get("id")) if dates_ok else None
         # A one-shot's first and last issue are the same issue: its run is that one month.
         # (Before 2026-11-12 an equal first and last date fell through to "- Present".)
         same = bool(li) and li.get("id") == fi.get("id")
-        ld = fd if same else (self._issue_date(li.get("id")) if li else None)
+        ld = fd if same else (self._issue_date(li.get("id")) if li and dates_ok else None)
         if fd and ld and fd != ld:
             pub_run = f"{fd} - {ld}"
         elif fd and ld:
@@ -1306,7 +1313,9 @@ class SeriesEnricher:
         print(f"[create] Fetching volume {cv_volume_id}...", file=sys.stderr)
         vol = self.cv.get_volume(cv_volume_id)
         if not vol:
-            why = "Metron does not know this Comic Vine series" if not self.cv.api_key else f"Could not fetch Comic Vine volume {cv_volume_id}"
+            why = ("Metron does not know this Comic Vine series" if not self.cv.api_key
+                   else "Comic Vine is at its hourly limit and Metron does not know this series; try again later" if getattr(self.cv, "limited", False)
+                   else f"Could not fetch Comic Vine volume {cv_volume_id}")
             print(json.dumps({"error": why}))
             return False
 
@@ -1331,7 +1340,8 @@ class SeriesEnricher:
             comic_image=vol.get("image"),
             total_issues=vol.get("issue_count"),
             publication_run=vol.get("publication_run"),
-            status=vol.get("status") or derive_status(vol.get("publication_run")),
+            # Unknown run (dates skipped at Comic Vine's limit): leave status empty rather than guess "Continuing".
+            status=vol.get("status") or (derive_status(vol.get("publication_run")) if vol.get("publication_run") else None),
             characters=vol.get("characters") or [],
             genres=vol.get("cv_genres") or [],
             reading_direction=reading_direction,
@@ -1451,7 +1461,9 @@ class SeriesEnricher:
             desc_sources = list(lib_sources)
             if cv_vol and cv_vol.get("description") and len(cv_vol["description"]) > 50:
                 desc_sources.append(("Comic Vine series description", cv_vol["description"]))
-            if not lib_sources and self.cv and series.metadata.comicid:
+            # Only when Comic Vine can answer now: this optional extra must not wait out its hourly limit.
+            if not lib_sources and self.cv and series.metadata.comicid and self.cv.api_key \
+                    and self.cv.pool.available("volume") and self.cv.pool.available("issue"):
                 issues = self.cv.get_issues(series.metadata.comicid)
                 if issues:
                     print(f"  [Claude] No solicitations in the files; fetching Comic Vine issue descriptions...")
