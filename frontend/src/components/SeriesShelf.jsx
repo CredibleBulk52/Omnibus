@@ -134,6 +134,7 @@ export function SeriesGroupingPanel() {
   const { invalidate } = useSeriesCache();
   const [data, setData] = useState(null);
   const [removed, setRemoved] = useState([]);
+  const [minis, setMinis] = useState(null);   // stage B: the AI's answers about minis and one-shots
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [picking, setPicking] = useState(null);
@@ -143,6 +144,7 @@ export function SeriesGroupingPanel() {
   const load = useCallback(() => Promise.all([
     fetch('/api/grouping').then(r => r.json()).then(d => { if (d.error) throw new Error(d.error); setData(d); }),
     fetch('/api/grouping/removed').then(r => r.ok ? r.json() : { items: [] }).then(d => setRemoved(d.items || [])).catch(() => {}),
+    fetch('/api/grouping/series').then(r => r.ok ? r.json() : null).then(d => { if (d && Array.isArray(d.suggested)) setMinis(d); }).catch(() => {}),
   ]).then(() => setError('')).catch(e => setError(e.message)), []);
   useEffect(() => { load(); }, [load]);
   const asking = !!data?.ai?.running;
@@ -158,7 +160,7 @@ export function SeriesGroupingPanel() {
   };
   const runUndo = () => { const u = undo; setUndo(null); if (u) act('undo', u.run); };
   if (!data) return <p className="a-muted">{error || 'Loading…'}</p>;
-  const rule = data.counts?.rule || { links: 0, hidden: 0 }, manual = data.counts?.manual || { links: 0 };
+  const rule = data.counts?.rule || { links: 0, hidden: 0 }, manual = data.counts?.manual || { links: 0 }, byAi = data.counts?.ai || { links: 0, hidden: 0 };
   // To check: events the AI disagrees with come first.
   const aiDiffers = e => !!e.ai && !e.ai.stale && ((e.ai.home.verdict === 'change' && e.ai.home.open) || e.ai.home.verdict === 'none');
   // Only events with something on their shelf: a crossover with no minis or one-shots needs no home.
@@ -196,7 +198,7 @@ export function SeriesGroupingPanel() {
   return (
     <div className="gp">
       <div className="gp-head">
-        <span><b>{(rule.links + (manual.links || 0)).toLocaleString()}</b> series on shelves <span className="gp-muted">· {rule.hidden} out of the browser{manual.links ? ` · ${manual.links} by hand` : ''}</span></span>
+        <span><b>{(rule.links + (manual.links || 0) + (byAi.links || 0)).toLocaleString()}</b> series on shelves <span className="gp-muted">· {(rule.hidden || 0) + (manual.hidden || 0) + (byAi.hidden || 0)} out of the browser{manual.links ? ` · ${manual.links} by hand` : ''}</span></span>
         <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => act('run', () => call('POST', '/api/grouping/run'))}
           title="The rules follow your Timeline reading orders; they also run after scans, new series.json files and every hour">{busy === 'run' ? 'Running…' : '↻ Run the rules'}</button>
       </div>
@@ -209,7 +211,7 @@ export function SeriesGroupingPanel() {
               title="The AI checks each event's home and shelf against its reading order. It only answers; nothing changes until you apply.">✦ Ask the AI</button>
               {aiInfo.ready > 0 && <button className="adm-btn" disabled={!!busy} onClick={applyAi} title="Applies the answers the AI is sure of. Undo is offered afterwards.">✓ Apply {aiInfo.ready} sure change{aiInfo.ready === 1 ? '' : 's'}</button>}
               <span className="gp-muted gp-ai-line" title={aiInfo.lastAsk?.error || ''}>
-                {aiInfo.lastAsk?.error && !aiInfo.lastAsk.asked ? `Last try failed: ${aiInfo.lastAsk.error}` : aiInfo.asked ? `Asked about ${aiInfo.asked} events` : 'Not asked yet'}
+                {aiInfo.lastAsk?.error && !aiInfo.lastAsk.asked ? `Last try failed: ${aiInfo.lastAsk.error}` : aiInfo.asked || aiInfo.askedSeries ? `Asked about ${aiInfo.asked} events and ${aiInfo.askedSeries || 0} series` : 'Not asked yet'}
                 {aiInfo.model ? ` · ${aiInfo.model}` : ''}{aiInfo.auto ? ' · applies sure answers on its own' : ''}
               </span></>}
         <details className="gp-menu gp-ai-menu">
@@ -226,13 +228,14 @@ export function SeriesGroupingPanel() {
         </details>
       </div>
       <div className="gp-tabs" role="tablist">
-        {[['check', 'To check', toCheck.length], ['shelves', 'Events with a shelf', withShelf.length], ['all', 'All events', data.events.length], ['removed', 'Removed', removed.length]].map(([k, label, n]) => (
+        {[['check', 'To check', toCheck.length], ['shelves', 'Events with a shelf', withShelf.length], ['all', 'All events', data.events.length], ['minis', 'Minis & one-shots', minis ? minis.suggested.length : 0], ['removed', 'Removed', removed.length]].map(([k, label, n]) => (
           <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}>{label} <b>{n}</b></button>))}
         {view === 'check' && toCheck.length > 0 && <button className="adm-btn gp-all" disabled={!!busy} onClick={confirmAll}
           title="Approves and locks every home in this list. Undo is offered afterwards.">✓ All look right</button>}
       </div>
       {error && <p className="gp-error">{error}</p>}
       {view === 'check' && !toCheck.length && <p className="gp-muted">Every event with something on its shelf has been checked.</p>}
+      {view === 'minis' && <MinisPanel data={minis} busy={!!busy} act={act} />}
       {view === 'removed' && (removed.length
         ? <div className="gp-removed">{removed.map(x => (
             <div key={`${x.seriesId}|${x.homeId}`} className="gp-rm" title={`${x.name} · taken off ${x.homeName}'s shelf`}>
@@ -296,7 +299,7 @@ export function SeriesGroupingPanel() {
           );
         })}
       </div>
-      {view !== 'removed' && <p className="gp-legend"><span className="gp-dot" /> also in the browser (lead-in, aftermath, main story or landmark) · hover a cover for its name · ✕ takes it off{data.ai?.asked ? ' · red ring: the AI would take it off · blue: keep it visible' : ''}</p>}
+      {view !== 'removed' && view !== 'minis' && <p className="gp-legend"><span className="gp-dot" /> also in the browser (lead-in, aftermath, main story or landmark) · hover a cover for its name · ✕ takes it off{data.ai?.asked ? ' · red ring: the AI would take it off · blue: keep it visible' : ''}</p>}
       {undo && <div className="gp-undo" role="status"><span>{undo.text}</span>{undo.run && <button type="button" className="gp-link" disabled={!!busy} onClick={runUndo}>Undo</button>}
         <button type="button" className="gp-undo-x" aria-label="Dismiss" onClick={() => setUndo(null)}>✕</button></div>}
       {picking && <SeriesPickerDialog title={`Home for ${picking.name}`} onClose={() => setPicking(null)}
@@ -376,10 +379,77 @@ export function SeriesGroupingPanel() {
         .gp-conf-sure { border-color: var(--td-yellow, var(--color-primary)); color: var(--td-yellow, var(--color-primary)); }
         .gp-ai-remove { outline: 2px solid var(--td-red, #e55); outline-offset: -2px; }
         .gp-ai-keep { outline: 2px solid #5aa9e6; outline-offset: -2px; }
+        .gp-subtabs { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+        .gp-subtabs button { padding: 3px 10px; border-radius: 6px; border: 1px solid var(--border-subtle); background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 0.8rem; }
+        .gp-subtabs button[aria-pressed=true] { color: var(--text-primary); border-color: var(--td-yellow, var(--color-primary)); }
+        .gp-subtabs .gp-muted { margin-left: auto; font-size: 0.78rem; }
+        .gp-mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+        .gp-mcard { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-card); min-width: 0; }
+        .gp-mpair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: start; }
+        .gp-mpair figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+        .gp-mpair img { width: 64px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 4px; background: color-mix(in srgb, var(--bg-card) 70%, black); }
+        .gp-mhome img { outline: 2px solid var(--td-yellow, var(--color-primary)); }
+        .gp-mpair figcaption { font-size: 0.72rem; text-align: center; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .gp-marrow { color: var(--text-muted); align-self: center; }
+        .gp-mactions { display: flex; gap: 6px; }
+        .gp-mactions .adm-btn { flex: 1; }
         .gp-legend { font-size: 0.78rem; color: var(--text-muted); margin-top: 12px; }
         .gp-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--td-yellow, var(--color-primary)); margin-right: 4px; }
         @media (max-width: 640px) { .gp-row { grid-template-columns: 56px 1fr; } .gp-home { width: 56px; } .gp-actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; } }
       `}</style>
+    </div>
+  );
+}
+
+// Library › Specials shelves › Minis & one-shots (stage B, backend/shelfSorterSeries.js): the AI's
+// suggested homes for minis and one-shots on no shelf, as two covers each: ✓ Shelve or Not this one
+// (both can be undone). "Shelved by the AI" lists what it put on shelves, with ✕ to take one off.
+const MINIS_SHOWN = 60;
+function MinisPanel({ data, busy, act }) {
+  const [sub, setSub] = useState('suggested');
+  const [all, setAll] = useState(false);
+  if (!data) return <p className="gp-muted">Loading…</p>;
+  const list = sub === 'suggested' ? data.suggested : data.shelved;
+  const shown = all ? list : list.slice(0, MINIS_SHOWN);
+  const c = data.counts || {};
+  const cover = id => <img src={`/api/series/${enc(id)}/thumbnail`} alt="" loading="lazy" onError={ev => { ev.target.style.visibility = 'hidden'; }} />;
+  const shelve = x => act(`m:${x.seriesId}`, () => call('POST', '/api/grouping/ai/apply', { seriesIds: [x.seriesId] }), r => r?.applied
+    ? { text: `Put ${x.name} on ${x.homeName}'s shelf.`, run: () => call('POST', `/api/grouping/ai/runs/${enc(r.runId)}/undo`) } : null);
+  const decline = x => act(`m:${x.seriesId}`, () => call('POST', `/api/grouping/series/${enc(x.seriesId)}/decline`), r => ({
+    text: `${x.name} stays where it is.`, run: () => call('POST', `/api/grouping/series/${enc(x.seriesId)}/undecline`, { previous: r?.previous ?? null }) }));
+  const takeOff = x => act(`m:${x.seriesId}`, () => call('DELETE', `/api/series/${enc(x.seriesId)}/shelf/${enc(x.homeId)}`), () => ({
+    text: `Took ${x.name} off ${x.homeName}'s shelf.`, run: () => call('POST', '/api/grouping/restore', { items: [{ seriesId: x.seriesId, homeId: x.homeId }] }) }));
+  return (
+    <div className="gp-minis">
+      <div className="gp-subtabs">
+        {[['suggested', 'Suggested', data.suggested.length], ['shelved', 'Shelved by the AI', data.shelved.length]].map(([k, label, n]) => (
+          <button key={k} type="button" aria-pressed={sub === k} onClick={() => { setSub(k); setAll(false); }}>{label} <b>{n}</b></button>))}
+        <span className="gp-muted" title="Series the AI looked at and left alone, and series not asked about yet (✦ Ask the AI asks about them)">
+          Left alone: {c.own || 0} own series · {c.landmark || 0} landmarks · {c.none || 0} no fitting home{data.toAsk ? ` · ${data.toAsk} not asked yet` : ''}
+        </span>
+      </div>
+      {!list.length && <p className="gp-muted">{sub === 'suggested' ? (data.asked ? 'No suggestions waiting.' : 'Not asked yet: ✦ Ask the AI checks the minis and one-shots too.') : 'Nothing shelved by the AI yet.'}</p>}
+      <div className="gp-mgrid">
+        {shown.map(x => (
+          <div key={`${x.seriesId}|${x.homeId}`} className="gp-mcard">
+            <div className="gp-mpair">
+              <figure title={x.name}>{cover(x.seriesId)}<figcaption>{x.name}</figcaption></figure>
+              <span className="gp-marrow">→</span>
+              <figure className="gp-mhome" title={x.homeName}>{cover(x.homeId)}<figcaption>{x.homeName}</figcaption></figure>
+            </div>
+            <div className="gp-airow" title={`${x.why || ''}${x.model ? `\nModel: ${x.model}` : ''}`}>
+              {x.confidence && <small className={`gp-conf gp-conf-${x.confidence}`}>{CONF_LABEL[x.confidence] || x.confidence}</small>}
+              <span>{x.why}{x.stale ? ' · out of date' : ''}{x.undone ? ' · undone before' : ''}</span>
+            </div>
+            <div className="gp-mactions">
+              {sub === 'suggested'
+                ? <><button className="adm-btn" disabled={busy} onClick={() => shelve(x)}>✓ Shelve</button>
+                    <button className="adm-btn adm-btn-ghost" disabled={busy} onClick={() => decline(x)}>Not this one</button></>
+                : <button className="adm-btn adm-btn-ghost" disabled={busy} onClick={() => takeOff(x)}>✕ Take it off</button>}
+            </div>
+          </div>))}
+      </div>
+      {list.length > MINIS_SHOWN && <button type="button" className="gp-link" onClick={() => setAll(v => !v)}>{all ? 'Show fewer' : `Show all ${list.length}`}</button>}
     </div>
   );
 }

@@ -18,11 +18,14 @@
 // answers marked sure. With the automatic switch on, the hourly rules run also asks about new or
 // changed events and applies sure answers. Homes and series the admin set by hand are never changed.
 const crypto = require('crypto');
+const B = require('./shelfSorterSeries');   // stage B: homeless minis and one-shots
 
 const TASK = 'shelf_sorter';
 const AUTO_KEY = 'shelf_sorter_auto';
 const PER_CALL = 6;           // events per AI call
 const AUTO_LIMIT = 24;        // events asked about per automatic run
+const PER_CALL_SERIES = 12;   // series per AI call (stage B)
+const AUTO_LIMIT_SERIES = 60; // series asked about per automatic run
 const MAX_ROWS = 40;          // reading-order lines per event
 const PRELUDE = /prelude|prologue|lead[- ]?in|road to|countdown/i;
 const CONF = ['sure', 'likely', 'unsure'];
@@ -193,12 +196,23 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   const askable = (e, f, ctx) => !(e.initiative && !e.chosen) && shelved(e, ctx);
 
   // ── Saved answers ──
-  const getAnswer = db.prepare("SELECT * FROM shelf_sorter_answers WHERE kind = 'event' AND item_id = ?");
-  const putAnswer = db.prepare(`INSERT INTO shelf_sorter_answers (kind, item_id, hash, model, answer, asked_at, run_id, applied) VALUES ('event', ?, ?, ?, ?, ?, ?, NULL)
+  const putAnswerKind = db.prepare(`INSERT INTO shelf_sorter_answers (kind, item_id, hash, model, answer, asked_at, run_id, applied) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
     ON CONFLICT(kind, item_id) DO UPDATE SET hash = excluded.hash, model = excluded.model, answer = excluded.answer, asked_at = excluded.asked_at, run_id = excluded.run_id,
-      applied = CASE WHEN shelf_sorter_answers.applied LIKE 'undone:%' THEN shelf_sorter_answers.applied ELSE NULL END`);   // once undone, an event's answers stay advice
+      applied = CASE WHEN shelf_sorter_answers.applied LIKE 'undone:%' OR shelf_sorter_answers.applied = 'declined' THEN shelf_sorter_answers.applied ELSE NULL END`);   // once undone or declined, answers stay advice
+  const putAnswer = { run: (...a) => putAnswerKind.run('event', ...a) };
   const rehash = db.prepare("UPDATE shelf_sorter_answers SET hash = ? WHERE kind = 'event' AND item_id = ?");
-  const answersMap = () => new Map(db.prepare("SELECT * FROM shelf_sorter_answers WHERE kind = 'event'").all().map(r => [r.item_id, r]));
+  const answersMap = (kind = 'event') => new Map(db.prepare('SELECT * FROM shelf_sorter_answers WHERE kind = ?').all(kind).map(r => [r.item_id, r]));
+
+  // ── Stage B context (cached briefly: the Library panel reads it twice per load) ──
+  let bCache = null;
+  const bContext = () => {
+    if (bCache && now() - bCache.at < 20000) return bCache.ctx;
+    const ctx = B.seriesContext(db, { curated: grouping.curatedSeries ? grouping.curatedSeries() : new Set() });
+    bCache = { at: now(), ctx };
+    return ctx;
+  };
+  const bForget = () => { bCache = null; };
+  const bHash = f => hashOf({ f, v: 'b1' });
 
   // Turn one reply item into an answer with real ids; anything not in the event is dropped.
   function resolve(item, facts, ids) {
@@ -230,13 +244,29 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     .run(now(), fields.status, fields.asked || 0, fields.applied || 0, fields.error || null, id);
 
   // Ask about events (all askable ones whose facts changed, or the given ids). Saves answers only.
-  async function ask({ eventIds = null, force = false, limit = Infinity, mode = 'ask' } = {}) {
+  // kinds: 'event' and/or 'series' (stage B). seriesIds / eventIds limit the ask to those.
+  async function ask({ eventIds = null, seriesIds = null, force = false, limit = Infinity, seriesLimit = Infinity, mode = 'ask', kinds = ['event', 'series'] } = {}) {
     if (state.running) return { skipped: true, running: true };
     const ctx = context();
     const wanted = eventIds ? new Set(eventIds) : null;
     const saved = answersMap();
     const todo = [];
-    for (const e of ctx.events) {
+    const bTodo = [];
+    if (kinds.includes('series') && !eventIds) {
+      const bctx = bContext();
+      const bWanted = seriesIds ? new Set(seriesIds) : null;
+      const bSaved = answersMap('series');
+      for (const t of bctx.targets) {
+        if (bWanted && !bWanted.has(t.id)) continue;
+        const f = B.seriesFacts(t, bctx);
+        if (!f.candidates.length) continue;
+        const hash = bHash(f);
+        if (!force && bSaved.get(t.id)?.hash === hash) continue;
+        bTodo.push({ f, hash });
+        if (bTodo.length >= seriesLimit) break;
+      }
+    }
+    if (kinds.includes('event') && !seriesIds) for (const e of ctx.events) {
       if (wanted && !wanted.has(e.id)) continue;
       const f = eventFacts(e, ctx);
       if (!wanted && !askable(e, f, ctx)) continue;
@@ -245,13 +275,14 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
       todo.push({ f, hash });
       if (todo.length >= limit) break;
     }
-    if (!todo.length) return { asked: 0, runId: null };
+    if (!todo.length && !bTodo.length) return { asked: 0, runId: null };
     const model = ai.choose ? ai.choose(TASK) : modelFor(TASK);
     const runId = newRun(mode, model);
-    Object.assign(state, { running: runId, done: 0, total: todo.length, stop: false });
-    let asked = 0, failed = null;
+    Object.assign(state, { running: runId, done: 0, total: todo.length + bTodo.length, stop: false });
+    let asked = 0, failed = null, keyFailed = false;
+    const what = [todo.length && `${todo.length} event${todo.length === 1 ? '' : 's'}`, bTodo.length && `${bTodo.length} series`].filter(Boolean).join(' and ');
     try {
-      await ai.run({ label: `Shelf Sorter: ${todo.length} event${todo.length === 1 ? '' : 's'}` }, async () => {
+      await ai.run({ label: `Shelf Sorter: ${what}` }, async () => {
         for (let i = 0; i < todo.length && !state.stop; i += PER_CALL) {
           const batch = todo.slice(i, i + PER_CALL);
           const { text, ids } = render(batch.map(b => b.f));
@@ -261,7 +292,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
               prompt: `Events to check (${batch.length}):\n\n${text}\n\nReply with JSON: {"events":[{"event":"E1","home":{"verdict","series","confidence","why"},"members":[...]}]}.`,
               maxTokens: 8000, outputSchema: SCHEMA, timeout: 180000, source: 'live' });
           } catch (e) {
-            if (e.code === 'AI_KEY_MISSING' || e.code === 'AI_PROVIDER_UNAVAILABLE' || e.response?.status === 401) { failed = e.message; break; }
+            if (e.code === 'AI_KEY_MISSING' || e.code === 'AI_PROVIDER_UNAVAILABLE' || e.response?.status === 401) { failed = e.message; keyFailed = true; break; }
             logger?.warn?.('shelf-sorter', 'AI call failed', e.message);
             failed = e.message; state.done += batch.length; continue;
           }
@@ -279,13 +310,41 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
           setJobOutcome(r.jobId, got === batch.length ? 'ok' : 'truncated');
           state.done += batch.length;
         }
+        // Stage B: minis and one-shots, 12 per call.
+        for (let i = 0; i < bTodo.length && !state.stop && !keyFailed; i += PER_CALL_SERIES) {
+          const batch = bTodo.slice(i, i + PER_CALL_SERIES);
+          const { text, ids } = B.renderSeries(batch.map(b => b.f));
+          let r;
+          try {
+            r = await ai.complete({ task: TASK, ...(model ? { model } : {}), system: [{ type: 'text', text: B.SERIES_SYSTEM, cache_control: { type: 'ephemeral' } }],
+              prompt: `Series to check (${batch.length}):\n\n${text}\n\nReply with JSON: {"series":[{"item":"T1","verdict","home","confidence","why"}]}, one entry per T id.`,
+              maxTokens: 8000, outputSchema: B.SERIES_SCHEMA, timeout: 180000, source: 'live' });
+          } catch (e) {
+            if (e.code === 'AI_KEY_MISSING' || e.code === 'AI_PROVIDER_UNAVAILABLE' || e.response?.status === 401) { failed = e.message; break; }
+            logger?.warn?.('shelf-sorter', 'AI call failed', e.message);
+            failed = e.message; state.done += batch.length; continue;
+          }
+          const data = parseReply(r.text);
+          const items = Array.isArray(data?.series) ? data.series : [];
+          if (!items.length) { setJobOutcome(r.jobId, 'bad_json'); state.done += batch.length; continue; }
+          let got = 0;
+          for (const item of items) {
+            const sid = ids.get(item.item);
+            const b = batch.find(x => x.f.id === sid);
+            if (!b) continue;
+            putAnswerKind.run('series', sid, b.hash, r.model || model, JSON.stringify(B.resolveSeries(item, b.f, ids)), now(), runId);
+            got++; asked++;
+          }
+          setJobOutcome(r.jobId, got === batch.length ? 'ok' : 'truncated');
+          state.done += batch.length;
+        }
       });
     } finally {
       endRun(runId, { status: state.stop ? 'stopped' : failed && !asked ? 'failed' : 'done', asked, error: failed });
       Object.assign(state, { running: null });
     }
-    logger?.info?.('shelf-sorter', `Asked about ${asked} of ${todo.length} events`, { run: runId, model, error: failed });
-    return { asked, total: todo.length, runId, error: failed };
+    logger?.info?.('shelf-sorter', `Asked about ${asked} of ${todo.length + bTodo.length} (${what})`, { run: runId, model, error: failed });
+    return { asked, total: todo.length + bTodo.length, runId, error: failed };
   }
 
   // ── Applying answers ──
@@ -312,10 +371,10 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   // a row's "Use the AI's advice" (eventIds) applies all of that event's advice: the admin decided.
   // Applying is idempotent (what is already done is skipped); answers of an event whose AI changes
   // were undone are not applied again except from its row.
-  function apply({ eventIds = null, sureOnly = true, mode = 'apply' } = {}) {
+  function apply({ eventIds = null, seriesIds = null, sureOnly = true, mode = 'apply' } = {}) {
     const ctx = context();
     const byId = new Map(ctx.events.map(e => [e.id, e]));
-    const wanted = eventIds ? new Set(eventIds) : null;
+    const wanted = eventIds ? new Set(eventIds) : seriesIds ? new Set() : null;
     let runId = null;
     const rid = () => runId || (runId = newRun(mode));   // a run is recorded only when something changes
     let applied = 0;
@@ -352,15 +411,70 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
         if (n) touched.push(row.item_id);
         applied += n;
       }
+      // Stage B: shelve minis and one-shots under the home the AI named.
+      if (!eventIds) applied += applySeries({ wanted: seriesIds ? new Set(seriesIds) : null, ok, rid, sureOnly });
     } finally {
       if (runId) endRun(runId, { status: 'done', applied });
-      if (applied) grouping.run('shelf sorter');
+      if (applied) { grouping.run('shelf sorter'); grouping.changed && grouping.changed(); }
     }
     // The AI's own changes do not make its answers out of date.
     if (touched.length) refreshHashes(touched);
     if (applied) logger?.info?.('shelf-sorter', `Applied ${applied} change${applied === 1 ? '' : 's'}`, { run: runId, mode });
     return { applied, runId };
   }
+  const insertLink = db.prepare(`INSERT INTO series_links (series_id, home_id, source, role, hidden, reason, created_at, event_id)
+    VALUES (?, ?, 'ai', 'special', ?, ?, ?, NULL) ON CONFLICT(series_id, home_id) DO NOTHING`);
+  const markSeries = db.prepare("UPDATE shelf_sorter_answers SET applied = ? WHERE kind = 'series' AND item_id = ?");
+  // A series answer still applies when: verdict home, the series is still on no shelf, the home is
+  // still in the library, and the admin has not removed it from that home.
+  function seriesOpen(a, sid, bctx) {
+    return a.verdict === 'home' && !!a.homeId && !bctx.linked.has(sid) && bctx.S.has(sid) && bctx.S.has(a.homeId)
+      && !db.prepare("SELECT 1 FROM series_link_overrides WHERE series_id = ? AND home_id = ? AND action = 'reject'").get(sid, a.homeId);
+  }
+  function applySeries({ wanted, ok, rid, sureOnly }) {
+    const bctx = bContext();
+    const targets = new Map(bctx.targets.map(t => [t.id, t]));
+    let n = 0;
+    for (const row of answersMap('series').values()) {
+      const tag = String(row.applied || '');
+      if (wanted ? !wanted.has(row.item_id) : (tag.startsWith('undone:') || tag === 'declined')) continue;
+      let a; try { a = JSON.parse(row.answer); } catch { continue; }
+      if (!ok(a.confidence) || !seriesOpen(a, row.item_id, bctx)) continue;
+      const t = targets.get(row.item_id);
+      if (!wanted && (!t || bHash(B.seriesFacts(t, bctx)) !== row.hash)) continue;   // changed since: ask again first
+      const s = bctx.S.get(row.item_id);
+      // Hidden like a tie-in, unless it is still publishing or in an Essential list or Top Shelf run.
+      const hidden = s.status === 'Continuing' || bctx.curated.has(row.item_id) ? 0 : 1;
+      if (insertLink.run(row.item_id, a.homeId, hidden, `Shelf Sorter: ${a.why}`, now()).changes) {
+        record.run(rid(), 'link', null, row.item_id, a.homeId, null); n++;
+        bctx.linked.add(row.item_id);
+        markSeries.run(sureOnly ? rid() : 'user', row.item_id);
+      }
+    }
+    if (n) bForget();
+    return n;
+  }
+  // "Not this one": the suggestion is set aside and the AI never shelves it there.
+  function decline(seriesId) {
+    const row = answersMap('series').get(seriesId);
+    if (!row) throw Object.assign(new Error('No suggestion for that series'), { status: 404 });
+    let a; try { a = JSON.parse(row.answer); } catch { a = {}; }
+    if (a.homeId) db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'reject', ?)").run(seriesId, a.homeId, now());
+    const previous = row.applied || null;
+    markSeries.run('declined', seriesId);
+    bForget();
+    return { declined: true, previous };
+  }
+  function undecline(seriesId, previous = null) {
+    const row = answersMap('series').get(seriesId);
+    if (!row) return { ok: false };
+    let a; try { a = JSON.parse(row.answer); } catch { a = {}; }
+    if (a.homeId) db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND home_id = ? AND action = 'reject'").run(seriesId, a.homeId);
+    markSeries.run(previous, seriesId);
+    bForget();
+    return { ok: true };
+  }
+
   function refreshHashes(ids) {
     const ctx = context();
     for (const id of ids) { const e = ctx.events.find(x => x.id === id); if (e) rehash.run(hashOf({ f: eventFacts(e, ctx), v: 1 }), id); }
@@ -376,7 +490,12 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
       if (c.kind === 'event') { try { grouping.setEvent(c.event_id, { restore: JSON.parse(c.previous) }, { rerun: false }); } catch {} }
       else if (c.kind === 'reject') db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND home_id IN (?, ?) AND action = 'reject'").run(c.series_id, c.home_id, `event:${c.event_id}`);
       else if (c.kind === 'keep_visible') db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND action = 'keep_visible'").run(c.series_id);
+      else if (c.kind === 'link') {
+        db.prepare("DELETE FROM series_links WHERE series_id = ? AND home_id = ? AND source = 'ai'").run(c.series_id, c.home_id);
+        db.prepare("UPDATE shelf_sorter_answers SET applied = ? WHERE kind = 'series' AND item_id = ?").run(`undone:${runId}`, c.series_id);
+      }
     }
+    if (changes.some(c => c.kind === 'link')) { bForget(); grouping.changed && grouping.changed(); }
     db.prepare('UPDATE shelf_sorter_runs SET undone_at = ? WHERE id = ?').run(now(), runId);
     const events = [...new Set(changes.map(c => c.event_id).filter(Boolean))];
     const mark = db.prepare("UPDATE shelf_sorter_answers SET applied = ? WHERE kind = 'event' AND item_id = ?");
@@ -389,7 +508,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   // The hourly rules run: with the switch on, ask about new or changed events, then apply sure answers.
   async function auto() {
     if (getSetting(AUTO_KEY) !== '1' || state.running) return { skipped: true };
-    const r = await ask({ limit: AUTO_LIMIT, mode: 'auto' });
+    const r = await ask({ limit: AUTO_LIMIT, seriesLimit: AUTO_LIMIT_SERIES, mode: 'auto' });
     if (r.error && !r.asked) return r;
     return { ...r, ...apply({ mode: 'auto' }) };
   }
@@ -420,19 +539,59 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     return ready;
   }
 
+  // Library panel › Minis & one-shots: the AI's answers about series (stage B).
+  //   suggested: verdict home, still open, not declined or undone (sure ones first)
+  //   shelved:   series the Shelf Sorter put on a shelf (source 'ai')
+  //   counts of own / landmark / none, and how many series are still to ask about.
+  function seriesSummary() {
+    const bctx = bContext();
+    const label2 = id => label(bctx.S.get(id)) || null;
+    const targets = new Map(bctx.targets.map(t => [t.id, t]));
+    const counts = { own: 0, landmark: 0, none: 0, declined: 0 };
+    const suggested = [];
+    let ready = 0, toAsk = 0;
+    const saved = answersMap('series');
+    for (const t of bctx.targets) {
+      const row = saved.get(t.id);
+      const f = row ? null : B.seriesFacts(t, bctx);
+      if (!row && f.candidates.length) toAsk++;
+    }
+    for (const row of saved.values()) {
+      let a; try { a = JSON.parse(row.answer); } catch { continue; }
+      const tag = String(row.applied || '');
+      if (tag === 'declined') { counts.declined++; continue; }
+      if (a.verdict !== 'home') { if (counts[a.verdict] != null) counts[a.verdict]++; continue; }
+      if (!seriesOpen(a, row.item_id, bctx)) continue;
+      const t = targets.get(row.item_id);
+      const stale = !t || bHash(B.seriesFacts(t, bctx)) !== row.hash;
+      const undone = tag.startsWith('undone:');
+      if (!stale && !undone && a.confidence === 'sure') ready++;
+      const s = bctx.S.get(row.item_id);
+      suggested.push({ seriesId: row.item_id, name: label2(row.item_id), issues: s ? s.size : null, homeId: a.homeId, homeName: label2(a.homeId),
+        confidence: a.confidence, why: a.why, stale, undone, model: modelName(row.model) });
+    }
+    const rank = { sure: 0, likely: 1, unsure: 2 };
+    suggested.sort((x, y) => (rank[x.confidence] - rank[y.confidence]) || String(x.homeName).localeCompare(String(y.homeName)) || String(x.name).localeCompare(String(y.name)));
+    const shelved = db.prepare("SELECT series_id, home_id, reason, created_at FROM series_links WHERE source = 'ai' ORDER BY created_at DESC").all()
+      .map(l => ({ seriesId: l.series_id, name: label2(l.series_id), homeId: l.home_id, homeName: label2(l.home_id), why: String(l.reason || '').replace(/^Shelf Sorter: /, '') }));
+    return { suggested, shelved, counts, ready, toAsk, asked: saved.size };
+  }
+  const seriesReady = () => { try { return seriesSummary().ready; } catch { return 0; } };
+
   function status() {
     const last = db.prepare("SELECT * FROM shelf_sorter_runs WHERE applied > 0 AND undone_at IS NULL ORDER BY started_at DESC LIMIT 1").get() || null;
     const lastAsk = db.prepare("SELECT * FROM shelf_sorter_runs WHERE mode IN ('ask', 'auto') ORDER BY started_at DESC LIMIT 1").get() || null;
     const asked = db.prepare("SELECT COUNT(*) AS n FROM shelf_sorter_answers WHERE kind = 'event'").get().n;
+    const askedSeries = db.prepare("SELECT COUNT(*) AS n FROM shelf_sorter_answers WHERE kind = 'series'").get().n;
     let model = null; try { model = modelFor(TASK); } catch {}
-    return { auto: getSetting(AUTO_KEY) === '1', running: state.running ? { done: state.done, total: state.total } : null, asked,
+    return { auto: getSetting(AUTO_KEY) === '1', running: state.running ? { done: state.done, total: state.total } : null, asked, askedSeries,
       model: model ? modelName(model) : null, lastApplied: last && { id: last.id, at: last.finished_at, applied: last.applied, mode: last.mode },
       lastAsk: lastAsk && { at: lastAsk.finished_at || lastAsk.started_at, status: lastAsk.status, asked: lastAsk.asked, error: lastAsk.error } };
   }
   function setAuto(on) { setSetting(AUTO_KEY, on ? '1' : ''); return status(); }
   function stop() { state.stop = true; return { stopping: !!state.running }; }
 
-  return { ask, apply, undo, auto, annotate, status, setAuto, stop, eventFacts, render, context, _state: state };
+  return { ask, apply, undo, auto, annotate, status, setAuto, stop, eventFacts, render, context, seriesSummary, seriesReady, decline, undecline, _state: state };
 }
 
 module.exports = { createShelfSorter, initShelfSorter, parseReply, SYSTEM, SCHEMA, TASK, AUTO_KEY };

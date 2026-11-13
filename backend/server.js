@@ -17309,7 +17309,7 @@ const shelfSorter = require('./shelfSorter').createShelfSorter({ db, grouping: s
   modelFor: id => aiRouting.modelFor(id), logger, setJobOutcome: setAiJobOutcome, modelName: m => { try { return modelCatalog.displayName(m) || m; } catch { return m; } } });
 app.get('/api/grouping', requireAdmin, groupingRoute(() => {
   const s = seriesGrouping.summary();
-  const ready = shelfSorter.annotate(s);
+  const ready = shelfSorter.annotate(s) + shelfSorter.seriesReady();
   s.ai = { ...shelfSorter.status(), ready };
   return s;
 }));
@@ -17323,8 +17323,15 @@ app.post('/api/grouping/ai/ask', requireAdmin, groupingRoute(req => {
 app.post('/api/grouping/ai/stop', requireAdmin, groupingRoute(() => shelfSorter.stop()));
 app.post('/api/grouping/ai/apply', requireAdmin, groupingRoute(req => {
   const ids = Array.isArray(req.body?.eventIds) ? req.body.eventIds.map(String) : null;
-  return shelfSorter.apply(ids ? { eventIds: ids, sureOnly: false, mode: 'row' } : {});
+  const sids = Array.isArray(req.body?.seriesIds) ? req.body.seriesIds.map(String) : null;
+  if (ids) return shelfSorter.apply({ eventIds: ids, sureOnly: false, mode: 'row' });
+  if (sids) return shelfSorter.apply({ seriesIds: sids, sureOnly: false, mode: 'row' });
+  return shelfSorter.apply({});
 }));
+// Stage B (shelfSorterSeries.js): the AI's answers about minis and one-shots on no shelf.
+app.get('/api/grouping/series', requireAdmin, groupingRoute(() => shelfSorter.seriesSummary()));
+app.post('/api/grouping/series/:id/decline', requireAdmin, groupingRoute(req => shelfSorter.decline(req.params.id)));
+app.post('/api/grouping/series/:id/undecline', requireAdmin, groupingRoute(req => shelfSorter.undecline(req.params.id, req.body?.previous ?? null)));
 app.post('/api/grouping/ai/runs/:id/undo', requireAdmin, groupingRoute(req => shelfSorter.undo(req.params.id)));
 app.post('/api/grouping/ai/auto', requireAdmin, groupingRoute(req => shelfSorter.setAuto(!!req.body?.on)));
 app.post('/api/grouping/run', requireAdmin, groupingRoute(() => seriesGrouping.run('manual')));

@@ -142,7 +142,7 @@ test('the AI line: Ask, its view on a row, Use the AI\'s advice, and Apply sure 
     expect(rows[0].querySelector('.gp-ai-remove')).toBeTruthy();
     expect(rows[1].querySelector('.gp-airow').textContent).toMatch(/AI agrees/);
     expect(rows.length).toBe(2);
-    expect(host.querySelector('.gp-ai-line').textContent).toMatch(/Asked about 1 events · Claude Sonnet 5.5/);
+    expect(host.querySelector('.gp-ai-line').textContent).toMatch(/Asked about 1 events and 0 series · Claude Sonnet 5.5/);
     await act(async () => { button('Use the AI\'s advice').click(); }); await tick();
     expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/apply', expect.objectContaining({ body: JSON.stringify({ eventIds: ['aoa'] }) }));
     await act(async () => { button('✓ Apply 2 sure changes').click(); }); await tick();
@@ -151,5 +151,44 @@ test('the AI line: Ask, its view on a row, Use the AI\'s advice, and Apply sure 
     expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/runs/run1/undo', expect.objectContaining({ method: 'POST' }));
     await act(async () => { button('✦ Ask the AI').click(); }); await tick();
     expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/ask', expect.objectContaining({ method: 'POST' }));
+  } finally { act(() => root.unmount()); global.fetch = prev; }
+});
+
+test('Minis & one-shots: suggested homes as two covers; Shelve and Not this one, each with Undo', async () => {
+  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const summary = { counts: { rule: { links: 1, hidden: 1 }, ai: { links: 1, hidden: 1 } }, ai: { asked: 0, askedSeries: 3, ready: 1 }, events: [] };
+  const minis = { suggested: [{ seriesId: 'wow', name: 'Black Panther: World of Wakanda (2016)', homeId: 'bp16', homeName: 'Black Panther (2016)', confidence: 'sure', why: 'Companion to that run' }],
+    shelved: [{ seriesId: 'kh', name: 'Kraven Hunts (2020)', homeId: 'asm', homeName: 'The Amazing Spider-Man (2018)', why: 'A spin-off' }],
+    counts: { own: 1, landmark: 1, none: 0 }, toAsk: 5, asked: 3, ready: 1 };
+  const prev = global.fetch;
+  global.fetch = vi.fn(async url => ({ ok: true, json: async () => {
+    if (url === '/api/grouping') return summary;
+    if (url === '/api/grouping/series') return minis;
+    if (url === '/api/grouping/removed') return { items: [] };
+    if (url === '/api/grouping/ai/apply') return { applied: 1, runId: 'r9' };
+    if (url === '/api/grouping/series/wow/decline') return { declined: true, previous: null };
+    return { ok: true };
+  } }));
+  const { host, root } = mount(<SeriesGroupingPanel />);
+  const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)); });
+  const button = t => [...host.querySelectorAll('button')].find(b => b.textContent.trim() === t);
+  try {
+    await tick();
+    expect(host.textContent).toMatch(/2 series on shelves · 2 out of the browser/);
+    expect(host.querySelector('.gp-ai-line').textContent).toMatch(/Asked about 0 events and 3 series/);
+    await act(async () => { [...host.querySelectorAll('[role=tab]')].find(b => /Minis & one-shots/.test(b.textContent)).click(); });
+    const card = host.querySelector('.gp-mcard');
+    expect(card.textContent).toMatch(/Black Panther: World of Wakanda \(2016\)→Black Panther \(2016\)sureCompanion to that run/);
+    expect(host.querySelector('.gp-subtabs').textContent).toMatch(/1 own series · 1 landmarks · 0 no fitting home · 5 not asked yet/);
+    await act(async () => { button('✓ Shelve').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/apply', expect.objectContaining({ body: JSON.stringify({ seriesIds: ['wow'] }) }));
+    await act(async () => { button('Undo').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/runs/r9/undo', expect.objectContaining({ method: 'POST' }));
+    await act(async () => { button('Not this one').click(); }); await tick();
+    await act(async () => { button('Undo').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/series/wow/undecline', expect.objectContaining({ body: JSON.stringify({ previous: null }) }));
+    await act(async () => { button('Shelved by the AI 1').click(); });
+    await act(async () => { button('✕ Take it off').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/series/kh/shelf/asm', expect.objectContaining({ method: 'DELETE' }));
   } finally { act(() => root.unmount()); global.fetch = prev; }
 });

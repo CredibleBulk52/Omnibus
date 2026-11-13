@@ -208,7 +208,8 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
       const { links } = computeRuleLinks();
       const rejected = new Set(db.prepare("SELECT series_id || '|' || home_id AS k FROM series_link_overrides WHERE action = 'reject'").all().map(r => r.k));
       const previous = new Map(db.prepare("SELECT series_id || '|' || home_id AS k, created_at FROM series_links WHERE source = 'rule'").all().map(r => [r.k, r.created_at]));
-      const manual = new Set(db.prepare("SELECT series_id || '|' || home_id AS k FROM series_links WHERE source = 'manual'").all().map(r => r.k));
+      // Links made by hand or by the Shelf Sorter (source 'ai') are not the rules' to replace.
+      const manual = new Set(db.prepare("SELECT series_id || '|' || home_id AS k FROM series_links WHERE source <> 'rule'").all().map(r => r.k));
       const at = now();
       let added = 0, kept = 0;
       const ins = db.prepare('INSERT INTO series_links (series_id, home_id, source, role, hidden, reason, created_at, event_id) VALUES (?, ?, \'rule\', ?, ?, ?, ?, ?)');
@@ -282,11 +283,11 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     if (!l) return false;
     db.prepare('DELETE FROM series_links WHERE series_id = ? AND home_id = ?').run(seriesId, homeId);
     // A series taken off an event's shelf stays off that event's shelf, whichever series is its home.
-    if (l.source === 'rule') db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'reject', ?)")
+    if (l.source === 'rule' || l.source === 'ai') db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'reject', ?)")
       .run(seriesId, l.event_id ? `event:${l.event_id}` : homeId, now());
     db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND action = 'user_keep' AND home_id IN (?, ?)").run(seriesId, homeId, `event:${l.event_id || ''}`);
     onChange();
-    return l.source;   // 'rule' | 'manual' (Undo: restore a rule link, link a manual one again)
+    return l.source;   // 'rule' | 'ai' | 'manual' (Undo: restore a rule link, link a manual one again)
   }
 
   // ── Undo (2026-11-13) ──
@@ -311,6 +312,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     // user_keep: the admin put it back, so the Shelf Sorter never takes it off again.
     const keep = db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'user_keep', ?)");
     let n = 0, homeEvents = null;
+    const homeRestores = [];
     // Without an event id, a removal from a home's shelf may be keyed to an event that home holds.
     const eventsOfHome = home => {
       if (!homeEvents) {
@@ -326,8 +328,15 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
       let found = null;
       for (const key of [home, ...events]) if (del.run(sid, key, key).changes) { n++; found = found || key; }
       keep.run(sid, found || events[0] || home, now());
+      if (found && !found.startsWith('event:')) homeRestores.push([sid, found]);
     }
     const r = run('restore');
+    // A series the rules do not shelve (put there by the Shelf Sorter or by hand) goes back as a
+    // hand-made link, so Restore always puts it back.
+    const exists = db.prepare('SELECT 1 FROM series_links WHERE series_id = ? AND home_id = ?');
+    const relink = db.prepare(`INSERT INTO series_links (series_id, home_id, source, role, hidden, reason, created_at) VALUES (?, ?, 'manual', 'special', 1, 'put back by hand', ?)
+      ON CONFLICT(series_id, home_id) DO NOTHING`);
+    for (const [sid, home] of homeRestores) if (!exists.get(sid, home) && db.prepare('SELECT 1 FROM scanned_series WHERE id = ?').get(home)) relink.run(sid, home, now());
     if (!(r.added || r.removed)) onChange();
     return { restored: n };
   }
@@ -348,7 +357,8 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     const r = db.prepare('SELECT id, home_series_id, home_confirmed, home_source, initiative FROM events WHERE id = ?').get(id);
     return r && { id: r.id, chosen: r.home_series_id || null, confirmed: !!r.home_confirmed, source: r.home_source || null, initiative: !!r.initiative };
   };
-  const writeEvent = db.prepare('UPDATE events SET home_series_id = ?, home_confirmed = ?, home_source = ?, initiative = ? WHERE id = ?');
+  let writeEventStmt = null;   // prepared on first use: a library without a Timeline has no events table
+  const writeEvent = { run: (...a) => (writeEventStmt || (writeEventStmt = db.prepare('UPDATE events SET home_series_id = ?, home_confirmed = ?, home_source = ?, initiative = ? WHERE id = ?'))).run(...a) };
   const putState = st => writeEvent.run(st.chosen || null, st.confirmed ? 1 : 0, st.chosen ? (st.source || 'chosen') : null, st.initiative ? 1 : 0, st.id);
 
   // One event's home. Every call returns `previous`, the state before it, for Undo.
@@ -427,7 +437,8 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     };
   }
 
-  return { run, groupMap, members, homesOf, link, unlink, keepVisible, setEvent, confirmAll, restoreEvents, removed, restore, emptyEvent, summary, computeRuleLinks };
+  return { run, groupMap, members, homesOf, link, unlink, keepVisible, setEvent, confirmAll, restoreEvents, removed, restore, emptyEvent, summary, computeRuleLinks,
+    curatedSeries, changed: () => onChange() };
 }
 
 module.exports = { createSeriesGrouping, initSeriesGrouping, norm, MAX_ISSUES, YEAR_WINDOW };

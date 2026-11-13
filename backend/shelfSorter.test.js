@@ -7,14 +7,14 @@ const { createShelfSorter, parseReply } = require('./shelfSorter');
 
 function fixture(reply) {
   const db = new DatabaseSync(':memory:');
-  db.exec(`CREATE TABLE scanned_series (id TEXT PRIMARY KEY, name TEXT, year INTEGER, series_json TEXT, book_count INTEGER);
-    CREATE TABLE scanned_books (id TEXT PRIMARY KEY, series_id TEXT, is_special INTEGER DEFAULT 0);
+  db.exec(`CREATE TABLE scanned_series (id TEXT PRIMARY KEY, name TEXT, year INTEGER, series_json TEXT, book_count INTEGER, path TEXT);
+    CREATE TABLE scanned_books (id TEXT PRIMARY KEY, series_id TEXT, is_special INTEGER DEFAULT 0, comicinfo TEXT);
     CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT, year INTEGER, publisher TEXT, draft INTEGER DEFAULT 0);
     CREATE TABLE event_issues (id INTEGER PRIMARY KEY, event_id TEXT, scanned_book_id TEXT, series_name TEXT, volume_year TEXT, tier TEXT, phase TEXT, sort_order INTEGER);
     CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);`);
   let n = 0;
   const series = (id, name, year, issues) => {
-    db.prepare('INSERT INTO scanned_series VALUES (?, ?, ?, ?, ?)').run(id, name, year, JSON.stringify({ metadata: { name, year, total_issues: issues, status: 'Ended' } }), issues);
+    db.prepare('INSERT INTO scanned_series (id, name, year, series_json, book_count) VALUES (?, ?, ?, ?, ?)').run(id, name, year, JSON.stringify({ metadata: { name, year, total_issues: issues, status: 'Ended' } }), issues);
     const ids = [];
     for (let i = 0; i < issues; i++) { const b = `${id}-${i}`; db.prepare('INSERT INTO scanned_books (id, series_id) VALUES (?, ?)').run(b, id); ids.push(b); }
     return ids;
