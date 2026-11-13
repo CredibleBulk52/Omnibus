@@ -45,7 +45,8 @@ function initSeriesGrouping(db) {
     CREATE TABLE IF NOT EXISTS series_link_overrides (
       series_id  TEXT NOT NULL,
       home_id    TEXT NOT NULL DEFAULT '', -- '' for keep_visible (the whole series)
-      action     TEXT NOT NULL,            -- reject | keep_visible
+      action     TEXT NOT NULL,            -- reject | keep_visible | user_keep (put back by the admin; the Shelf Sorter leaves it)
+                                           -- reject/user_keep of an event shelf use home_id 'event:<id>', so they hold when the event's home changes
       created_at INTEGER NOT NULL,
       PRIMARY KEY (series_id, home_id, action));`);
   if (!db.prepare('PRAGMA table_info(series_links)').all().some(c => c.name === 'event_id')) db.exec('ALTER TABLE series_links ADD COLUMN event_id TEXT');
@@ -149,8 +150,8 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
       const chosen = e.home_series_id && S.has(e.home_series_id) ? e.home_series_id : null;
       const home = chosen || (e.initiative ? null : proposed);
       if (e.initiative && !chosen) why = 'Initiative: its series stay on their own';
-      else if (chosen && chosen !== proposed) why = e.home_source === 'approved' ? 'Approved by you' : 'Chosen by you';
-      else if (chosen) why = `${why} · approved`;
+      else if (chosen && chosen !== proposed) why = e.home_source === 'approved' ? 'Approved by you' : e.home_source === 'ai' ? 'Chosen by the AI' : 'Chosen by you';
+      else if (chosen) why = `${why} · ${e.home_source === 'ai' ? 'approved by the AI' : 'approved'}`;
       return { id: e.id, name: e.name, year: e.year, initiative: !!e.initiative, confirmed: !!e.home_confirmed,
         proposed, how, why, chosen, source: chosen ? (e.home_source || 'chosen') : null, home };
     });
@@ -216,7 +217,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
         db.prepare("DELETE FROM series_links WHERE source = 'rule'").run();
         for (const l of links) {
           const k = `${l.seriesId}|${l.homeId}`;
-          if (rejected.has(k) || manual.has(k)) continue;
+          if (rejected.has(k) || rejected.has(`${l.seriesId}|event:${l.eventId}`) || manual.has(k)) continue;
           const was = previous.get(k);
           ins.run(l.seriesId, l.homeId, l.role, l.hidden, l.reason, was || at, l.eventId);
           if (was) kept++; else added++;
@@ -277,26 +278,55 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
   }
   // Remove from a shelf. A rule's link is remembered as rejected so the rules do not bring it back.
   function unlink(seriesId, homeId) {
-    const l = db.prepare('SELECT source FROM series_links WHERE series_id = ? AND home_id = ?').get(seriesId, homeId);
+    const l = db.prepare('SELECT source, event_id FROM series_links WHERE series_id = ? AND home_id = ?').get(seriesId, homeId);
     if (!l) return false;
     db.prepare('DELETE FROM series_links WHERE series_id = ? AND home_id = ?').run(seriesId, homeId);
-    if (l.source === 'rule') db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'reject', ?)").run(seriesId, homeId, now());
+    // A series taken off an event's shelf stays off that event's shelf, whichever series is its home.
+    if (l.source === 'rule') db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'reject', ?)")
+      .run(seriesId, l.event_id ? `event:${l.event_id}` : homeId, now());
+    db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND action = 'user_keep' AND home_id IN (?, ?)").run(seriesId, homeId, `event:${l.event_id || ''}`);
     onChange();
     return l.source;   // 'rule' | 'manual' (Undo: restore a rule link, link a manual one again)
   }
 
   // ── Undo (2026-11-13) ──
   // Series the admin took off a rule's shelf, newest first. Restore lets the rules put them back.
+  // homeId is the removal's key (a home, or 'event:<id>'); shelfHomeId the shelf it goes back to.
   function removed() {
     const S = loadSeries();
+    const ev = new Map();
+    if (has('events')) { try { for (const e of computeRuleLinks().events) ev.set(e.id, e); } catch {} }
     return db.prepare("SELECT series_id, home_id, created_at FROM series_link_overrides WHERE action = 'reject' ORDER BY created_at DESC").all()
       .filter(r => S.has(r.series_id))
-      .map(r => ({ seriesId: r.series_id, name: label(S.get(r.series_id)), homeId: r.home_id, homeName: label(S.get(r.home_id)) || 'a series no longer in the library', at: r.created_at }));
+      .map(r => {
+        const e = r.home_id.startsWith('event:') ? ev.get(r.home_id.slice(6)) : null;
+        const shelfHomeId = e ? e.home : r.home_id;
+        return { seriesId: r.series_id, name: label(S.get(r.series_id)), homeId: r.home_id, eventId: e ? e.id : null, shelfHomeId,
+          homeName: label(S.get(shelfHomeId)) || (e ? `the ${e.name} shelf` : 'a series no longer in the library'), at: r.created_at };
+      });
   }
   function restore(items = []) {
-    const del = db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND home_id = ? AND action = 'reject'");
-    let n = 0;
-    for (const it of items) if (it && it.seriesId && it.homeId) n += del.run(String(it.seriesId), String(it.homeId)).changes;
+    // items: [{ seriesId, homeId, eventId? }]; homeId may be a removal key ('event:<id>').
+    const del = db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND home_id IN (?, ?) AND action = 'reject'");
+    // user_keep: the admin put it back, so the Shelf Sorter never takes it off again.
+    const keep = db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'user_keep', ?)");
+    let n = 0, homeEvents = null;
+    // Without an event id, a removal from a home's shelf may be keyed to an event that home holds.
+    const eventsOfHome = home => {
+      if (!homeEvents) {
+        homeEvents = new Map();
+        try { for (const e of computeRuleLinks().events) if (e.home) { if (!homeEvents.has(e.home)) homeEvents.set(e.home, []); homeEvents.get(e.home).push(`event:${e.id}`); } } catch {}
+      }
+      return homeEvents.get(home) || [];
+    };
+    for (const it of items) {
+      if (!it || !it.seriesId || !it.homeId) continue;
+      const sid = String(it.seriesId), home = String(it.homeId);
+      const events = it.eventId ? [`event:${it.eventId}`] : home.startsWith('event:') ? [home] : eventsOfHome(home);
+      let found = null;
+      for (const key of [home, ...events]) if (del.run(sid, key, key).changes) { n++; found = found || key; }
+      keep.run(sid, found || events[0] || home, now());
+    }
     const r = run('restore');
     if (!(r.added || r.removed)) onChange();
     return { restored: n };
@@ -305,7 +335,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
   function emptyEvent(eventId) {
     const rows = db.prepare("SELECT series_id, home_id FROM series_links WHERE event_id = ? AND source = 'rule'").all(eventId);
     const out = [];
-    for (const r of rows) if (unlink(r.series_id, r.home_id)) out.push({ seriesId: r.series_id, homeId: r.home_id });
+    for (const r of rows) if (unlink(r.series_id, r.home_id)) out.push({ seriesId: r.series_id, homeId: r.home_id, eventId });
     return { removed: out };
   }
   function keepVisible(seriesId, on) {
@@ -326,7 +356,8 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
   //   homeSeriesId  Change home (null: back to the rule's guess, unconfirmed).
   //   reset       Not right: back to the rule's guess, waiting in To check.
   //   restore     Undo: put back a previous state exactly.
-  function setEvent(eventId, { homeSeriesId, initiative, confirm, reset, restore: back } = {}) {
+  //   by          who decided: 'ai' for the Shelf Sorter (shelfSorter.js); otherwise the admin.
+  function setEvent(eventId, { homeSeriesId, initiative, confirm, reset, restore: back, by = null } = {}, { rerun = true } = {}) {
     const previous = eventState(eventId);
     if (!previous) throw Object.assign(new Error('Event not found'), { status: 404 });
     const next = { ...previous };
@@ -334,17 +365,18 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     if (reset) Object.assign(next, { chosen: null, confirmed: false, source: null });
     if (homeSeriesId !== undefined) {
       if (homeSeriesId && !db.prepare('SELECT 1 FROM scanned_series WHERE id = ?').get(homeSeriesId)) throw Object.assign(new Error('Series not found'), { status: 404 });
-      Object.assign(next, homeSeriesId ? { chosen: homeSeriesId, confirmed: true, source: 'chosen' } : { chosen: null, confirmed: false, source: null });
+      Object.assign(next, homeSeriesId ? { chosen: homeSeriesId, confirmed: true, source: by || 'chosen' } : { chosen: null, confirmed: false, source: null });
     }
     if (initiative !== undefined) next.initiative = !!initiative;
     if (confirm) {
       next.confirmed = true;
       if (!next.chosen && !next.initiative) {
         const e = computeRuleLinks().events.find(x => x.id === eventId);
-        if (e && e.proposed) Object.assign(next, { chosen: e.proposed, source: 'approved' });
+        if (e && e.proposed) Object.assign(next, { chosen: e.proposed, source: by || 'approved' });
       }
     }
     putState(next);
+    if (!rerun) return { previous };
     return { ...run('event setting'), previous };
   }
   // "All look right": approve and lock every event still waiting.
@@ -385,7 +417,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
       events: events.map(e => {
         const members = (byEvent.get(e.id) || []).sort((a, b) => String(a.name).localeCompare(String(b.name)));
         // An approved home the rules would now place elsewhere: shown as a one-line hint.
-        const suggest = e.source === 'approved' && e.proposed && e.proposed !== e.home ? { id: e.proposed, name: nm(e.proposed) } : null;
+        const suggest = (e.source === 'approved' || e.source === 'ai') && e.proposed && e.proposed !== e.home ? { id: e.proposed, name: nm(e.proposed) } : null;
         return { id: e.id, name: e.name, year: e.year, initiative: e.initiative, confirmed: e.confirmed, how: e.how, why: e.why,
           proposed: e.proposed, proposedName: nm(e.proposed), chosen: e.chosen, source: e.source, suggest, home: e.home, homeName: nm(e.home), members,
           newMembers: members.filter(m => m.at >= recentSince).length };

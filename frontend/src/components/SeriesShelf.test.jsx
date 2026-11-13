@@ -104,11 +104,50 @@ test('each row says why and links to the reading order; every action offers Undo
     // ✕ on a cover, then Undo puts the rule's link back.
     await act(async () => { host.querySelector('.gp-x').click(); }); await tick();
     await act(async () => { button('Undo').click(); }); await tick();
-    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/restore', expect.objectContaining({ body: JSON.stringify({ items: [{ seriesId: 'amz', homeId: 'ovt' }] }) }));
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/restore', expect.objectContaining({ body: JSON.stringify({ items: [{ seriesId: 'amz', homeId: 'ovt', eventId: 'aor' }] }) }));
     // Removed tab.
     await act(async () => { [...host.querySelectorAll('[role=tab]')].find(b => /Removed/.test(b.textContent)).click(); });
     expect(host.querySelector('.gp-rm').textContent).toMatch(/Citizen Cold \(2011\)from Flashpoint \(2011\)/);
     await act(async () => { button('↺ Restore').click(); }); await tick();
     expect(global.fetch).toHaveBeenCalledWith('/api/grouping/restore', expect.objectContaining({ body: JSON.stringify({ items: [{ seriesId: 'cold', homeId: 'fp' }] }) }));
+  } finally { act(() => root.unmount()); global.fetch = prev; }
+});
+
+test('the AI line: Ask, its view on a row, Use the AI\'s advice, and Apply sure changes with Undo', async () => {
+  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const summary = { counts: { rule: { links: 2, hidden: 1 } }, ai: { asked: 1, ready: 2, model: 'Claude Sonnet 5.5', auto: false, running: null, lastApplied: null },
+    events: [
+      { id: 'ok', name: 'Siege', year: 2010, confirmed: false, how: 'name', why: 'Named like the event · 2010', home: 'siege', homeName: 'Siege (2010)', members: [],
+        ai: { home: { verdict: 'agree', confidence: 'sure', why: 'The event\'s own series', open: true }, members: [], stale: false } },
+      { id: 'aoa', name: 'Age of Apocalypse', year: 1995, confirmed: false, how: 'essential', why: 'Most main-story issues', home: 'gen', homeName: 'Generation Next (1995)',
+        members: [{ id: 'tales', name: 'Tales from the Age of Apocalypse (1996)', role: 'tie-in', hidden: true }],
+        ai: { home: { verdict: 'change', seriesId: 'ast', name: 'Astonishing X-Men (1995)', confidence: 'sure', why: 'The flagship during the event', open: true },
+          members: [{ seriesId: 'tales', name: 'Tales from the Age of Apocalypse (1996)', action: 'remove', confidence: 'likely', why: 'Published after' }], stale: false } }] };
+  const prev = global.fetch;
+  global.fetch = vi.fn(async (url, opts = {}) => ({ ok: true, json: async () => {
+    if (url === '/api/grouping') return summary;
+    if (url === '/api/grouping/removed') return { items: [] };
+    if (url === '/api/grouping/ai/apply') return { applied: 2, runId: 'run1' };
+    return { ok: true };
+  } }));
+  const { host, root } = mount(<SeriesGroupingPanel />);
+  const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)); });
+  const button = t => [...host.querySelectorAll('button')].find(b => b.textContent.trim() === t);
+  try {
+    await tick();
+    const rows = [...host.querySelectorAll('.gp-row')];
+    expect(rows[0].textContent).toMatch(/Age of Apocalypse/);               // the AI disagrees: first
+    expect(rows[0].querySelector('.gp-airow').textContent).toMatch(/AI suggests Astonishing X-Men \(1995\) · take off 1sureUse the AI's advice/);
+    expect(rows[0].querySelector('.gp-ai-remove')).toBeTruthy();
+    expect(rows[1].querySelector('.gp-airow').textContent).toMatch(/AI agrees/);
+    expect(host.querySelector('.gp-ai-line').textContent).toMatch(/Asked about 1 events · Claude Sonnet 5.5/);
+    await act(async () => { button('Use the AI\'s advice').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/apply', expect.objectContaining({ body: JSON.stringify({ eventIds: ['aoa'] }) }));
+    await act(async () => { button('✓ Apply 2 sure changes').click(); }); await tick();
+    expect(host.querySelector('.gp-undo').textContent).toMatch(/Applied 2 changes from the AI/);
+    await act(async () => { button('Undo').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/runs/run1/undo', expect.objectContaining({ method: 'POST' }));
+    await act(async () => { button('✦ Ask the AI').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/ask', expect.objectContaining({ method: 'POST' }));
   } finally { act(() => root.unmount()); global.fetch = prev; }
 });

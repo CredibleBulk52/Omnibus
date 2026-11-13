@@ -22,6 +22,11 @@ const TASKS = Object.freeze([
   { id: 'annual_validator', tier: 'quick', fallback: [HAIKU, LUNA], label: 'Annual Validator', where: 'Decides which annual volumes belong to a series when annuals are linked.' },
   { id: 'annual_match', tier: 'quick', fallback: [HAIKU, LUNA], label: 'Annual Match Picker', where: 'Chooses the Comic Vine issue for an annual file the matching rules could not place (metadata checks).' },
   { id: 'topshelf_categories', tier: 'quick', fallback: [HAIKU, LUNA], label: 'Top Shelf – Category Check', where: 'Checks Top Shelf runs on the web for adapted to screen, award winning and critically acclaimed; you review the changes before they apply.', needs: ['web_search'], gemini: true },
+  // Shelf Sorter (2026-11-13, shelfSorter.js): checks the Specials shelves the grouping rules built
+  // (event homes and which series belong on each shelf). It is sent one line per series, not
+  // every issue, so cost stays low; what matters is comic knowledge, so Sonnet first. No tools or
+  // web search, so Gemini can run it too.
+  { id: 'shelf_sorter', tier: 'quick', fallback: [SONNET, SOL, 'gemini:gemini-3.8-flash'], label: 'Shelf Sorter', where: 'Checks the Specials shelves (Library › Specials shelves): whether each event\'s home is right and which series belong on its shelf. Confident answers can be applied on their own; each run can be undone.', gemini: true },
   { id: 'event_notes', tier: 'quick', fallback: [HAIKU, LUNA], label: 'Event Tier Notes', where: 'Writes the reader-facing tier notes for event issues (Write tier notes with AI) from the generator\'s tier reasons, the issues\' solicits and saved synopses; no web search.' },
   { id: 'quick_answer', tier: 'quick', fallback: [LUNA, HAIKU], label: 'Quick Answers', where: 'Comic Book Guy\'s first stop for every question: answers it, points to a saved reading order, or passes it on (new reading orders, deep answers and recaps).', needs: ['tools'] },
   { id: 'topshelf', tier: 'generation', fallback: [OPUS, SOL], label: 'Top Shelf – Run Generator', where: 'Generates Top Shelf runs (uses web search).', needs: ['web_search'] },
@@ -115,13 +120,14 @@ function migrationRows(getSetting) {
 // settings are removed. Returns { rows: [[key, value]], remove: [keys] }.
 const RETIRE_MARKER = 'ai_tiers_retired_2026_10';
 const OLD_OWN_DEFAULT = new Set(['web_lookup', 'recap_web', 'recap_reader']);   // tasks that had their own defaults before
+const AFTER_RETIREMENT = new Set(['shelf_sorter']);   // tasks added later never followed a top-level model
 function retireTierRows(getSetting, opts = {}) {
   const v = key => { const x = getSetting(key); return typeof x === 'string' ? x.trim() : ''; };
   if (v(RETIRE_MARKER)) return { rows: [], remove: [] };
   const routing = createModelRouting(getSetting, opts);
   const rows = [];
   for (const t of TASKS) {
-    if (v(taskKey(t.id)) || OLD_OWN_DEFAULT.has(t.id)) continue;
+    if (v(taskKey(t.id)) || OLD_OWN_DEFAULT.has(t.id) || AFTER_RETIREMENT.has(t.id)) continue;
     const old = v(TIERS[t.tier].key) || TIERS[t.tier].fallback, now = routing.modelFor(t.id);
     if (old !== now) rows.push([taskKey(t.id), old]);
   }

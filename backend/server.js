@@ -1460,7 +1460,8 @@ const ai = require('./ai/aiClient').createAiClient({ axios, getAnthropicKey, get
 const AI_ROUTES = ['/api/assistant/chat', '/api/events/generate', '/api/events/guide-page/test', '/api/events/:id/reannotate',
   '/api/events/notes/refresh-all', '/api/canon/generate', '/api/editor/runs/categories/check', '/api/admin/genres/retag',
   '/api/series/:id/enrich', '/api/series/:id/create-json', '/api/monitor/mass-json', '/api/monitor/series/:id/create-series-json',
-  '/api/monitor/series/:id/discover-annuals', '/api/monitor/series/:id/link-annual', '/api/monitor/series-json-refresh/run', '/api/admin/recaps'];
+  '/api/monitor/series/:id/discover-annuals', '/api/monitor/series/:id/link-annual', '/api/monitor/series-json-refresh/run', '/api/admin/recaps',
+  '/api/grouping/ai/ask'];
 app.use(AI_ROUTES, (req, res, next) => (req.method === 'POST' ? aiInfo.track(req, res, next) : next()));
 // Express step that makes the rest of a request one AI run (Usage & results, System log).
 const aiRunStep = labelOf => (req, res, next) => {
@@ -17298,7 +17299,31 @@ async function requestRowFor(src, owner, issue) {
 const problemReports = require('./problemReports')({ app, db, requireAuth, requireAdmin, logger });
 // ─── Series grouping routes (2026-11-13) ──────────────────────────
 const groupingRoute = fn => (req, res) => { try { res.json(fn(req) ?? { ok: true }); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
-app.get('/api/grouping', requireAdmin, groupingRoute(() => seriesGrouping.summary()));
+// Shelf Sorter (shelfSorter.js, 2026-11-13): the AI's review of the shelves. Its answers are added
+// to each event (`ai`); its changes go through seriesGrouping like the admin's.
+const shelfSorter = require('./shelfSorter').createShelfSorter({ db, grouping: seriesGrouping, ai, getSetting,
+  setSetting: (k, v) => db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v),
+  modelFor: id => aiRouting.modelFor(id), logger, setJobOutcome: setAiJobOutcome, modelName: m => { try { return modelCatalog.displayName(m) || m; } catch { return m; } } });
+app.get('/api/grouping', requireAdmin, groupingRoute(() => {
+  const s = seriesGrouping.summary();
+  const ready = shelfSorter.annotate(s);
+  s.ai = { ...shelfSorter.status(), ready };
+  return s;
+}));
+app.get('/api/grouping/ai', requireAdmin, groupingRoute(() => shelfSorter.status()));
+// Ask runs in the background (about a minute for every event); the panel polls GET /api/grouping/ai.
+app.post('/api/grouping/ai/ask', requireAdmin, groupingRoute(req => {
+  shelfSorter.ask({ force: !!req.body?.force, eventIds: Array.isArray(req.body?.eventIds) ? req.body.eventIds.map(String) : null })
+    .catch(e => logger.warn('shelf-sorter', 'Ask failed', e.message));
+  return shelfSorter.status();
+}));
+app.post('/api/grouping/ai/stop', requireAdmin, groupingRoute(() => shelfSorter.stop()));
+app.post('/api/grouping/ai/apply', requireAdmin, groupingRoute(req => {
+  const ids = Array.isArray(req.body?.eventIds) ? req.body.eventIds.map(String) : null;
+  return shelfSorter.apply(ids ? { eventIds: ids, sureOnly: false, mode: 'row' } : {});
+}));
+app.post('/api/grouping/ai/runs/:id/undo', requireAdmin, groupingRoute(req => shelfSorter.undo(req.params.id)));
+app.post('/api/grouping/ai/auto', requireAdmin, groupingRoute(req => shelfSorter.setAuto(!!req.body?.on)));
 app.post('/api/grouping/run', requireAdmin, groupingRoute(() => seriesGrouping.run('manual')));
 app.post('/api/grouping/events/confirm-all', requireAdmin, groupingRoute(() => seriesGrouping.confirmAll()));
 // Undo (2026-11-13): put back the event states an action returned as `previous`.
@@ -17316,7 +17341,11 @@ app.post('/api/series/:id/shelf', requireAdmin, groupingRoute(req => { seriesGro
 app.delete('/api/series/:id/shelf/:homeId', requireAdmin, groupingRoute(req => { const source = seriesGrouping.unlink(req.params.id, req.params.homeId); return { ok: !!source, source: source || null }; }));
 app.post('/api/series/:id/keep-visible', requireAdmin, groupingRoute(req => { seriesGrouping.keepVisible(req.params.id, !!req.body?.on); }));
 setTimeout(() => { try { seriesGrouping.run('startup'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } }, 60000);
-cron.schedule('17 * * * *', () => { try { seriesGrouping.run('hourly'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } });
+cron.schedule('17 * * * *', () => {
+  try { seriesGrouping.run('hourly'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); }
+  // With "Apply sure ones automatically" on: ask about new or changed events, apply sure answers.
+  shelfSorter.auto().catch(e => logger.warn('shelf-sorter', 'Automatic run failed', e.message));
+});
 
 const libraryHealth = require('./libraryHealth')({ app, db, requireAdmin, logger,
   seriesLinkMismatches: () => seriesLinkCheck.count(),

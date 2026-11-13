@@ -156,7 +156,7 @@ export default function AiModelsSettings({ compact = false, children }) {
                   placeholder={p.keySet ? `${p.label.split(' ')[0]} key saved — type a new ${p.label.split(' ')[0]} key to change it` : KEY_HINT[p.id]}
                   value={draft.keys[p.id] ?? ''} onChange={e => change({ keys: { ...draft.keys, [p.id]: e.target.value } })} />
                 {p.fromEnv && <p className="form-hint">Using the key from the server environment until one is saved here.</p>}
-                {p.id === 'gemini' && <p className="form-hint">Gemini is used only for web lookups with Google Search: used by default for Web Search and Recap – Page Reader once its key is saved, and can be chosen for Recap – Summary Writer and Top Shelf – Category Check. Its prices double on January 1, 2027. Searches are free up to 5,000 a month; turn on billing so Google does not use your content.</p>}
+                {p.id === 'gemini' && <p className="form-hint">Gemini is used only for web lookups with Google Search: used by default for Web Search and Recap – Page Reader once its key is saved, and can be chosen for Recap – Summary Writer, Top Shelf – Category Check and Shelf Sorter. Its prices double on January 1, 2027. Searches are free up to 5,000 a month; turn on billing so Google does not use your content.</p>}
                 {p.id === 'openai' && <p className="form-hint">OpenAI models can run every task, including web search (Timeline) and Comic Book Guy's library tools. Compare them with Claude in Usage &amp; results below.</p>}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>

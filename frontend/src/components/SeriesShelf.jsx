@@ -123,7 +123,10 @@ export function PutOnShelfDialog({ seriesId, seriesName, onClose, onDone }) {
 // checked come first; "Looks right" locks the home, "Change home" picks another. Each row says in
 // one line why the rules chose its home and links to the event's reading order. Every action
 // can be undone for a few seconds; series taken off a shelf wait on the Removed tab.
+// Shelf Sorter (backend/shelfSorter.js): "✦ Ask the AI" saves its view of each event, shown on the
+// row in one line; "Apply n sure changes" applies the confident ones (Undo, and later from ⋯).
 const STRIP = 14;
+const CONF_LABEL = { sure: 'sure', likely: 'likely', unsure: 'unsure' };
 const UNDO_MS = 10000;
 const enc = encodeURIComponent;
 export function SeriesGroupingPanel() {
@@ -142,6 +145,8 @@ export function SeriesGroupingPanel() {
     fetch('/api/grouping/removed').then(r => r.ok ? r.json() : { items: [] }).then(d => setRemoved(d.items || [])).catch(() => {}),
   ]).then(() => setError('')).catch(e => setError(e.message)), []);
   useEffect(() => { load(); }, [load]);
+  const asking = !!data?.ai?.running;
+  useEffect(() => { if (!asking) return undefined; const t = setInterval(load, 3000); return () => clearInterval(t); }, [asking, load]);
   useEffect(() => { if (!undo) return undefined; const t = setTimeout(() => setUndo(null), UNDO_MS); return () => clearTimeout(t); }, [undo]);
   // act(key, fn, undoOf): run fn; undoOf(result) → { text, run } offers Undo.
   const act = async (key, fn, undoOf) => {
@@ -154,7 +159,10 @@ export function SeriesGroupingPanel() {
   const runUndo = () => { const u = undo; setUndo(null); if (u) act('undo', u.run); };
   if (!data) return <p className="a-muted">{error || 'Loading…'}</p>;
   const rule = data.counts?.rule || { links: 0, hidden: 0 }, manual = data.counts?.manual || { links: 0 };
-  const toCheck = data.events.filter(e => !e.confirmed && (e.home || e.members.length));
+  // To check: events the AI disagrees with come first.
+  const aiDiffers = e => !!e.ai && !e.ai.stale && ((e.ai.home.verdict === 'change' && e.ai.home.open) || e.ai.home.verdict === 'none');
+  const toCheck = data.events.filter(e => !e.confirmed && (e.home || e.members.length)).sort((a, b) => aiDiffers(b) - aiDiffers(a));
+  const aiInfo = data.ai || {};
   const withShelf = data.events.filter(e => e.members.length);
   const list = view === 'check' ? toCheck : view === 'shelves' ? withShelf : view === 'all' ? data.events : [];
   const restoreEvent = (e, previous) => () => call('POST', `/api/grouping/events/${enc(e.id)}`, { restore: previous });
@@ -163,7 +171,7 @@ export function SeriesGroupingPanel() {
   const takeOff = (e, m) => act(m.id, () => call('DELETE', `/api/series/${enc(m.id)}/shelf/${enc(e.home)}`), r => ({
     text: `Took ${m.name} off ${e.homeName}'s shelf.`,
     run: () => r?.source === 'manual' ? call('POST', `/api/series/${enc(m.id)}/shelf`, { homeId: e.home })
-      : call('POST', '/api/grouping/restore', { items: [{ seriesId: m.id, homeId: e.home }] }),
+      : call('POST', '/api/grouping/restore', { items: [{ seriesId: m.id, homeId: e.home, eventId: e.id }] }),
   }));
   const emptyShelf = e => act(e.id, () => call('POST', `/api/grouping/events/${enc(e.id)}/empty`), r => ({
     text: `Took ${r?.removed?.length || 0} series off ${e.homeName}'s shelf.`,
@@ -173,9 +181,16 @@ export function SeriesGroupingPanel() {
     text: `Approved ${r?.confirmed || 0} event homes.`,
     run: () => call('POST', '/api/grouping/events/restore', { states: r?.previous || [] }),
   }));
+  const askAi = force => act('ai', () => call('POST', '/api/grouping/ai/ask', force ? { force: true } : {}));
+  const undoAiRun = id => () => call('POST', `/api/grouping/ai/runs/${enc(id)}/undo`);
+  const applyAi = () => act('ai', () => call('POST', '/api/grouping/ai/apply'), r => r?.applied
+    ? { text: `Applied ${r.applied} change${r.applied === 1 ? '' : 's'} from the AI.`, run: undoAiRun(r.runId) } : { text: 'Nothing new to apply.', run: null });
+  const useAdvice = e => act(e.id, () => call('POST', '/api/grouping/ai/apply', { eventIds: [e.id] }), r => r?.applied
+    ? { text: `Used the AI's advice for ${e.name}.`, run: undoAiRun(r.runId) } : null);
+  const closeMenu = ev => { const d = ev.currentTarget.closest('details'); if (d) d.open = false; };
   const restoreOne = x => act(`r:${x.seriesId}`, () => call('POST', '/api/grouping/restore', { items: [{ seriesId: x.seriesId, homeId: x.homeId }] }), () => ({
     text: `Put ${x.name} back on ${x.homeName}'s shelf.`,
-    run: () => call('DELETE', `/api/series/${enc(x.seriesId)}/shelf/${enc(x.homeId)}`),
+    run: () => call('DELETE', `/api/series/${enc(x.seriesId)}/shelf/${enc(x.shelfHomeId || x.homeId)}`),
   }));
   return (
     <div className="gp">
@@ -183,6 +198,31 @@ export function SeriesGroupingPanel() {
         <span><b>{(rule.links + (manual.links || 0)).toLocaleString()}</b> series on shelves <span className="gp-muted">· {rule.hidden} out of the browser{manual.links ? ` · ${manual.links} by hand` : ''}</span></span>
         <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => act('run', () => call('POST', '/api/grouping/run'))}
           title="The rules follow your Timeline reading orders; they also run after scans, new series.json files and every hour">{busy === 'run' ? 'Running…' : '↻ Run the rules'}</button>
+      </div>
+      <div className="gp-ai">
+        {asking
+          ? <><span className="gp-ai-progress"><span style={{ width: `${Math.round(100 * aiInfo.running.done / Math.max(1, aiInfo.running.total))}%` }} /></span>
+              <span>✦ Asking the AI… {aiInfo.running.done} of {aiInfo.running.total} events</span>
+              <button type="button" className="gp-link" onClick={() => act('ai', () => call('POST', '/api/grouping/ai/stop'))}>Stop</button></>
+          : <><button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => askAi(false)}
+              title="The AI checks each event's home and shelf against its reading order. It only answers; nothing changes until you apply.">✦ Ask the AI</button>
+              {aiInfo.ready > 0 && <button className="adm-btn" disabled={!!busy} onClick={applyAi} title="Applies the answers the AI is sure of. Undo is offered afterwards.">✓ Apply {aiInfo.ready} sure change{aiInfo.ready === 1 ? '' : 's'}</button>}
+              <span className="gp-muted gp-ai-line" title={aiInfo.lastAsk?.error || ''}>
+                {aiInfo.lastAsk?.error && !aiInfo.lastAsk.asked ? `Last try failed: ${aiInfo.lastAsk.error}` : aiInfo.asked ? `Asked about ${aiInfo.asked} events` : 'Not asked yet'}
+                {aiInfo.model ? ` · ${aiInfo.model}` : ''}{aiInfo.auto ? ' · applies sure answers on its own' : ''}
+              </span></>}
+        <details className="gp-menu gp-ai-menu">
+          <summary aria-label="AI options">⋯</summary>
+          <div className="gp-menu-items">
+            <label className="gp-menu-check" title="Each hour the AI checks new or changed events and applies the answers it is sure of. Each run can be undone.">
+              <input type="checkbox" checked={!!aiInfo.auto} disabled={!!busy} onChange={ev => act('ai', () => call('POST', '/api/grouping/ai/auto', { on: ev.target.checked }))} /> Apply sure answers on its own
+            </label>
+            {aiInfo.lastApplied && <button type="button" disabled={!!busy} onClick={ev => { closeMenu(ev); act('ai', undoAiRun(aiInfo.lastApplied.id), () => ({ text: 'Undid the AI\'s last changes.', run: null })); }}>
+              Undo the AI's last changes ({aiInfo.lastApplied.applied})</button>}
+            <button type="button" disabled={!!busy || asking} onClick={ev => { closeMenu(ev); askAi(true); }} title="Asks about every event again, also the ones that have not changed">Ask again about every event</button>
+            <button type="button" onClick={ev => { closeMenu(ev); navigate('/settings?tab=ai'); }}>Choose the AI model…</button>
+          </div>
+        </details>
       </div>
       <div className="gp-tabs" role="tablist">
         {[['check', 'To check', toCheck.length], ['shelves', 'Events with a shelf', withShelf.length], ['all', 'All events', data.events.length], ['removed', 'Removed', removed.length]].map(([k, label, n]) => (
@@ -211,7 +251,7 @@ export function SeriesGroupingPanel() {
               </div>
               <div className="gp-body">
                 <div className="gp-title">
-                  <span className="gp-event">{e.name}{e.year ? ` · ${e.year}` : ''}{e.initiative ? <em> · initiative</em> : null}{e.confirmed ? <em> · ✓ approved</em> : null}</span>
+                  <span className="gp-event">{e.name}{e.year ? ` · ${e.year}` : ''}{e.initiative ? <em> · initiative</em> : null}{e.confirmed ? <em> · ✓ {e.source === 'ai' ? 'approved by the AI' : 'approved'}</em> : null}</span>
                   <b>{e.homeName || (e.initiative ? 'Series stay in the browser' : 'No home series')}</b>
                   {e.home && !e.chosen && e.how === 'essential' && <small className="gp-guess" title="No series has the event's name; this one has the most main-story issues in its reading order">guessed</small>}
                 </div>
@@ -219,14 +259,19 @@ export function SeriesGroupingPanel() {
                   <span>{e.why}</span>
                   <button type="button" className="gp-link" onClick={() => navigate(`/events/${enc(e.id)}`)}>Reading order ›</button>
                 </div>
+                {e.ai && <AiLine e={e} busy={!!busy} onUse={() => useAdvice(e)} />}
                 {e.suggest && <div className="gp-suggest">The rules now suggest <b>{e.suggest.name}</b>
                   <button type="button" className="gp-link" disabled={!!busy} onClick={() => setEvent(e, { homeSeriesId: e.suggest.id }, `${e.name}'s home is now ${e.suggest.name}.`)}>Use it</button></div>}
                 <div className="gp-strip">
-                  {shown.map(m => (
-                    <span key={m.id} className={`gp-cover${m.hidden ? '' : ' gp-visible'}`} title={`${m.name} · ${ROLE_LABEL[m.role] || m.role}${m.hidden ? '' : ' · also in the browser'}`}>
+                  {shown.map(m => {
+                    const adv = e.ai && !e.ai.stale ? e.ai.members.find(x => x.seriesId === m.id) : null;
+                    return (
+                    <span key={m.id} className={`gp-cover${m.hidden ? '' : ' gp-visible'}${adv ? ` gp-ai-${adv.action === 'remove' ? 'remove' : 'keep'}` : ''}`}
+                      title={`${m.name} · ${ROLE_LABEL[m.role] || m.role}${m.hidden ? '' : ' · also in the browser'}${adv ? `\nAI (${adv.confidence}): ${adv.action === 'remove' ? 'take it off' : 'keep it visible'}. ${adv.why}` : ''}`}>
                       <img src={`/api/series/${enc(m.id)}/thumbnail`} alt={m.name} loading="lazy" onError={ev => { ev.target.style.visibility = 'hidden'; }} />
                       <button type="button" className="gp-x" aria-label={`Take ${m.name} off this shelf`} disabled={!!busy} onClick={() => takeOff(e, m)}>✕</button>
-                    </span>))}
+                    </span>);
+                  })}
                   {e.members.length > STRIP && <button type="button" className="gp-more" onClick={() => setOpen(o => ({ ...o, [e.id]: !o[e.id] }))}>{open[e.id] ? 'less' : `+${e.members.length - STRIP}`}</button>}
                   {!e.members.length && <span className="gp-muted gp-empty">Nothing on its shelf</span>}
                 </div>
@@ -250,8 +295,8 @@ export function SeriesGroupingPanel() {
           );
         })}
       </div>
-      {view !== 'removed' && <p className="gp-legend"><span className="gp-dot" /> also in the browser (lead-in, aftermath, main story or landmark) · hover a cover for its name · ✕ takes it off</p>}
-      {undo && <div className="gp-undo" role="status"><span>{undo.text}</span><button type="button" className="gp-link" disabled={!!busy} onClick={runUndo}>Undo</button>
+      {view !== 'removed' && <p className="gp-legend"><span className="gp-dot" /> also in the browser (lead-in, aftermath, main story or landmark) · hover a cover for its name · ✕ takes it off{data.ai?.asked ? ' · red ring: the AI would take it off · blue: keep it visible' : ''}</p>}
+      {undo && <div className="gp-undo" role="status"><span>{undo.text}</span>{undo.run && <button type="button" className="gp-link" disabled={!!busy} onClick={runUndo}>Undo</button>}
         <button type="button" className="gp-undo-x" aria-label="Dismiss" onClick={() => setUndo(null)}>✕</button></div>}
       {picking && <SeriesPickerDialog title={`Home for ${picking.name}`} onClose={() => setPicking(null)}
         intro={<>Its minis and one-shots go on this series' Specials tab.
@@ -316,10 +361,47 @@ export function SeriesGroupingPanel() {
         .gp-undo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .gp-undo .gp-link { font-size: 0.88rem; font-weight: 700; }
         .gp-undo-x { background: none; border: 0; color: var(--text-muted); cursor: pointer; }
+        .gp-ai { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; font-size: 0.85rem; }
+        .gp-ai-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 200px; }
+        .gp-ai-progress { width: 120px; height: 6px; border-radius: 3px; background: var(--border-subtle); overflow: hidden; }
+        .gp-ai-progress span { display: block; height: 100%; background: var(--td-yellow, var(--color-primary)); transition: width .4s; }
+        .gp-ai-menu { margin-left: auto; }
+        .gp-menu-check { display: flex; gap: 8px; align-items: center; padding: 7px 10px; font-size: 0.85rem; cursor: pointer; }
+        .gp-airow { display: flex; gap: 8px; align-items: baseline; min-width: 0; font-size: 0.8rem; }
+        .gp-airow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .gp-airow .gp-star { color: var(--td-yellow, var(--color-primary)); }
+        .gp-airow.gp-ai-differs > span { color: var(--text-primary); }
+        .gp-conf { font-size: 0.7rem; padding: 0 6px; border-radius: 999px; border: 1px solid var(--border-subtle); color: var(--text-muted); white-space: nowrap; }
+        .gp-conf-sure { border-color: var(--td-yellow, var(--color-primary)); color: var(--td-yellow, var(--color-primary)); }
+        .gp-ai-remove { outline: 2px solid var(--td-red, #e55); outline-offset: -2px; }
+        .gp-ai-keep { outline: 2px solid #5aa9e6; outline-offset: -2px; }
         .gp-legend { font-size: 0.78rem; color: var(--text-muted); margin-top: 12px; }
         .gp-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--td-yellow, var(--color-primary)); margin-right: 4px; }
         @media (max-width: 640px) { .gp-row { grid-template-columns: 56px 1fr; } .gp-home { width: 56px; } .gp-actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; } }
       `}</style>
+    </div>
+  );
+}
+
+// One line under an event: what the Shelf Sorter thinks. Detail on hover.
+function AiLine({ e, busy, onUse }) {
+  const a = e.ai, h = a.home;
+  const changes = a.stale ? [] : a.members;       // the advice that would still change something
+  const homeOpen = !a.stale && h.open && h.verdict === 'change';
+  const text = h.verdict === 'change' && h.seriesId === e.home ? <>AI agrees</>
+    : h.verdict === 'change' ? (homeOpen ? <>AI suggests <b>{h.name}</b></> : <>AI suggested {h.name}</>)
+    : h.verdict === 'none' ? <>AI: no series in your library should hold this shelf</>
+    : <>AI agrees</>;
+  const rm = changes.filter(m => m.action === 'remove').length, kv = changes.length - rm;
+  const more = [rm && `take off ${rm}`, kv && `keep ${kv} visible`].filter(Boolean).join(', ');
+  const detail = [h.why, ...a.members.map(m => `${m.name}: ${m.action === 'remove' ? 'take off' : 'keep visible'} (${m.confidence}) ${m.why}`),
+    a.stale ? 'Asked before this event or its shelf changed.' : '', a.undone ? 'Its changes here were undone, so they are only advice now.' : '', a.model ? `Model: ${a.model}` : ''].filter(Boolean).join('\n');
+  const differs = homeOpen || h.verdict === 'none';
+  return (
+    <div className={`gp-airow${differs ? ' gp-ai-differs' : ''}`} title={detail}>
+      <span><span className="gp-star">✦</span> {text}{more ? ` · ${more}` : ''}{a.stale ? ' · out of date' : ''}</span>
+      <small className={`gp-conf gp-conf-${h.confidence}`}>{CONF_LABEL[h.confidence] || h.confidence}</small>
+      {homeOpen || changes.length ? <button type="button" className="gp-link" disabled={busy} onClick={onUse}>Use the AI's advice</button> : null}
     </div>
   );
 }
