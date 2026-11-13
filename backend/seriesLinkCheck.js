@@ -174,7 +174,7 @@ function createSeriesLinkCheck({ db, volumeOfIssue, logger, now = Date.now, paus
       let groups = [];
       try { groups = JSON.parse(r.groups || '[]'); } catch {}
       return { seriesId: r.series_id, folder: r.path ? r.path.split(/[\\/]/).pop() : r.folder_name, path: r.path,
-        current: { comicid: r.comicid, name: m.name || null, year: m.year || null, totalIssues: m.total_issues ?? null },
+        current: { comicid: r.comicid, name: m.name || null, year: m.year || null, totalIssues: m.total_issues ?? null, image: m.comic_image || null },
         proposed: { volumeId: r.volume_id, name: r.volume_name }, groups, checkedAt: r.checked_at };
     }).filter(Boolean);
   }

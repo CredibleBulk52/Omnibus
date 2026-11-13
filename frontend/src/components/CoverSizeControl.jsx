@@ -41,3 +41,12 @@ export default function CoverSizeControl() {
     </div>
   </details>;
 }
+
+// The three size buttons on their own, for a toolbar's "⋯" menu (2026-11-13).
+export function CoverSizeChoices({ onPicked }) {
+  const { size, setSize } = useCoverSize();
+  return <div className="cover-size-choices" role="group" aria-label="Cover size">
+    {Object.keys(COVER_WIDTHS).map((value, i) => <button key={value} type="button" aria-pressed={size === value} onClick={() => { setSize(value); onPicked?.(); }}>
+      <span className="cover-size-icon" aria-hidden="true" style={{ width: 10 + i * 4, height: 15 + i * 6 }} />{value[0].toUpperCase() + value.slice(1)}</button>)}
+  </div>;
+}

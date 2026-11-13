@@ -117,6 +117,8 @@ export default function ShelfView({
   compactControls = false,
   title,
   extraControls,
+  viewSwitch = null,   // segmented view choice in the toolbar (series browser)
+  moreMenu = null,     // "⋯" menu items; the cover size moves into it
   headerStats,
   pageStatsKey,
   pageStatsLibraryId,
@@ -330,7 +332,7 @@ export default function ShelfView({
         </PageHeader>
       )}
 
-      <SeriesControls compact={compactControls} viewKey={viewKey}
+      <SeriesControls compact={compactControls} viewKey={viewKey} viewSwitch={viewSwitch} moreMenu={moreMenu}
         resultCount={sorted.length} selectionControls={<div className="csb-selection-controls">              {selectable && selected.length > 0 && (
                 <>
                   <span style={{ fontSize:'0.82rem', color:'var(--color-accent)', fontFamily:'Boogaloo,cursive' }}>

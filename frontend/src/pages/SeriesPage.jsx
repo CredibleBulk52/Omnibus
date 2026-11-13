@@ -96,6 +96,16 @@ function SeriesLibraryPage({ maintenance }) {
     return characterFiltered.filter(s => !s.group?.hidden);
   }, [characterFiltered, groupView, search]);
   const currentSeries = activeTab === 'all' ? groupFiltered : noMetaSeries;
+  // The view switch sits in the toolbar beside the count (2026-11-13).
+  const views = [['main', 'Series', null, 'Your series, without the tie-ins kept on a home series\' Specials tab'],
+    ['grouped', 'Shelved', groupCounts.grouped, 'Series shown on another series\' Specials tab'],
+    ...(isAdmin() ? [['homeless', 'No shelf', groupCounts.homeless, 'One-shots not on any Specials shelf yet']] : [])];
+  const viewSwitch = activeTab === 'all' && (groupCounts.grouped > 0 || (isAdmin() && groupCounts.homeless > 0)) && !search.trim()
+    ? <div className="csb-view-switch" role="radiogroup" aria-label="Which series to show">
+        {views.map(([k, label, n, tip]) => <button key={k} type="button" role="radio" aria-checked={groupView === k} title={tip}
+          onClick={() => { setGroupView(k); setPage(0); }}>{label}{n != null && <b>{n.toLocaleString()}</b>}</button>)}
+      </div>
+    : null;
   const currentLoading = activeTab === 'all' ? loading : noMetaLoading;
   const appSettings = useAppSettings();
   const canDownload = isAdmin() || appSettings.download_manager_admin_only !== 'true';
@@ -126,25 +136,6 @@ function SeriesLibraryPage({ maintenance }) {
         </div>
       )}
 
-        {activeTab === 'all' && (groupCounts.grouped > 0 || (isAdmin() && groupCounts.homeless > 0)) && (
-          <div className="series-group-row" role="group" aria-label="Which series to show">
-            {[['main', 'Series', null, `Grouped tie-ins are on their home's Specials tab (${groupCounts.hidden} kept out of this list)`],
-              ['grouped', 'On a Specials shelf', groupCounts.grouped, 'Series shown on another series\' Specials tab'],
-              ...(isAdmin() ? [['homeless', 'One-shots with no shelf', groupCounts.homeless, 'One-shots not on any Specials shelf yet: open one and use Manage › Put on a Specials shelf']] : [])]
-              .map(([k, label, n, tip]) => (
-                <button key={k} type="button" className={`series-group-chip${groupView === k ? ' on' : ''}`} title={tip}
-                  onClick={() => { setGroupView(k); setPage(0); }}>{label}{n != null ? <b>{n}</b> : null}</button>))}
-            {search.trim() && <small>Searching shows every series.</small>}
-            <style>{`
-              .series-group-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 24px 0; }
-              .series-group-row small { color: var(--text-muted); }
-              .series-group-chip { display: inline-flex; gap: 6px; align-items: center; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border-subtle);
-                background: transparent; color: var(--text-muted); font: inherit; font-size: 0.8rem; cursor: pointer; }
-              .series-group-chip b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
-              .series-group-chip.on { border-color: var(--td-yellow, var(--color-primary)); color: var(--text-primary); }
-            `}</style>
-          </div>
-        )}
         <ShelfView
           seriesMenu={SERIES_MENU}
           compactControls={activeTab === 'all'}
@@ -164,15 +155,19 @@ function SeriesLibraryPage({ maintenance }) {
           selectable={selectable}
           selected={selected}
           onSelectionChange={setSelected}
+          viewSwitch={viewSwitch}
+          moreMenu={<>
+            {!selectable && <button type="button" onClick={() => { setSelectable(true); setSelected([]); }}>☐ Select series</button>}
+            {canDownload
+              ? <button type="button" onClick={() => navigate(`/downloads${search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''}`)}>+ Add a series</button>
+              : <button type="button" onClick={() => setAsking(true)}>✉ Request a series</button>}
+          </>}
           extraControls={<>
             {activeTab === 'no-metadata' && isAdmin() && <CreateFromFiles libraryId={activeLibrary?.id || null}
               onFinished={() => { setNoMetaLoaded(false); setNoMetaSeries([]); fetch('/api/series/no-metadata' + (activeLibrary ? `?libraryId=${activeLibrary.id}` : ''))
                 .then(r => r.json()).then(d => { setNoMetaSeries(d.content || []); setNoMetaLoaded(true); }).catch(() => {}); }} />}
-            <SeriesSelectControls selectable={selectable} setSelectable={setSelectable} selected={selected} setSelected={setSelected} />
-            {/* Not in the library: users who may download add it; others ask the admin (2026-10-28). */}
-            {canDownload
-              ? <button type="button" className="btn btn-ghost" onClick={() => navigate(`/downloads${search.trim() ? `?search=${encodeURIComponent(search.trim())}` : ''}`)}>+ Add a series</button>
-              : <button type="button" className="btn btn-ghost" onClick={() => setAsking(true)}>✉ Request a series</button>}
+            {/* Select lives in the ⋯ menu; while selecting, its actions and Cancel show here. */}
+            {selectable && <SeriesSelectControls selectable={selectable} setSelectable={setSelectable} selected={selected} setSelected={setSelected} />}
           </>}
         />
     </div>

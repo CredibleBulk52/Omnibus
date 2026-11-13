@@ -118,86 +118,113 @@ export function PutOnShelfDialog({ seriesId, seriesName, onClose, onDone }) {
     onPick={async s => { await call('POST', `/api/series/${encodeURIComponent(seriesId)}/shelf`, { homeId: s.id }); invalidate(null); onDone?.(); }} />;
 }
 
-// Library page: the grouping rules' results, the event homes to confirm, and recent shelving.
+// Library page › Specials shelves (2026-11-13): every event as one row of covers. The home's cover
+// is large; the series on its shelf follow as small covers (✕ takes one off). Events not yet
+// checked come first; "Looks right" or "Change home" settles each.
+const STRIP = 14;
 export function SeriesGroupingPanel() {
   const { invalidate } = useSeriesCache();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
-  const [picking, setPicking] = useState(null);   // event whose home is being changed
-  const [showAll, setShowAll] = useState(false);
+  const [picking, setPicking] = useState(null);
+  const [view, setView] = useState('check');
+  const [open, setOpen] = useState({});
   const load = useCallback(() => fetch('/api/grouping').then(r => r.json()).then(d => { if (d.error) throw new Error(d.error); setData(d); setError(''); })
     .catch(e => setError(e.message)), []);
   useEffect(() => { load(); }, [load]);
-  const act = async (key, fn) => { setBusy(key); try { await fn(); invalidate(null); await load(); } catch (e) { setError(e.message); } finally { setBusy(''); } };
+  const act = async (key, fn) => { setBusy(key); setError(''); try { await fn(); invalidate(null); await load(); } catch (e) { setError(e.message); } finally { setBusy(''); } };
   if (!data) return <p className="a-muted">{error || 'Loading…'}</p>;
   const rule = data.counts?.rule || { links: 0, hidden: 0 }, manual = data.counts?.manual || { links: 0 };
-  const toConfirm = data.events.filter(e => !e.confirmed && e.home);
-  const events = showAll ? data.events : toConfirm;
-  const byHome = new Map();
-  for (const r of data.recent) { if (!byHome.has(r.home)) byHome.set(r.home, []); byHome.get(r.home).push(r); }
+  const toCheck = data.events.filter(e => !e.confirmed && (e.home || e.members.length));
+  const withShelf = data.events.filter(e => e.members.length);
+  const list = view === 'check' ? toCheck : view === 'shelves' ? withShelf : data.events;
+  const setEvent = (e, body) => act(e.id, () => call('POST', `/api/grouping/events/${encodeURIComponent(e.id)}`, body));
   return (
-    <div className="grouping-panel">
-      <p className="grouping-lead">
-        <b>{rule.links}</b> series are on an event's Specials shelf by rule ({rule.hidden} kept out of the series browser as tie-ins){manual.links ? <>, and <b>{manual.links}</b> by hand</> : null}.
-        {' '}<span className="a-muted">Rules follow your Timeline reading orders and run after scans and every hour.</span>
-      </p>
-      <div className="grouping-bar">
-        <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => act('run', () => call('POST', '/api/grouping/run'))}>{busy === 'run' ? 'Running…' : '↻ Run the rules now'}</button>
-        {error && <span className="a-fs-13" style={{ color: 'var(--td-red, #e55)' }}>{error}</span>}
+    <div className="gp">
+      <div className="gp-head">
+        <span><b>{(rule.links + (manual.links || 0)).toLocaleString()}</b> series on shelves <span className="gp-muted">· {rule.hidden} out of the browser{manual.links ? ` · ${manual.links} by hand` : ''}</span></span>
+        <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => act('run', () => call('POST', '/api/grouping/run'))}
+          title="The rules follow your Timeline reading orders; they also run after scans, new series.json files and every hour">{busy === 'run' ? 'Running…' : '↻ Run the rules'}</button>
       </div>
-
-      <h4>Event homes {toConfirm.length ? <span className="a-muted">· {toConfirm.length} to check</span> : <span className="a-muted">· all checked</span>}</h4>
-      <p className="a-muted a-fs-13">Each event's minis and one-shots go on its home series' Specials tab. Homes were picked from the event's name or, failing that, the series with the most essential issues in its reading order. An initiative (DC Rebirth, Infinite Frontier…) has no home unless you choose one, and its series stay in the browser.</p>
-      <div className="grouping-bar">
-        {toConfirm.length > 0 && <button className="adm-btn" disabled={!!busy} onClick={() => act('all', () => call('POST', '/api/grouping/events/confirm-all'))}>✓ These homes are fine</button>}
-        <button className="adm-btn adm-btn-ghost" onClick={() => setShowAll(v => !v)}>{showAll ? 'Show only the ones to check' : `Show all ${data.events.length} events`}</button>
+      <div className="gp-tabs" role="tablist">
+        {[['check', 'To check', toCheck.length], ['shelves', 'Events with a shelf', withShelf.length], ['all', 'All events', data.events.length]].map(([k, label, n]) => (
+          <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}>{label} <b>{n}</b></button>))}
+        {view === 'check' && toCheck.length > 0 && <button className="adm-btn gp-all" disabled={!!busy} onClick={() => act('all', () => call('POST', '/api/grouping/events/confirm-all'))}>✓ All look right</button>}
       </div>
-      <div className="grouping-events">
-        {events.map(e => (
-          <div key={e.id} className="grouping-event">
-            <span className="grouping-event-name">{e.name}{e.year ? ` (${e.year})` : ''}</span>
-            <span className="grouping-event-home">→ {e.homeName || <i>no home</i>}{e.chosen ? '' : e.how === 'essential' ? ' · from its reading order' : e.how === 'name' ? ' · same name' : ''}{e.members ? ` · ${e.members} on its shelf` : ''}</span>
-            <span className="grouping-event-actions">
-              <label title="An initiative's series stay in the browser"><input type="checkbox" checked={e.initiative} disabled={!!busy}
-                onChange={ev => act(e.id, () => call('POST', `/api/grouping/events/${encodeURIComponent(e.id)}`, { initiative: ev.target.checked }))} /> Initiative</label>
-              <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => setPicking(e)}>Change…</button>
-              {!e.confirmed && e.home && <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => act(e.id, () => call('POST', `/api/grouping/events/${encodeURIComponent(e.id)}`, { confirm: true }))}>✓</button>}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <h4>Shelved in the last 7 days <span className="a-muted">· {data.recent.length}</span></h4>
-      {[...byHome].map(([home, rows]) => (
-        <details key={home} className="grouping-recent">
-          <summary>{home} <span className="a-muted">· {rows.length}</span></summary>
-          {rows.map(r => (
-            <div key={r.seriesId + r.homeId} className="grouping-recent-row">
-              <span>{r.series}</span>
-              <span className="a-muted a-fs-12">{ROLE_LABEL[r.role] || r.role}{r.hidden ? ' · out of the browser' : ''}</span>
-              <button className="adm-btn adm-btn-ghost" disabled={!!busy} title="Take it off this shelf; the rules won't put it back"
-                onClick={() => act(r.seriesId, () => call('DELETE', `/api/series/${encodeURIComponent(r.seriesId)}/shelf/${encodeURIComponent(r.homeId)}`))}>Undo</button>
+      {error && <p className="gp-error">{error}</p>}
+      {view === 'check' && !toCheck.length && <p className="gp-muted">Every event's home has been checked.</p>}
+      <div className="gp-rows">
+        {list.map(e => {
+          const shown = open[e.id] ? e.members : e.members.slice(0, STRIP);
+          return (
+            <div key={e.id} className={`gp-row${e.confirmed ? ' gp-done' : ''}`}>
+              <div className="gp-home" title={e.homeName || 'No home'}>
+                {e.home ? <img src={`/api/series/${encodeURIComponent(e.home)}/thumbnail`} alt="" loading="lazy" onError={ev => { ev.target.style.visibility = 'hidden'; }} /> : <span className="gp-nohome">No home</span>}
+              </div>
+              <div className="gp-body">
+                <div className="gp-title">
+                  <span className="gp-event">{e.name}{e.year ? ` · ${e.year}` : ''}{e.initiative ? <em> · initiative</em> : null}</span>
+                  <b>{e.homeName || (e.initiative ? 'Series stay in the browser' : 'No home series')}</b>
+                  {e.home && !e.chosen && e.how === 'essential' && <small className="gp-guess" title="No series has the event's name; this one has the most essential issues in its reading order">guessed</small>}
+                </div>
+                <div className="gp-strip">
+                  {shown.map(m => (
+                    <span key={m.id} className={`gp-cover${m.hidden ? '' : ' gp-visible'}`} title={`${m.name} · ${ROLE_LABEL[m.role] || m.role}${m.hidden ? '' : ' · also in the browser'}`}>
+                      <img src={`/api/series/${encodeURIComponent(m.id)}/thumbnail`} alt={m.name} loading="lazy" onError={ev => { ev.target.style.visibility = 'hidden'; }} />
+                      <button type="button" className="gp-x" aria-label={`Take ${m.name} off this shelf`} disabled={!!busy}
+                        onClick={() => act(m.id, () => call('DELETE', `/api/series/${encodeURIComponent(m.id)}/shelf/${encodeURIComponent(e.home)}`))}>✕</button>
+                    </span>))}
+                  {e.members.length > STRIP && <button type="button" className="gp-more" onClick={() => setOpen(o => ({ ...o, [e.id]: !o[e.id] }))}>{open[e.id] ? 'less' : `+${e.members.length - STRIP}`}</button>}
+                  {!e.members.length && <span className="gp-muted gp-empty">Nothing on its shelf</span>}
+                </div>
+              </div>
+              <div className="gp-actions">
+                {!e.confirmed && e.home && <button className="adm-btn" disabled={!!busy} onClick={() => setEvent(e, { confirm: true })}>✓ Looks right</button>}
+                <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => setPicking(e)}>Change home</button>
+                <label className="gp-switch" title="An initiative's series stay in the browser"><input type="checkbox" checked={e.initiative} disabled={!!busy} onChange={ev => setEvent(e, { initiative: ev.target.checked })} /> Initiative</label>
+              </div>
             </div>
-          ))}
-        </details>
-      ))}
+          );
+        })}
+      </div>
+      <p className="gp-legend"><span className="gp-dot" /> also in the browser (lead-in, aftermath, main story or landmark) · hover a cover for its name · ✕ takes it off</p>
       {picking && <SeriesPickerDialog title={`Home for ${picking.name}`} onClose={() => setPicking(null)}
-        intro="Its minis and one-shots will go on this series' Specials tab."
+        intro="Its minis and one-shots go on this series' Specials tab."
         onPick={async s => { await call('POST', `/api/grouping/events/${encodeURIComponent(picking.id)}`, { homeSeriesId: s.id }); invalidate(null); await load(); }} />}
       <style>{`
-        .grouping-lead { margin: 0 0 10px; line-height: 1.5; }
-        .grouping-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 12px; }
-        .grouping-panel h4 { margin: 18px 0 6px; }
-        .grouping-events { display: flex; flex-direction: column; gap: 4px; }
-        .grouping-event { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(160px, 1.4fr) auto; gap: 10px; align-items: center; padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; }
-        .grouping-event-name { font-weight: 700; overflow-wrap: anywhere; }
-        .grouping-event-home { color: var(--text-muted); font-size: 0.85rem; overflow-wrap: anywhere; }
-        .grouping-event-actions { display: flex; gap: 6px; align-items: center; font-size: 0.8rem; flex-wrap: wrap; }
-        @media (max-width: 640px) { .grouping-event { grid-template-columns: 1fr; } }
-        .grouping-recent { border: 1px solid var(--border-subtle); border-radius: 6px; padding: 6px 10px; margin-bottom: 6px; }
-        .grouping-recent summary { cursor: pointer; }
-        .grouping-recent-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 4px 0; border-top: 1px solid var(--border-subtle); }
+        .gp-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .gp-muted { color: var(--text-muted); font-size: 0.85rem; font-weight: 400; }
+        .gp-error { color: var(--td-red, #e55); }
+        .gp-tabs { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+        .gp-tabs [role=tab] { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border-subtle); background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 0.85rem; }
+        .gp-tabs [role=tab][aria-selected=true] { border-color: var(--td-yellow, var(--color-primary)); color: var(--text-primary); }
+        .gp-tabs [role=tab] b { color: var(--text-primary); margin-left: 4px; }
+        .gp-all { margin-left: auto; }
+        .gp-rows { display: flex; flex-direction: column; gap: 10px; }
+        .gp-row { display: grid; grid-template-columns: 72px 1fr auto; gap: 14px; align-items: center; padding: 10px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-card); }
+        .gp-done { opacity: 0.85; }
+        .gp-home { width: 72px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; outline: 2px solid var(--td-yellow, var(--color-primary)); background: color-mix(in srgb, var(--bg-card) 70%, black); display: flex; align-items: center; justify-content: center; }
+        .gp-home img { width: 100%; height: 100%; object-fit: cover; }
+        .gp-nohome { font-size: 0.7rem; color: var(--text-muted); text-align: center; }
+        .gp-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+        .gp-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+        .gp-event { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); width: 100%; }
+        .gp-event em { font-style: normal; color: var(--td-yellow, var(--color-primary)); }
+        .gp-guess { font-size: 0.7rem; padding: 1px 6px; border-radius: 999px; border: 1px dashed var(--text-muted); color: var(--text-muted); cursor: help; }
+        .gp-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .gp-cover { position: relative; width: 40px; aspect-ratio: 2 / 3; border-radius: 3px; overflow: hidden; background: color-mix(in srgb, var(--bg-card) 70%, black); }
+        .gp-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .gp-visible::after { content: ''; position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--td-yellow, var(--color-primary)); box-shadow: 0 0 0 1px #000; }
+        .gp-x { position: absolute; inset: 0; border: 0; background: rgba(0,0,0,0.65); color: #fff; font-size: 1rem; opacity: 0; cursor: pointer; }
+        .gp-cover:hover .gp-x, .gp-x:focus-visible { opacity: 1; }
+        .gp-more { height: 60px; padding: 0 8px; border: 1px dashed var(--border-subtle); border-radius: 3px; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 0.8rem; }
+        .gp-empty { font-size: 0.8rem; }
+        .gp-actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+        .gp-switch { font-size: 0.78rem; color: var(--text-muted); display: flex; gap: 6px; align-items: center; justify-content: center; }
+        .gp-legend { font-size: 0.78rem; color: var(--text-muted); margin-top: 12px; }
+        .gp-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--td-yellow, var(--color-primary)); margin-right: 4px; }
+        @media (max-width: 640px) { .gp-row { grid-template-columns: 56px 1fr; } .gp-home { width: 56px; } .gp-actions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; } }
       `}</style>
     </div>
   );

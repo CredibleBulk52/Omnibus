@@ -125,3 +125,94 @@
 }
 
 .series-controls .alpha-bar { scrollbar-color: color-mix(in srgb, var(--td-yellow) 30%, color-mix(in srgb, var(--om-text) 20%, var(--om-base))) var(--om-base); }
+
+/* View switch and ⋯ menu in the series toolbar (2026-11-13) */
+.csb-view-switch {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--td-yellow) 30%, color-mix(in srgb, var(--om-text) 20%, var(--om-base)));
+  border-radius: 3px;
+  overflow: hidden;
+  margin-right: 12px;
+}
+.csb-view-switch button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font: 16px "Boogaloo", sans-serif;
+  letter-spacing: 0.03em;
+  color: color-mix(in srgb, var(--td-yellow) 40%, var(--om-text));
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--td-yellow) 20%, var(--om-base));
+  cursor: pointer;
+  white-space: nowrap;
+}
+.csb-view-switch button:first-child { border-left: 0; }
+.csb-view-switch button b {
+  font: 13px/1 "Comic Neue", sans-serif;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--om-base) 80%, white);
+  color: var(--om-text);
+}
+.csb-view-switch button[aria-checked="true"] {
+  background: var(--td-yellow);
+  color: color-mix(in srgb, var(--om-base) 90%, black);
+}
+.csb-view-switch button[aria-checked="true"] b { background: color-mix(in srgb, var(--om-base) 85%, black); color: var(--td-yellow); }
+.csb-view-switch button:focus-visible { outline: 2px solid var(--om-text); outline-offset: -3px; }
+
+.csb-more { position: relative; flex-shrink: 0; margin-right: 24px; }
+.csb-more summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-height: 36px;
+  cursor: pointer;
+  font: 22px/1 sans-serif;
+  color: var(--td-yellow);
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+  border: 1px solid color-mix(in srgb, var(--td-yellow) 30%, color-mix(in srgb, var(--om-text) 20%, var(--om-base)));
+  border-radius: 3px;
+}
+.csb-more summary::-webkit-details-marker { display: none; }
+.csb-more[open] summary, .csb-more summary:hover { background: var(--td-yellow); color: color-mix(in srgb, var(--om-base) 90%, black); }
+.csb-more summary:focus-visible { outline: 2px solid var(--om-text); outline-offset: 3px; }
+.csb-more-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 240px;
+  max-width: calc(100vw - 24px);
+  z-index: 150;
+  padding: 10px;
+  border: 2px solid var(--td-yellow);
+  box-shadow: 4px 4px #000;
+  background: color-mix(in srgb, var(--om-base) 95%, white);
+}
+.csb-more-label { font: 13px "Comic Neue", sans-serif; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted, #999); margin-bottom: 6px; }
+.cover-size-choices { display: flex; gap: 6px; }
+.cover-size-choices button {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 6px; padding: 8px 3px;
+  color: var(--td-yellow); background: color-mix(in srgb, var(--om-base) 90%, white);
+  border: 1px solid color-mix(in srgb, var(--td-yellow) 25%, color-mix(in srgb, var(--om-text) 20%, var(--om-base)));
+  font: 15px "Boogaloo", cursive; cursor: pointer;
+}
+.cover-size-choices button[aria-pressed="true"] { background: var(--td-yellow); color: color-mix(in srgb, var(--om-base) 90%, black); border-color: #000; }
+.csb-more-items { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--om-base) 80%, white); }
+.csb-more-items button {
+  text-align: left; padding: 8px 10px; font: 16px "Boogaloo", sans-serif; letter-spacing: 0.03em;
+  color: var(--td-yellow); background: transparent; border: 1px solid transparent; border-radius: 3px; cursor: pointer;
+}
+.csb-more-items button:hover { border-color: var(--td-yellow); }
+@media (max-width: 599px) {
+  .csb-view-switch { order: -1; width: 100%; margin: 6px 0; }
+  .csb-view-switch button { flex: 1; justify-content: center; padding: 6px 6px; font-size: 15px; }
+  .csb-more { margin-right: 8px; }
+}

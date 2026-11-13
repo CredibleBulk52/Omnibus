@@ -53,3 +53,25 @@ test('a series names its shelf; Put on a Specials shelf searches the library and
     expect(done).toHaveBeenCalled(); expect(close).toHaveBeenCalled();
   } finally { act(() => root.unmount()); global.fetch = prev; }
 });
+
+test('the Library panel shows each event as covers: home first, then its shelf; Looks right confirms', async () => {
+  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const summary = { counts: { rule: { links: 3, hidden: 2 } }, events: [
+    { id: 'e1', name: 'Beast War', year: 2024, initiative: false, confirmed: false, how: 'essential', home: 'tbw', homeName: 'Titans: Beast World (2024)', chosen: null,
+      members: [{ id: 'g', name: 'Titans: Beast World Tour: Gotham (2023)', role: 'tie-in', hidden: true }, { id: 'w', name: 'Waller Rising (2024)', role: 'prelude', hidden: false }] },
+    { id: 'e2', name: 'Flashpoint', year: 2011, initiative: false, confirmed: true, how: 'name', home: 'fp', homeName: 'Flashpoint (2011)', chosen: null, members: [{ id: 'c', name: 'Citizen Cold', role: 'tie-in', hidden: true }] }] };
+  const prev = global.fetch; global.fetch = vi.fn(async () => ({ ok: true, json: async () => summary }));
+  const { host, root } = mount(<SeriesGroupingPanel />);
+  try {
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(host.textContent).toMatch(/3 series on shelves · 2 out of the browser/);
+    expect(host.querySelectorAll('.gp-row').length).toBe(1);   // "To check": only the unconfirmed event
+    expect(host.querySelector('.gp-row .gp-home img').getAttribute('src')).toBe('/api/series/tbw/thumbnail');
+    expect(host.querySelectorAll('.gp-row .gp-cover').length).toBe(2);
+    expect(host.querySelectorAll('.gp-row .gp-visible').length).toBe(1);
+    expect(host.textContent).toMatch(/guessed/);
+    const ok = [...host.querySelectorAll('button')].find(b => b.textContent === '✓ Looks right');
+    await act(async () => { ok.click(); await new Promise(r => setTimeout(r, 0)); });
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/events/e1', expect.objectContaining({ method: 'POST', body: JSON.stringify({ confirm: true }) }));
+  } finally { act(() => root.unmount()); global.fetch = prev; }
+});

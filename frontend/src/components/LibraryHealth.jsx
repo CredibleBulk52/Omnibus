@@ -356,37 +356,60 @@ export function SeriesLinksPanel() {
   const c = progress.counts || {};
   const looked = (c.ok || 0) + (c.mixed || 0) + (c.mismatch || 0) + (c.unknown || 0);
   return (
-    <div className="dup2 links-panel">
-      <p className="dup2-lead">
-        {items.length ? <><b>{plural(items.length, 'folder')}</b> {items.length === 1 ? 'has a series.json' : 'have a series.json'} for a different Comic Vine series than the comics in {items.length === 1 ? 'it' : 'them'}.</> : 'No wrong links found so far.'}
-        {' '}<span className="dup2-aside">Omnibus checks folders that look suspect every hour: Metron first, then Comic Vine, always leaving some Comic Vine allowance for your clicks.
-        {progress.notYetRead > 0 ? ` ${progress.notYetRead.toLocaleString()} folders not read yet.` : ''}
-        {looked ? ` ${looked} looked up so far${c.mixed ? `, ${c.mixed} holding more than one series (kept for later)` : ''}.` : ''}</span>
-      </p>
-      <div className="dup2-bar"><span /><button className="adm-btn adm-btn-ghost" onClick={runNow}>Check more now</button></div>
-      {notice && <p className="dup2-notice">{notice}</p>}
-      {items.map(it => (
-        <div key={it.seriesId} className="dup2-card">
-          <div className="dup2-head"><b>{it.folder}</b></div>
-          <div className="dup2-why">
-            series.json: <b>{it.current.name || '—'}</b>{it.current.year ? ` (${it.current.year})` : ''} · Comic Vine {it.current.comicid}{it.current.totalIssues != null ? ` · ${plural(it.current.totalIssues, 'issue')}` : ''}<br />
-            The comics: {it.groups.map((g, i) => <span key={i}>{i ? ' · ' : ''}<b>{g.name || 'untagged'}</b> ({plural(g.books, 'file')}{g.volumeId ? `, Comic Vine ${g.volumeId}` : ''})</span>)}
-          </div>
-          <div className="dup2-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-            <button className="adm-btn" disabled={!!busy || !it.proposed.volumeId} onClick={() => relink(it)}>{busy === it.seriesId ? 'Working…' : `Re-link to ${it.proposed.name || 'Comic Vine ' + it.proposed.volumeId}`}</button>
-            <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => keep(it)} title="The series.json is right; stop listing this folder">Link is right</button>
-            <button className="adm-btn adm-btn-ghost" onClick={() => navigate(`/series/${encodeURIComponent(it.seriesId)}`)}>Open series</button>
-          </div>
-        </div>
-      ))}
+    <div className="links-panel">
+      <div className="lp-head">
+        <span><b>{items.length ? plural(items.length, 'folder') + ' to check' : 'No wrong links found'}</b>
+          <span className="lp-muted" title={`Checked every hour: Metron first, then Comic Vine (keeping some for your clicks). ${looked} looked up${c.mixed ? `; ${c.mixed} hold more than one series` : ''}.`}>
+            {progress.notYetRead > 0 ? ` · ${progress.notYetRead.toLocaleString()} folders not read yet` : ' · all folders read'}</span></span>
+        <button className="adm-btn adm-btn-ghost" onClick={runNow}>Check more now</button>
+      </div>
+      {notice && <p className="lp-notice">{notice}</p>}
+      <div className="lp-cards">
+        {items.map(it => {
+          const files = it.groups[0] || {};
+          const others = it.groups.slice(1).reduce((n, g) => n + g.books, 0);
+          return (
+            <div key={it.seriesId} className="lp-card">
+              <div className="lp-folder" title={it.path}>{it.folder}</div>
+              <div className="lp-compare">
+                <figure className="lp-side lp-wrong">
+                  <div className="lp-cover">{it.current.image ? <img src={it.current.image} alt="" loading="lazy" onError={e => { e.target.style.display = 'none'; }} /> : null}<span className="lp-tag">✕ series.json</span></div>
+                  <figcaption><b>{it.current.name || '—'}</b>{it.current.year ? ` (${it.current.year})` : ''}<small>{it.current.totalIssues != null ? plural(it.current.totalIssues, 'issue') : ''}</small></figcaption>
+                </figure>
+                <div className="lp-arrow" aria-hidden="true">→</div>
+                <figure className="lp-side lp-right">
+                  <div className="lp-cover"><img src={`/api/series/${encodeURIComponent(it.seriesId)}/thumbnail`} alt="" loading="lazy" onError={e => { e.target.style.display = 'none'; }} /><span className="lp-tag">✓ the comics</span></div>
+                  <figcaption><b>{it.proposed.name || files.name || 'Comic Vine ' + it.proposed.volumeId}</b><small>{plural(files.books || 0, 'file')}{others ? ` · ${others} other` : ''}</small></figcaption>
+                </figure>
+              </div>
+              <div className="lp-actions">
+                <button className="adm-btn" disabled={!!busy || !it.proposed.volumeId} onClick={() => relink(it)}>{busy === it.seriesId ? 'Working…' : 'Re-link'}</button>
+                <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => keep(it)} title="The series.json is right">Keep</button>
+                <button className="lp-open" onClick={() => navigate(`/series/${encodeURIComponent(it.seriesId)}`)}>Open ›</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
       <style>{`
-        .links-panel .dup2-lead { margin: 0 0 10px; }
-        .links-panel .dup2-aside { color: var(--text-muted); font-size: 0.85rem; }
-        .links-panel .dup2-bar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
-        .links-panel .dup2-notice { color: var(--td-yellow, var(--color-primary)); font-size: 0.9rem; }
-        .links-panel .dup2-card { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
-        .links-panel .dup2-head { margin-bottom: 6px; overflow-wrap: anywhere; }
-        .links-panel .dup2-why { color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; overflow-wrap: anywhere; }
+        .links-panel .lp-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+        .links-panel .lp-muted { color: var(--text-muted); font-size: 0.85rem; font-weight: 400; cursor: help; }
+        .links-panel .lp-notice { color: var(--td-yellow, var(--color-primary)); font-size: 0.9rem; margin: 0 0 10px; }
+        .links-panel .lp-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+        .links-panel .lp-card { border: 1px solid var(--border-subtle); border-radius: 10px; padding: 12px; background: var(--bg-card); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+        .links-panel .lp-folder { font-size: 0.8rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .links-panel .lp-compare { display: grid; grid-template-columns: minmax(0, 120px) auto minmax(0, 120px); justify-content: start; align-items: start; gap: 10px; }
+        .links-panel .lp-side { margin: 0; min-width: 0; }
+        .links-panel .lp-cover { position: relative; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: color-mix(in srgb, var(--bg-card) 70%, black); }
+        .links-panel .lp-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .links-panel .lp-wrong .lp-cover { opacity: 0.55; outline: 2px solid color-mix(in srgb, var(--td-red, #e55) 70%, transparent); }
+        .links-panel .lp-right .lp-cover { outline: 2px solid var(--td-yellow, var(--color-primary)); }
+        .links-panel .lp-tag { position: absolute; left: 6px; bottom: 6px; font-size: 0.7rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(0,0,0,0.75); color: #fff; }
+        .links-panel figcaption { font-size: 0.82rem; line-height: 1.3; margin-top: 6px; overflow-wrap: anywhere; }
+        .links-panel figcaption small { display: block; color: var(--text-muted); font-size: 0.75rem; }
+        .links-panel .lp-arrow { margin-top: 70px; font-size: 1.4rem; color: var(--td-yellow, var(--color-primary)); }
+        .links-panel .lp-actions { display: flex; gap: 8px; align-items: center; }
+        .links-panel .lp-open { margin-left: auto; background: none; border: 0; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 0.85rem; }
       `}</style>
     </div>
   );

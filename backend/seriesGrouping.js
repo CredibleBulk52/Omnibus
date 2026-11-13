@@ -47,6 +47,7 @@ function initSeriesGrouping(db) {
       action     TEXT NOT NULL,            -- reject | keep_visible
       created_at INTEGER NOT NULL,
       PRIMARY KEY (series_id, home_id, action));`);
+  if (!db.prepare('PRAGMA table_info(series_links)').all().some(c => c.name === 'event_id')) db.exec('ALTER TABLE series_links ADD COLUMN event_id TEXT');
   const cols = new Set(db.prepare('PRAGMA table_info(events)').all().map(c => c.name));
   if (!cols.size) return;   // no events table (tests)
   if (!cols.has('initiative')) {
@@ -155,7 +156,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
       const landmark = LANDMARK.test(`${s.name} ${s.desc}`) || curated.has(s.id);
       const hidden = role === 'tie-in' && !landmark && s.status !== 'Continuing';
       const why = `${e.name}${landmark && role === 'tie-in' ? ' (landmark: kept visible)' : ''}${s.status === 'Continuing' && role === 'tie-in' ? ' (still publishing: kept visible)' : ''}`;
-      links.push({ seriesId: s.id, homeId: e.home, role, hidden: hidden ? 1 : 0, reason: why });
+      links.push({ seriesId: s.id, homeId: e.home, eventId: e.id, role, hidden: hidden ? 1 : 0, reason: why });
     }
     return { links, events, S };
   }
@@ -171,7 +172,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
       const manual = new Set(db.prepare("SELECT series_id || '|' || home_id AS k FROM series_links WHERE source = 'manual'").all().map(r => r.k));
       const at = now();
       let added = 0, kept = 0;
-      const ins = db.prepare('INSERT INTO series_links (series_id, home_id, source, role, hidden, reason, created_at) VALUES (?, ?, \'rule\', ?, ?, ?, ?)');
+      const ins = db.prepare('INSERT INTO series_links (series_id, home_id, source, role, hidden, reason, created_at, event_id) VALUES (?, ?, \'rule\', ?, ?, ?, ?, ?)');
       db.exec('BEGIN');
       try {
         db.prepare("DELETE FROM series_links WHERE source = 'rule'").run();
@@ -179,7 +180,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
           const k = `${l.seriesId}|${l.homeId}`;
           if (rejected.has(k) || manual.has(k)) continue;
           const was = previous.get(k);
-          ins.run(l.seriesId, l.homeId, l.role, l.hidden, l.reason, was || at);
+          ins.run(l.seriesId, l.homeId, l.role, l.hidden, l.reason, was || at, l.eventId);
           if (was) kept++; else added++;
         }
         db.exec('COMMIT');
@@ -267,21 +268,26 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     return { confirmed: n };
   }
 
-  // Library page: counts, the event homes to review, and recent rule links.
+  // Library page: counts and every event with its home and the series on its shelf.
   function summary() {
     const { events, S } = computeRuleLinks();
     const nm = id => label(S.get(id));
     const counts = db.prepare('SELECT source, SUM(hidden) AS hidden, COUNT(*) AS n FROM series_links GROUP BY source').all();
-    const since = now() - RECENT_DAYS * 864e5;
-    const recent = db.prepare("SELECT * FROM series_links WHERE source = 'rule' AND created_at >= ? ORDER BY created_at DESC, home_id LIMIT 400").all(since)
-      .map(l => ({ seriesId: l.series_id, series: nm(l.series_id), homeId: l.home_id, home: nm(l.home_id), role: l.role, hidden: !!l.hidden, reason: l.reason, at: l.created_at }));
+    const keep = new Set(db.prepare("SELECT series_id FROM series_link_overrides WHERE action = 'keep_visible'").all().map(r => r.series_id));
+    const byEvent = new Map();
+    for (const l of db.prepare("SELECT series_id, home_id, event_id, role, hidden, created_at FROM series_links WHERE source = 'rule' AND event_id IS NOT NULL").all()) {
+      if (!byEvent.has(l.event_id)) byEvent.set(l.event_id, []);
+      byEvent.get(l.event_id).push({ id: l.series_id, name: nm(l.series_id), role: l.role, hidden: !!l.hidden && !keep.has(l.series_id), at: l.created_at });
+    }
+    const recentSince = now() - RECENT_DAYS * 864e5;
     return {
       counts: Object.fromEntries(counts.map(c => [c.source, { links: c.n, hidden: c.hidden || 0 }])),
-      events: events.map(e => ({ id: e.id, name: e.name, year: e.year, initiative: e.initiative, confirmed: e.confirmed, how: e.how,
-        proposed: e.proposed, proposedName: nm(e.proposed), chosen: e.chosen, chosenName: nm(e.chosen), home: e.home, homeName: nm(e.home),
-        members: db.prepare('SELECT COUNT(*) AS n FROM series_links l WHERE l.home_id = ? AND l.reason LIKE ?').get(e.home || '', `${e.name}%`).n }))
-        .sort((a, b) => (a.confirmed - b.confirmed) || String(a.name).localeCompare(String(b.name))),
-      recent,
+      events: events.map(e => {
+        const members = (byEvent.get(e.id) || []).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        return { id: e.id, name: e.name, year: e.year, initiative: e.initiative, confirmed: e.confirmed, how: e.how,
+          proposed: e.proposed, chosen: e.chosen, home: e.home, homeName: nm(e.home), members,
+          newMembers: members.filter(m => m.at >= recentSince).length };
+      }).sort((a, b) => (a.confirmed - b.confirmed) || (b.members.length - a.members.length) || String(a.name).localeCompare(String(b.name))),
     };
   }
 
