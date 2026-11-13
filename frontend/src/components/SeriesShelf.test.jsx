@@ -34,9 +34,18 @@ test('a home lists the series on its shelf with their role; Remove takes one off
 
 test('a series names its shelf; Put on a Specials shelf searches the library and saves the pick', async () => {
   const prev = global.fetch; global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
-  const a = mount(<ShelfHomes seriesId="cold" homes={[{ id: 'fp', name: 'Flashpoint (2011)', role: 'tie-in' }]} />);
-  expect(a.host.textContent).toMatch(/On the Specials shelf of Flashpoint \(2011\) · Tie-in/);
+  global.fetch = vi.fn(async (url, o = {}) => ({ ok: true, json: async () => (o.method === 'DELETE' ? { ok: true, source: 'ai' } : { ok: true }) }));
+  const onChanged = vi.fn();
+  const a = mount(<ShelfHomes seriesId="cold" homes={[{ id: 'fp', name: 'Flashpoint (2011)', role: 'tie-in' }]} onChanged={onChanged} />);
+  expect(a.host.textContent).toMatch(/On the Specials shelf of Flashpoint \(2011\) · Tie-inTake it off/);
+  await act(async () => { [...a.host.querySelectorAll('button')].find(b => b.textContent === 'Take it off').click(); });
+  expect(global.fetch).toHaveBeenCalledWith('/api/series/cold/shelf/fp', expect.objectContaining({ method: 'DELETE' }));
+  expect(onChanged).toHaveBeenCalled();
+  expect(a.host.textContent).toMatch(/Taken off Flashpoint \(2011\)'s shelf/);
+  await act(async () => { [...a.host.querySelectorAll('button')].find(b => b.textContent === 'Undo').click(); });
+  expect(global.fetch).toHaveBeenCalledWith('/api/grouping/restore', expect.objectContaining({ body: JSON.stringify({ items: [{ seriesId: 'cold', homeId: 'fp' }] }) }));
   act(() => a.root.unmount());
+  global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
   const done = vi.fn(), close = vi.fn();
   const { host, root } = mount(<PutOnShelfDialog seriesId="cold" seriesName="Citizen Cold" onDone={done} onClose={close} />);
   try {

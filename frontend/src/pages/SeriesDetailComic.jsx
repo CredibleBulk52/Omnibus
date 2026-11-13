@@ -896,10 +896,11 @@ export default function SeriesDetailComic() {
                 </div>
         ) : null}
       />
+      {/* The Specials shelf this series is on: its own band, outside the body (the issues shelf is pulled up over the body's padding). */}
+      <ShelfHomes seriesId={id} homes={grouping.homes} onChanged={reloadGrouping} />
       {/* ── Tab bodies ── */}
       <div className="series-body">
 
-        <ShelfHomes seriesId={id} homes={grouping.homes} onChanged={reloadGrouping} />
         <SeriesShelfStyles />
         {shelfOpen && <PutOnShelfDialog seriesId={id} seriesName={title} onClose={() => setShelfOpen(false)} onDone={reloadGrouping} />}
         {/* ── Issues — bookshelf layout ── */}
