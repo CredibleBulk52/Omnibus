@@ -241,6 +241,7 @@ test('a special added with "Special of" lands on its series\' shelf once its own
   const m = g.groupMap().get('bs');
   assert.deepEqual([m.homes[0].id, m.homes[0].source, m.homes[0].role, m.hidden], ['bat', 'monitor', 'special', true]);
   assert.equal(g.unlink('bs', 'bat'), 'monitor');
+  assert.equal(db.prepare("SELECT shelf_home_id FROM monitored_series WHERE id = 'cv9'").get().shelf_home_id, null);   // no longer "Special of"
   assert.equal(g.run().specials, 0);                                          // not put back
   assert.equal(g.groupMap().has('bs'), false);
 });

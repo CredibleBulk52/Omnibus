@@ -450,7 +450,7 @@ function MinisPanel({ data, busy, act }) {
         </span>
       </div>
       {data.types && data.types.known < data.types.total && (
-        <p className="gp-muted gp-types" title="Metron says whether a series was an ongoing or a planned mini. Ongoings are kept as their own series without asking the AI. A batch is looked up every hour.">
+        <p className="gp-muted gp-types" title={`Metron says whether a series was an ongoing or a planned mini. Ongoings (and cancelled series) are kept as their own series without asking the AI. A batch is looked up every hour.${(data.types.words || []).length ? `\n\nSo far: ${data.types.words.map(w => `${w.word} ${w.count}`).join(', ')}` : ''}`}>
           Series types from Metron: {data.types.known} of {data.types.total}{data.types.running ? ' · looking up…' : <> · <button type="button" className="gp-link" disabled={busy}
             onClick={() => act('types', () => call('POST', '/api/grouping/series/types/run'), () => ({ text: 'Looking up series types on Metron in the background.', run: null }))}>Look up the rest now</button></>}
         </p>)}

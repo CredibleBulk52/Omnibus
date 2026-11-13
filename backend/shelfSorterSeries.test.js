@@ -222,8 +222,19 @@ test('Metron lookups cover only what a type can still change: open suggestions f
   const ai = { run: (o, fn) => fn(), choose: () => 'm', complete: async opts => ({ text: JSON.stringify(answer(opts)), jobId: 'j', model: 'm' }) };
   const s = createShelfSorter({ db, grouping: g, ai, getSetting: () => null, setSetting: () => {}, seriesTypes: types });
   await s.ask({ kinds: ['series'] });   // wow → home (open); kj landmark, uhawk none, am own: settled; aa not answered by the fake
-  assert.deepEqual(s.seriesSummary().types, { known: 0, total: 2, running: false });
+  assert.deepEqual(s.seriesSummary().types, { known: 0, total: 2, running: false, words: [] });
   await s.lookUpTypes();
   assert.deepEqual(asked, ['200', '500']);                                    // the suggestion first, then the unanswered one
   assert.deepEqual(s.seriesSummary().types.known, 2);
+  assert.deepEqual(s.seriesSummary().types.words, [{ word: 'Limited Series', count: 2 }]);
+});
+
+test('Metron kinds: a cancelled series counts as an ongoing, also for types saved before', () => {
+  const { db } = fixture(answer);
+  assert.equal(kindOf('Cancelled Series'), 'ongoing');
+  assert.equal(kindOf('Single Issue'), 'one-shot');
+  assert.equal(kindOf('Graphic Novel'), 'other');
+  const types = createSeriesTypes({ db });
+  db.prepare("INSERT INTO series_types (comicid, metron_id, type, kind, checked_at) VALUES ('7', 1, 'Cancelled Series', 'other', 1)").run();
+  assert.equal(types.all().get('7').kind, 'ongoing');
 });

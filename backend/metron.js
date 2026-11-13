@@ -162,7 +162,8 @@ function createMetron({ axios, getToken, db, logger, sleep = ms => new Promise(r
   async function seriesStatus(cvId, { name, year, knownId } = {}) {
     const key = `series-status:${cvId}`;
     const cached = cacheGet(key);
-    if (cached) return cached.found || null;
+    // An answer cached before series types were kept (2026-11-14) has no seriesType: ask again.
+    if (cached && (!cached.found || 'seriesType' in cached.found)) return cached.found || null;
     const confirm = async id => { const d = await get(`series/${id}/`); return d && String(d.cv_id) === String(cvId) ? d : null; };
     let d = knownId ? await confirm(knownId) : null;
     if (!d) {

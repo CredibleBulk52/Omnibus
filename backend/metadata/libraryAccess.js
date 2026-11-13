@@ -88,7 +88,7 @@ function createLibraryAccess({ admit = () => {}, deploymentGate = null } = {}) {
 // Exact route registrations only. Authentication middleware stays outside the
 // barrier; no global pause of login, cancellation, progress or unrelated APIs.
 const WRITE_ROUTES = Object.freeze({
-  post: ['/api/specials/merge','/api/series/:id/create-json','/api/series/:id/enrich'],
+  post: ['/api/series/:id/create-json','/api/series/:id/enrich'],
   delete: ['/api/books/batch','/api/monitor/series/:id'],
 });
 const READ_ROUTES = Object.freeze({get:['/api/books/:id/pages','/api/books/:id/pages/:page','/api/books/:id/thumbnail','/api/series/:id/thumbnail','/api/import/disk-cover']});

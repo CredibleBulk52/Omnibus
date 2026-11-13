@@ -8376,25 +8376,16 @@ app.get('/api/monitor/series/:id/linked-annuals', (req, res) => {
   res.json(links);
 });
 
-// ─── Special Series ──────────────────────────────────────────────────────────
+// ─── Special Series ────────────────────────────────────────────
 //
-// A "special" series is a limited series, one-shot, or tie-in whose files live
-// in a parent series' directory and are marked is_special=1 in scanned_books.
-// This makes them surface in the parent's SeriesDetail Specials tab.
-//
-// Three entry points all converge on the same server-side merge operation:
-//   1. Add Series modal  — parentScannedSeriesId passed at add time (no folder created)
-//   2. Download Manager  — POST /api/specials/merge from series card button
-//   3. SeriesDetail page — POST /api/specials/merge from series detail button
-//
-// The merge operation:
-//   - Moves comic files from source scanned_series.path → parent scanned_series.path
-//   - Deletes series.json and other metadata from source folder
-//   - Deletes empty source folder
-//   - Deletes source scanned_series + scanned_books rows
-//   - If source is monitored: updates directory + file_paths, sets parent_series_id
-//   - Triggers rescan of parent directory
-//   - After rescan: marks moved files is_special=1
+// A "special" series is a limited series, one-shot or tie-in that belongs with another series.
+// Since 2026-11-14 every route makes it a Specials-shelf link (seriesGrouping.js) and nothing on disk
+// moves:
+//   1. Add Series "Special of …" — its own folder beside the series, shelf_home_id (MONITORED_SPECIALS.md)
+//   2. Download Manager "◈ Make Special of…" — POST /api/specials/shelve
+//   3. Series page Manage › "Put on a Specials shelf…" — POST /api/series/:id/shelf
+// The old merge (files moved into the parent's folder, marked is_special) is gone; specials merged
+// that way before stay as they are. Annuals are separate (series_annual_links).
 
 // GET /api/specials/scanned-series — all scanned series for parent picker
 // Returns both monitored and unmonitored series so any can be a parent.
@@ -8411,143 +8402,18 @@ app.get('/api/specials/scanned-series', requireAuth, (req, res) => {
   res.json(rows.slice(0, 50));
 });
 
-// POST /api/specials/merge — move a series' files into a parent series directory
-// Works for both monitored and unmonitored source series.
-// Body: { sourceScannedSeriesId, parentScannedSeriesId }
-app.post('/api/specials/merge', requireAdmin, async (req, res) => {
-  const { sourceScannedSeriesId, parentScannedSeriesId } = req.body;
-  if (!sourceScannedSeriesId || !parentScannedSeriesId)
-    return res.status(400).json({ error: 'sourceScannedSeriesId and parentScannedSeriesId required' });
-  if (sourceScannedSeriesId === parentScannedSeriesId)
-    return res.status(400).json({ error: 'Source and parent cannot be the same series' });
-
-  const source = db.prepare('SELECT * FROM scanned_series WHERE id = ?').get(sourceScannedSeriesId);
-  const parent = db.prepare('SELECT * FROM scanned_series WHERE id = ?').get(parentScannedSeriesId);
-  if (!source) return res.status(404).json({ error: 'Source series not found in library — the series may not have any files on disk yet. Download some issues first, then try again.' });
-  if (!parent) return res.status(404).json({ error: 'Parent series not found' });
-
-  const sourceDir = source.path;
-  const destDir   = parent.path;
-
-  if (!fs.existsSync(sourceDir)) return res.status(400).json({ error: `Source directory not found: ${sourceDir}` });
-  if (!fs.existsSync(destDir))   return res.status(400).json({ error: `Parent directory not found: ${destDir}` });
-
-  const COMIC_EXTS  = new Set(['.cbz', '.cbr', '.cb7', '.cbt', '.pdf']);
-  const META_FILES  = new Set(['series.json', 'series.json.bak', 'cvinfo']);
-
+// POST /api/specials/shelve — "◈ Make Special of…": put a series on another series' Specials shelf.
+// Body: { sourceScannedSeriesId, parentScannedSeriesId }. A monitored source also gets shelf_home_id,
+// so the Download Manager shows "◈ Special of". With shelves off the link is kept for when they are on.
+app.post('/api/specials/shelve', requireAdmin, (req, res) => {
+  const source = String(req.body?.sourceScannedSeriesId || ''), parent = String(req.body?.parentScannedSeriesId || '');
   try {
-    // 1. Collect all files in source directory
-    const allFiles = fs.readdirSync(sourceDir);
-    const comicFiles = allFiles.filter(f => COMIC_EXTS.has(path.extname(f).toLowerCase()));
-    const movedFiles = [];
-
-    // 2. Move comic files to parent directory
-    for (const filename of comicFiles) {
-      const src  = path.join(sourceDir, filename);
-      const dest = path.join(destDir, filename);
-      // Don't overwrite existing files in parent
-      if (fs.existsSync(dest)) {
-        logger.warn('specials', `Skipping — file already exists in parent`, { filename });
-        continue;
-      }
-      fs.renameSync(src, dest);
-      movedFiles.push({ filename, dest });
-      logger.info('specials', `Moved file to parent`, { filename, destDir });
-    }
-
-    // 3. Delete metadata files
-    for (const filename of allFiles) {
-      if (META_FILES.has(filename.toLowerCase())) {
-        try { fs.unlinkSync(path.join(sourceDir, filename)); } catch {}
-      }
-    }
-
-    // 4. Delete source directory (only if now empty)
-    const remaining = fs.readdirSync(sourceDir).filter(f => !f.startsWith('.'));
-    if (remaining.length === 0) {
-      try { fs.rmdirSync(sourceDir); } catch {}
-    } else {
-      logger.warn('specials', `Source directory not empty after merge — leaving in place`, { sourceDir, remaining });
-    }
-
-    // 5. DB cleanup. Moved books keep their IDs (and every link): re-point them
-    // at the parent series and new path. Whatever is left of the source (the
-    // series row, books skipped as duplicates) is kept as missing, not deleted.
-    db.transaction(() => {
-      const repoint = db.prepare('UPDATE scanned_books SET path = ?, series_id = ? WHERE series_id = ? AND path = ?');
-      for (const { filename, dest } of movedFiles) {
-        repoint.run(dest, parent.id, sourceScannedSeriesId, path.join(sourceDir, filename));
-      }
-    })();
-    stableIds.tombstoneSeries(sourceScannedSeriesId);
-    logger.info('specials', `Kept book IDs through merge`, { moved: movedFiles.length, source: sourceDir });
-
-    // 6. If source is a monitored series, update it to point to parent directory
-    const monSource = db.prepare('SELECT * FROM monitored_series WHERE directory = ?').get(sourceDir);
-    const monParent = db.prepare('SELECT * FROM monitored_series WHERE directory = ?').get(destDir);
-    if (monSource) {
-      // is_special=1 always — this is a merge-to-special operation by intent,
-      // even when monParent isn't a monitored row (so parent_series_id stays null).
-      db.prepare('UPDATE monitored_series SET directory = ?, parent_series_id = ?, is_special = 1 WHERE id = ?')
-        .run(destDir, monParent?.id || null, monSource.id);
-      // Update file_path on all processed issues to reflect new location
-      const processedIssues = db.prepare(
-        `SELECT id, file_path FROM monitored_issues WHERE series_id = ? AND status = 'processed' AND file_path IS NOT NULL`
-      ).all(monSource.id);
-      for (const issue of processedIssues) {
-        const newPath = path.join(destDir, path.basename(issue.file_path));
-        db.prepare('UPDATE monitored_issues SET file_path = ? WHERE id = ?').run(newPath, issue.id);
-      }
-      invalidateDirectoryExistsCache(monSource.id);
-      logger.info('specials', `Updated monitored series directory`, { series: monSource.name, newDir: destDir });
-    }
-
-    // 7. Reset parent scanned_series dir_mtime so the scanner always re-reads it,
-    // bypassing the mtime optimisation that would otherwise skip unchanged directories.
-    // This is critical for Windows/Docker mounts where the directory mtime may not
-    // update when files are moved in from another location.
-    db.prepare('UPDATE scanned_series SET dir_mtime = 0 WHERE path = ?').run(destDir);
-
-    // Trigger rescan of parent library so new files get scanned_books rows
-    const parentLib = db.prepare("SELECT * FROM libraries WHERE ? LIKE (path || '%')").get(destDir);
-    if (parentLib) {
-      setImmediate(async () => {
-        try {
-          await runLibraryScan(parentLib, 'postprocess');
-          // 8. After rescan, mark the moved files as is_special=1
-          for (const { filename } of movedFiles) {
-            const destPath = path.join(destDir, filename);
-            db.prepare(`
-              UPDATE scanned_books SET is_special = 1
-              WHERE series_id = ? AND path = ? AND is_special = 0
-            `).run(parent.id, destPath);
-          }
-          // Mark by path — works regardless of series_id or when the book was scanned.
-          // This also catches files that were already on disk before this merge ran
-          // (e.g. from a previous partial merge or manual file move).
-          const movedPaths = movedFiles.map(({ filename }) => path.join(destDir, filename));
-          for (const destPath of movedPaths) {
-            db.prepare(`UPDATE scanned_books SET is_special = 1 WHERE path = ? AND is_special = 0`).run(destPath);
-          }
-          logger.info('specials', `Marked ${movedFiles.length} files as is_special after rescan`);
-          pushSseEvent({ type: 'series_updated' });
-        } catch (e) {
-          logger.warn('specials', 'Post-merge rescan failed', e.message);
-        }
-      });
-    }
-
-    res.json({
-      ok: true,
-      moved: movedFiles.length,
-      sourceDir,
-      destDir,
-      monitoredUpdated: !!monSource,
-    });
-  } catch (e) {
-    logger.error('specials', 'Merge failed', e.message);
-    res.status(500).json({ error: e.message });
-  }
+    seriesGrouping.link(source, parent);
+    const src = db.prepare('SELECT path, name FROM scanned_series WHERE id = ?').get(source);
+    if (src) db.prepare('UPDATE monitored_series SET shelf_home_id = ? WHERE directory = ? AND COALESCE(is_special, 0) = 0 AND parent_series_id IS NULL').run(parent, src.path);
+    logger.info('specials', `Shelved "${src?.name || source}" as a special`, { parent });
+    res.json({ ok: true, shelvesOn: shelvesOn() });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 });
 
 // Known manga publishers — used to auto-detect series_type on monitor add.

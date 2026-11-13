@@ -318,6 +318,10 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     if (l.source === 'rule' || l.source === 'ai' || l.source === 'monitor') db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'reject', ?)")
       .run(seriesId, l.event_id ? `event:${l.event_id}` : homeId, now());
     db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND action = 'user_keep' AND home_id IN (?, ?)").run(seriesId, homeId, `event:${l.event_id || ''}`);
+    // A special made with "Special of" / "Make Special of" stops being one when taken off its shelf.
+    if (has('monitored_series')) {
+      try { db.prepare('UPDATE monitored_series SET shelf_home_id = NULL WHERE shelf_home_id = ? AND directory = (SELECT path FROM scanned_series WHERE id = ?)').run(homeId, seriesId); } catch {}
+    }
     onChange();
     return l.source;   // 'rule' | 'ai' | 'monitor' | 'manual' (Undo: restore a rule link, link a manual one again)
   }

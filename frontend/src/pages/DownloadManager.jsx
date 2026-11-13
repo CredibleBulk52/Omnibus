@@ -1,4 +1,3 @@
-import { useConfirm } from '../components/Confirm';
 import PageHeader from '../components/PageHeader';
 import ManageMenu from '../components/ManageMenu';
 import '../downloadManager.css';
@@ -499,11 +498,11 @@ function DirectorySuggestionPanel({ selected, suggestion, loadingSuggestion, par
   );
 }
 
-// ─── Merge Series Picker ─────────────────────────────────────────
-// Modal for merging a series into a parent as a Special.
+// ─── Make Special of… ────────────────────────────────────────────
+// Puts a series on another series' Specials shelf (2026-11-14). Nothing on disk moves and it can be
+// taken off again; it replaced the old merge, which moved the files into the parent's folder.
 // Searches scanned_series (both monitored and unmonitored).
 function MergeSeriesPicker({ sourceScannedSeriesId, sourceName, onClose, onMerged }) {
-  const confirm = useConfirm();
   const { toast } = useToast();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -525,10 +524,9 @@ function MergeSeriesPicker({ sourceScannedSeriesId, sourceName, onClose, onMerge
 
   const doMerge = async () => {
     if (!selected) return;
-    if (!(await confirm({ message: `Move all files from "${sourceName}" into "${selected.name}" and mark them as Specials?\n\nThis will:\n• Move comic files to ${selected.path}\n• Delete series.json and source folder\n• This cannot be undone.`, title: 'Merge as Specials?', confirmLabel: 'Merge', danger: true }))) return;
     setMerging(true);
     try {
-      const r = await fetch('/api/specials/merge', {
+      const r = await fetch('/api/specials/shelve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -538,13 +536,14 @@ function MergeSeriesPicker({ sourceScannedSeriesId, sourceName, onClose, onMerge
       });
       const d = await r.json();
       if (d.ok) {
-        toast(`Merged "${sourceName}" into "${selected.name}" — ${d.moved} file(s) moved`, 'success');
+        toast(d.shelvesOn ? `"${sourceName}" is now on ${selected.name}'s Specials shelf`
+          : `"${sourceName}" will be on ${selected.name}'s Specials shelf once Specials shelves are turned on (Library)`, 'success');
         onMerged();
       } else {
-        toast(d.error || 'Merge failed', 'error');
+        toast(d.error || 'Could not make it a special', 'error');
       }
     } catch (err) {
-      toast(`Merge failed: ${err.message}`, 'error');
+      toast(`Could not make it a special: ${err.message}`, 'error');
     }
     setMerging(false);
   };
@@ -552,7 +551,7 @@ function MergeSeriesPicker({ sourceScannedSeriesId, sourceName, onClose, onMerge
   return (
     <Modal title="◈ Make Special of…" onClose={onClose} width={520}>
       <div className="adm-modal-content">
-        <div className="a-faint a-fs-12" style={{ padding: '8px 12px 0' }}>For "{sourceName}"</div>
+        <div className="a-faint a-fs-12" style={{ padding: '8px 12px 0' }}>For "{sourceName}": it goes on the Specials shelf of the series you pick. Its files stay where they are, and you can take it off again.</div>
         <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--om-base)' }}>
           <input
             autoFocus
@@ -584,7 +583,7 @@ function MergeSeriesPicker({ sourceScannedSeriesId, sourceName, onClose, onMerge
         {selected && (
           <div className="a-flex a-ai-c a-gap-10" style={{ padding: '10px 16px', borderTop: '1px solid var(--adm-g3)' }}>
             <div className="a-grow">
-              <div className="a-text a-fs-12">Merge into: <strong style={{ color: '#c090e0' }}>{selected.name}</strong></div>
+              <div className="a-text a-fs-12">Special of: <strong style={{ color: '#c090e0' }}>{selected.name}</strong></div>
               <div className="a-faint a-fs-10 a-mono a-mt-2">{selected.path}</div>
             </div>
             <button
@@ -592,7 +591,7 @@ function MergeSeriesPicker({ sourceScannedSeriesId, sourceName, onClose, onMerge
               disabled={merging}
               className="a-fs-12 a-fw6" style={{ padding: '6px 14px', background: '#3a1a4a', border: '1px solid #c090e044', borderRadius: 4, color: '#c090e0', cursor: merging ? 'not-allowed' : 'pointer', opacity: merging ? 0.6 : 1 }}
             >
-              {merging ? 'Merging…' : '◈ Merge'}
+              {merging ? 'Saving…' : '◈ Make special'}
             </button>
           </div>
         )}

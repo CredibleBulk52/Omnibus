@@ -52,3 +52,21 @@ test('Metron lookup confirms the Comic Vine ID on the series record and falls ba
   assert.ok(calls.every(c => /\/api\/series\/(\d+\/)?(\?|$)/.test(c)), calls.join(' '));
   assert.equal(await m.seriesStatus(424242, {}), null);
 });
+
+test('a cached answer from before series types were kept is asked again', async () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const { createMetron } = require('./metron');
+  const db = new DatabaseSync(':memory:');
+  let gets = 0;
+  const axios = { get: async url => { gets++; const u = new URL(url);
+    if (/\/series\/22\/$/.test(u.pathname)) return { status: 200, data: { id: 22, cv_id: 777, status: 'Cancelled', issue_count: 6, series_type: { name: 'Cancelled Series' } } };
+    return { status: 200, data: { results: [{ id: 22 }] } }; } };
+  const m = createMetron({ axios, getToken: () => 't', db, sleep: async () => {} });
+  db.prepare('INSERT INTO metron_cache (key, value, at) VALUES (?, ?, ?)').run('series-status:777', JSON.stringify({ found: { id: 22, status: 'ended', raw: 'Cancelled', issueCount: 6, yearEnd: null } }), Date.now());
+  const r = await m.seriesStatus(777, {});
+  assert.ok(gets > 0);
+  assert.equal(r.seriesType, 'Cancelled Series');
+  const before = gets;
+  await m.seriesStatus(777, {});
+  assert.equal(gets, before);   // the new answer is cached
+});

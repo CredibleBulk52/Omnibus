@@ -305,7 +305,8 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     if (!seriesTypes) return { skipped: true };
     const bctx = bContext();
     const items = typeScope(bctx).map(t => ({ comicid: t.comicid, name: t.name, year: t.year }));
-    const r = await seriesTypes.run(items, { limit, onKinds: () => { bForget(); typeRule(); } });
+    const r = await seriesTypes.run(items, { limit });
+    bForget(); typeRule();   // also for types saved earlier (a kind can change with kindOf)
     return r;
   }
 
@@ -684,7 +685,13 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     const lookable = typeScope(bctx);
     const typesKnown = lookable.filter(t => types.has(t.comicid)).length;
     return { suggested, shelved, counts, ready, toAsk, asked: saved.size,
-      types: seriesTypes ? { known: typesKnown, total: lookable.length, running: seriesTypes.status().running } : null };
+      types: seriesTypes ? { known: typesKnown, total: lookable.length, running: seriesTypes.status().running, words: typeWords(types) } : null };
+  }
+  // Metron's own words for the types saved so far, most common first (shown on hover).
+  function typeWords(types) {
+    const n = new Map();
+    for (const t of types.values()) { const w = t.type || (t.kind === 'unknown' ? 'no match' : t.kind); n.set(w, (n.get(w) || 0) + 1); }
+    return [...n].sort((a, b) => b[1] - a[1]).map(([word, count]) => ({ word, count }));
   }
   const seriesReady = () => { try { return seriesSummary().ready; } catch { return 0; } };
 

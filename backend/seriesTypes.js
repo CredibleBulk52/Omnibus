@@ -9,12 +9,13 @@
 const RECHECK_UNKNOWN_DAYS = 30;
 const DAY = 86400000;
 
+// "Cancelled Series" is Metron's type for an ongoing that ended early (Arkham Manor): an ongoing here.
 function kindOf(type) {
   const t = String(type || '').toLowerCase();
   if (!t) return 'unknown';
-  if (/ongoing/.test(t)) return 'ongoing';
+  if (/ongoing|cancel/.test(t)) return 'ongoing';
   if (/limited|mini/.test(t)) return 'limited';
-  if (/one[- ]?shot/.test(t)) return 'one-shot';
+  if (/one[- ]?shot|single issue/.test(t)) return 'one-shot';
   return 'other';
 }
 
@@ -31,7 +32,9 @@ function createSeriesTypes({ db, metron = null, logger = null, now = Date.now })
   initSeriesTypes(db);
   const put = db.prepare(`INSERT INTO series_types (comicid, metron_id, type, kind, checked_at) VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(comicid) DO UPDATE SET metron_id = excluded.metron_id, type = excluded.type, kind = excluded.kind, checked_at = excluded.checked_at`);
-  const all = () => new Map(db.prepare('SELECT comicid, type, kind, checked_at FROM series_types').all().map(r => [r.comicid, r]));
+  // The kind is worked out again from Metron's words, so a change to kindOf applies to saved types too.
+  const all = () => new Map(db.prepare('SELECT comicid, type, kind, checked_at FROM series_types').all()
+    .map(r => [r.comicid, { ...r, kind: r.type ? kindOf(r.type) : r.kind }]));
   let running = false;
   const state = { done: 0, total: 0 };
 
@@ -47,7 +50,7 @@ function createSeriesTypes({ db, metron = null, logger = null, now = Date.now })
     if (!todo.length) return { looked: 0 };
     running = true;
     Object.assign(state, { done: 0, total: todo.length });
-    const stats = { looked: 0, ongoing: 0, limited: 0, 'one-shot': 0, other: 0, unknown: 0 };
+    const stats = { looked: 0, ongoing: 0, limited: 0, 'one-shot': 0, other: 0, unknown: 0, types: {} };
     const found = [];
     try {
       for (const it of todo) {
@@ -63,6 +66,8 @@ function createSeriesTypes({ db, metron = null, logger = null, now = Date.now })
         const kind = r ? kindOf(r.seriesType) : 'unknown';
         put.run(String(it.comicid), r ? r.id : null, r ? r.seriesType : null, kind, now());
         stats.looked++; stats[kind]++;
+        const word = r ? (r.seriesType || '(none)') : '(no match)';
+        stats.types[word] = (stats.types[word] || 0) + 1;   // Metron's own words, in the log
         found.push(String(it.comicid));
       }
     } finally { running = false; }
