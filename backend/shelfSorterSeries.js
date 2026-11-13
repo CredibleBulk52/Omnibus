@@ -3,7 +3,11 @@
 // claude/SHELF_SORTER_STAGE_B.md. A series with a series.json, 12 issues or fewer (Comic Vine's
 // count), on no shelf and not a home, is offered a few candidate homes picked here without AI:
 // same publisher, and a series named like its title prefix ("Black Panther: World of Wakanda" →
-// Black Panther) or like one of its main characters or its team (ComicInfo), larger than itself.
+// Black Panther) or like one of its main characters or its team (ComicInfo), at least as large.
+// Sequels, continuations and renames stay series of their own (2026-11-13, user: Opus shelved
+// Gotham Academy: Second Semester and Justice League International): the prompt says so, and the
+// book's own run dates are sent beside its candidates'. (Marking "ended just before" was tried and
+// dropped: title families like Star Trek: … made it fire on satellites too.)
 // Ranked: prefix match, running when it came out, then size. Only series with a candidate are
 // asked about (743 of 1,330 on the 08:14 backup). The AI answers per series:
 //   home      a satellite of one candidate: shelved there (hidden, like a tie-in)
@@ -34,11 +38,18 @@ const SERIES_SCHEMA = {
 
 const SERIES_SYSTEM = `You help organize a personal comic library. A small series (a mini or a one-shot) that is a satellite of a larger series is put on that series' "Specials shelf": it leaves the main series list but stays on the larger series' Specials tab and in search. The aim is to tie related series together and reduce sprawl, not to hide every short series.
 
+The Specials shelf is for side material: books read alongside a series or in addition to it. It is never for the next chapter of a series: a sequel, continuation or new volume is read in its own right and must stay visible.
+
 Each item is a short series now on its own, with facts from the library and up to six candidate series (C ids) picked by title and main characters. Decide:
-- "home": it is a satellite of one candidate: a spin-off, companion, special, one-shot or mini tied to that series or its run (Black Panther: World of Wakanda → Black Panther (2016); Uncanny X-Men: Winter's End → Uncanny X-Men (2018); Dark Knights of Steel: Heir to the Sea → Dark Knights of Steel). Choose the candidate of the right era and line; name it in "home".
-- "own": a series in its own right: a character's own title or a new volume of a title, a new ongoing cut short, or a mini readers follow on its own (America (2017), New Avengers (2025), Wonder Twins (2019), Black Panther (2023)). Sharing a character with a candidate is not enough to shelve it.
+- "home": it is a satellite of one candidate: a spin-off, companion, special, one-shot or mini published alongside that series or its run (Black Panther: World of Wakanda → Black Panther (2016); Uncanny X-Men: Winter's End → Uncanny X-Men (2018); Dark Knights of Steel: Heir to the Sea → Dark Knights of Steel). Choose the candidate of the right era and line; name it in "home".
+- "own": a series in its own right. This includes:
+  - a character's own title, a new volume of a title, a new ongoing cut short, or a mini readers follow on its own (America (2017), New Avengers (2025), Wonder Twins (2019), Black Panther (2023));
+  - a sequel, continuation or second season of a candidate, even under a new subtitle (Gotham Academy: Second Semester continues Gotham Academy; a "Season Two", "Book Two", "Volume 2" or relaunch);
+  - a series renamed or continued under another title (Justice League International continues Justice League (1987)).
+  Compare the run dates: a book that starts right after a candidate of the same title ended, or that such a candidate picks up right after, is usually its next chapter, not side material.
+  Sharing a character with a candidate is not enough to shelve it.
 - "landmark": an iconic or standalone story readers seek out on its own (Batman: The Killing Joke, Marvels, Kingdom Come, a celebrated Elseworlds or Black Label book). It is never shelved.
-- "none": it is a satellite of something, but none of the candidates (for example it belongs to a line that is not listed: an Ultimate Comics mini whose candidates are mainstream series).
+- "none": it is a satellite of something, but none of the candidates (for example it belongs to a line that is not listed: an Ultimate Comics mini whose candidates are mainstream series). If the series your reason would name is not among the candidates, answer "none"; never pick a different candidate in its place.
 Confidence: "sure" only when a well-read comics historian would not dispute it; "likely" when you lean that way; "unsure" when you know little about the book. If you do not recognise it, say unsure rather than guess.
 why: at most 15 words, plain language, for the admin.`;
 
@@ -98,7 +109,8 @@ function seriesContext(db, { curated = new Set() } = {}) {
     const keys = [...(p ? [norm(p)] : []), ...top(chars, s.id, 3).map(norm), ...top(teams, s.id, 1).map(norm)];
     const out = new Map();
     for (const k of keys) for (const h of byName.get(k) || []) {
-      if (h.id === s.id || pubKey(h.publisher) !== pubKey(s.publisher) || h.size <= s.size || rejected.has(`${s.id}|${h.id}`)) continue;
+      // As large or larger (Agents of Atlas (2019, 5) is the home of Atlantis Attacks (2020, 5)).
+      if (h.id === s.id || pubKey(h.publisher) !== pubKey(s.publisher) || h.size < s.size || rejected.has(`${s.id}|${h.id}`)) continue;
       out.set(h.id, h);
     }
     const pk = p ? norm(p) : null;
@@ -111,7 +123,7 @@ function seriesContext(db, { curated = new Set() } = {}) {
 // One series' facts (real ids): what is sent, and what its saved answer is checked against.
 function seriesFacts(s, ctx) {
   const cands = ctx.candidatesOf(s);
-  return { id: s.id, name: s.name, year: s.year, issues: s.size, publisher: s.publisher, folder: s.folder, status: s.status,
+  return { id: s.id, name: s.name, year: s.year, issues: s.size, publisher: s.publisher, folder: s.folder, status: s.status, run: s.run,
     characters: ctx.chars(s.id).slice(0, 4), teams: ctx.teams(s.id).slice(0, 1), about: short(s.desc, 160),
     candidates: cands.map(h => ({ id: h.id, name: h.name, year: h.year, issues: h.size, run: h.run, running: ctx.running(h, s.year) })) };
 }
@@ -122,12 +134,12 @@ function renderSeries(list) {
   const out = [];
   list.forEach((f, i) => {
     const t = `T${i + 1}`; ids.set(t, f.id);
-    out.push(`${t} ${f.name}${f.year ? ` (${f.year})` : ''} · ${f.publisher || 'publisher unknown'} · ${f.issues} issue${f.issues === 1 ? '' : 's'}${f.folder ? ` · folder "${f.folder}"` : ''}${f.status === 'Continuing' ? ' · still publishing' : ''}`);
+    out.push(`${t} ${f.name}${f.year ? ` (${f.year})` : ''} · ${f.publisher || 'publisher unknown'} · ${f.issues} issue${f.issues === 1 ? '' : 's'}${f.run ? ` · ${f.run}` : ''}${f.folder ? ` · folder "${f.folder}"` : ''}${f.status === 'Continuing' ? ' · still publishing' : ''}`);
     if (f.characters.length || f.teams.length) out.push(`  characters: ${[...f.characters, ...f.teams.map(x => `${x} (team)`)].join(', ')}`);
     if (f.about) out.push(`  about: ${f.about}`);
     for (const h of f.candidates) {
       const k = `C${++c}`; ids.set(k, h.id);
-      out.push(`  ${k} ${h.name}${h.year ? ` (${h.year})` : ''} · ${h.issues} issues${h.run ? ` · ${h.run}` : ''}${h.running ? ' · running then' : ''}`);
+      out.push(`  ${k} ${h.name}${h.year ? ` (${h.year})` : ''} · ${h.issues} issues${h.run ? ` · ${h.run}` : ''}`);   // no "running then" label: by year it misled (2026-11-13); the run dates speak for themselves
     }
   });
   return { text: out.join('\n'), ids };

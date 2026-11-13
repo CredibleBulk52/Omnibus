@@ -26,6 +26,8 @@ function fixture(reply) {
   series('am', 'America', 2017, 12, { chars: 'America Chavez' });
   series('amc', 'America Chavez', 2021, 30);
   series('dhb', 'Batman', 2010, 30, { publisher: 'Dark Horse' });     // another publisher: never a candidate
+  series('aoa', 'Agents of Atlas', 2019, 5, { run: 'October 2019 - February 2020' });
+  series('aa', 'Atlantis Attacks', 2020, 5, { chars: 'Agents of Atlas', run: 'March 2020 - November 2020' });
   const g = createSeriesGrouping({ db });
   const calls = [];
   const ai = {
@@ -57,23 +59,27 @@ test('local candidates: prefix first, then running then and size; same publisher
   assert.deepEqual(wow.candidates.map(c => [c.id, c.running]), [['bp16', true], ['bp98', false]]);
   assert.deepEqual(B.seriesFacts(ctx.S.get('kj'), ctx).candidates.map(c => c.id), ['bat']);     // not Dark Horse's Batman
   assert.deepEqual(B.seriesFacts(ctx.S.get('am'), ctx).candidates.map(c => c.id), ['amc']);     // by its main character
-  assert.deepEqual(ctx.targets.map(t => t.id).sort(), ['am', 'kj', 'uhawk', 'wow']);          // 12 issues or fewer
+  assert.deepEqual(ctx.targets.map(t => t.id).sort(), ['aa', 'am', 'aoa', 'kj', 'uhawk', 'wow']);   // 12 issues or fewer
+  assert.deepEqual(B.seriesFacts(ctx.S.get('aa'), ctx).candidates.map(c => c.id), ['aoa']);    // as large counts (5 and 5)
+  assert.match(B.renderSeries([B.seriesFacts(ctx.S.get('aa'), ctx)]).text, /^T1 Atlantis Attacks \(2020\) · Marvel · 5 issues · March 2020 - November 2020/);
   const { text } = B.renderSeries([wow]);
   assert.match(text, /^T1 Black Panther: World of Wakanda \(2016\) · Marvel · 6 issues · folder "2\. Modern Age"/);
+  assert.doesNotMatch(text, /running then/);
   assert.match(text, /characters: Ayo, Aneka, Shuri/);
-  assert.match(text, /C1 Black Panther \(2016\) · 25 issues · June 2016 - June 2018 · running then/);
+  assert.match(text, /C1 Black Panther \(2016\) · 25 issues · June 2016 - June 2018$/m);
 });
 
 test('ask, then apply the sure home: shelved like a tie-in; own, landmark and none change nothing; Undo', async () => {
   const { s, g, calls } = fixture(answer);
   const r = await s.ask({ kinds: ['series'] });
-  assert.equal(r.asked, 4);
+  assert.equal(r.asked, 4);                                                   // the fake model skips Atlantis Attacks
   assert.equal(calls.length, 1);
-  assert.match(calls[0].prompt, /Series to check \(4\)/);
+  assert.match(calls[0].prompt, /Series to check \(5\)/);
+  assert.match(calls[0].system[0].text, /Gotham Academy: Second Semester continues Gotham Academy/);
   let sum = s.seriesSummary();
   assert.deepEqual(sum.suggested.map(x => [x.seriesId, x.homeId, x.confidence]), [['wow', 'bp16', 'sure']]);
-  assert.deepEqual([sum.counts.own, sum.counts.landmark, sum.counts.none, sum.ready, sum.toAsk], [1, 1, 1, 1, 0]);
-  assert.equal((await s.ask({ kinds: ['series'] })).asked, 0);                 // nothing changed: not asked again
+  assert.deepEqual([sum.counts.own, sum.counts.landmark, sum.counts.none, sum.ready, sum.toAsk], [1, 1, 1, 1, 1]);
+  assert.equal((await s.ask({ kinds: ['series'] })).total, 1);                 // only the unanswered one is asked again
   const a = s.apply();
   assert.equal(a.applied, 1);
   const m = g.groupMap().get('wow');

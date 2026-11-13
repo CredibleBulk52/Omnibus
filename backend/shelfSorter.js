@@ -212,7 +212,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     return ctx;
   };
   const bForget = () => { bCache = null; };
-  const bHash = f => hashOf({ f, v: 'b1' });
+  const bHash = f => hashOf({ f, v: 'b2' });   // b2 (2026-11-13): sequels stay their own; answers from b1 show as out of date
 
   // Turn one reply item into an answer with real ids; anything not in the event is dropped.
   function resolve(item, facts, ids) {
