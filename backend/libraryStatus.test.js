@@ -57,6 +57,12 @@ test('Metron "Completed" ends a series without Comic Vine; the run closes at its
     { metron: { status: 'ended', raw: 'Completed', issueCount: 4 }, yearEnd: 2002 }, NOW);
   assert.equal(out.metadata.status, 'Ended');
   assert.equal(out.metadata.publication_run, 'November 2001 - 2002');
+  // Metron's count fills a low or missing count, never lowers one.
+  assert.equal(out.metadata.total_issues, 4);
+  const lower = applyFacts({ ...sj(4, 'Arc', 2001).metadata, total_issues: 6 }, { metron: { status: 'ended', raw: 'Completed', issueCount: 4 }, yearEnd: 2002 }, NOW);
+  assert.equal(lower.metadata.total_issues, 6);
+  const missing = applyFacts({ ...sj(4, 'Arc', 2001).metadata, total_issues: null }, { metron: { status: 'ended', raw: 'Completed', issueCount: 4 } }, NOW);
+  assert.equal(missing.metadata.total_issues, 4);
 });
 
 test('a run writes the corrected series.json, records the result and stops at the Comic Vine limit', async () => {

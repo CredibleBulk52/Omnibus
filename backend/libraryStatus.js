@@ -78,6 +78,11 @@ function applyFacts(metadata, { latestDate = null, lastCover = null, issueCount 
   if (run && m.publication_run !== run) { changes.push(`run → ${run}`); m.publication_run = run; }
   if (Number.isFinite(issueCount) && issueCount > 0 && m.total_issues !== issueCount) {
     changes.push(`issues ${m.total_issues ?? '—'} → ${issueCount}`); m.total_issues = issueCount;
+  } else if (!(issueCount > 0) && metron && metron.issueCount > 0) {
+    // Only Metron answered. Its count can differ from Comic Vine's (a #0, an annual), so it only
+    // fills a missing count or raises one that is too low (2026-11-13).
+    const have = Number(m.total_issues) || 0;
+    if (have < metron.issueCount) { changes.push(`issues ${m.total_issues ?? '—'} → ${metron.issueCount} (Metron)`); m.total_issues = metron.issueCount; }
   }
   return { status: v.status, reason: v.reason, changes, metadata: m };
 }
