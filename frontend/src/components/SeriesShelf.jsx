@@ -172,7 +172,8 @@ export function SeriesGroupingPanel() {
         .gp-off .gp-muted { color: var(--text-muted); font-size: 0.85rem; } .gp-off .gp-error { color: var(--td-red, #e55); }`}</style>
     </div>
   );
-  const rule = data.counts?.rule || { links: 0, hidden: 0 }, manual = data.counts?.manual || { links: 0 }, byAi = data.counts?.ai || { links: 0, hidden: 0 };
+  const manual = data.counts?.manual || { links: 0 };
+  const all = Object.values(data.counts || {}).reduce((t, c) => ({ links: t.links + (c.links || 0), hidden: t.hidden + (c.hidden || 0) }), { links: 0, hidden: 0 });
   // To check: events the AI disagrees with come first.
   const aiDiffers = e => !!e.ai && !e.ai.stale && ((e.ai.home.verdict === 'change' && e.ai.home.open) || e.ai.home.verdict === 'none');
   // Only events with something on their shelf: a crossover with no minis or one-shots needs no home.
@@ -210,7 +211,7 @@ export function SeriesGroupingPanel() {
   return (
     <div className="gp">
       <div className="gp-head">
-        <span><b>{(rule.links + (manual.links || 0) + (byAi.links || 0)).toLocaleString()}</b> series on shelves <span className="gp-muted">· {(rule.hidden || 0) + (manual.hidden || 0) + (byAi.hidden || 0)} out of the browser{manual.links ? ` · ${manual.links} by hand` : ''}</span></span>
+        <span><b>{all.links.toLocaleString()}</b> series on shelves <span className="gp-muted">· {all.hidden} out of the browser{manual.links ? ` · ${manual.links} by hand` : ''}</span></span>
         <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => act('run', () => call('POST', '/api/grouping/run'))}
           title="The rules follow your Timeline reading orders; they also run after scans, new series.json files and every hour">{busy === 'run' ? 'Running…' : '↻ Run the rules'}</button>
       </div>

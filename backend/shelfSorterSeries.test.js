@@ -135,7 +135,7 @@ test('Metron kinds: an ongoing is kept as its own without the AI; the kind is sh
   assert.deepEqual([r.looked, r.ongoing, r.limited], [2, 1, 1]);
   assert.equal(kindOf('One-Shot'), 'one-shot');
   let sum = s.seriesSummary();
-  assert.deepEqual([sum.counts.own, sum.counts.ongoing, sum.types.known, sum.types.total], [1, 1, 2, 2]);
+  assert.deepEqual([sum.counts.own, sum.counts.ongoing, sum.types.known, sum.types.total], [1, 1, 1, 1]);   // America is settled now: out of scope
   await s.ask({ kinds: ['series'] });
   assert.doesNotMatch(calls[0].prompt, /T\d+ America /);                       // never sent to the AI
   assert.match(calls[0].prompt, /Black Panther: World of Wakanda \(2016\) · Marvel · 6 issues · Metron: limited series/);
@@ -210,4 +210,20 @@ test('without an AI key, Ask gives Omnibus\'s own cautious suggestions (never ap
   assert.equal(s.apply().applied, 0);                            // "Apply sure" leaves it to the admin
   assert.equal(s.apply({ seriesIds: ['wow'], sureOnly: false, mode: 'row' }).applied, 1);
   assert.equal(s.status().aiAvailable, false);
+});
+
+test('Metron lookups cover only what a type can still change: open suggestions first, then unasked series', async () => {
+  const { db, g } = fixture(answer);
+  const ids = { wow: 200, kj: 300, am: 100, uhawk: 400, aa: 500 };
+  for (const [id, cid] of Object.entries(ids)) db.prepare("UPDATE scanned_series SET series_json = json_set(series_json, '$.metadata.comicid', ?) WHERE id = ?").run(cid, id);
+  const asked = [];
+  const metron = { seriesStatus: async id => { asked.push(id); return { id: 1, seriesType: 'Limited Series' }; } };
+  const types = createSeriesTypes({ db, metron });
+  const ai = { run: (o, fn) => fn(), choose: () => 'm', complete: async opts => ({ text: JSON.stringify(answer(opts)), jobId: 'j', model: 'm' }) };
+  const s = createShelfSorter({ db, grouping: g, ai, getSetting: () => null, setSetting: () => {}, seriesTypes: types });
+  await s.ask({ kinds: ['series'] });   // wow → home (open); kj landmark, uhawk none, am own: settled; aa not answered by the fake
+  assert.deepEqual(s.seriesSummary().types, { known: 0, total: 2, running: false });
+  await s.lookUpTypes();
+  assert.deepEqual(asked, ['200', '500']);                                    // the suggestion first, then the unanswered one
+  assert.deepEqual(s.seriesSummary().types.known, 2);
 });

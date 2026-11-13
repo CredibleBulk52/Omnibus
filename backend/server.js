@@ -1535,6 +1535,9 @@ for (const sql of [
   // manager once no pick is still wanted) and when the fill started.
   "ALTER TABLE monitored_series ADD COLUMN fill_auto_remove INTEGER DEFAULT 0",
   "ALTER TABLE monitored_series ADD COLUMN fill_started_at TEXT",
+  // shelf_home_id (2026-11-14): a special added with "Special of …" gets its own folder and is put
+  // on this scanned series' Specials shelf (seriesGrouping: source 'monitor'). Annuals are unchanged.
+  "ALTER TABLE monitored_series ADD COLUMN shelf_home_id TEXT DEFAULT NULL",
 ].forEach(sql => { try { db.exec(sql); } catch (e) { /* column already exists */ } });
 
 // Backfill issue dates from stored CV data. Issues discovered before CV had
@@ -7709,6 +7712,7 @@ app.get('/api/monitor/series', (req, res) => {
   const rows = db.prepare(`
     SELECT s.*,
       p.name as _parent_name,
+      hs.name as _shelf_home_name,
       ss.id as scanned_series_id,
       SUM(CASE WHEN i.is_annual = 0 AND i.status != 'skipped' THEN 1 ELSE 0 END) as total_tracked,
       SUM(CASE WHEN i.is_annual = 0 AND i.status = 'wanted'    THEN 1 ELSE 0 END) as wanted_count,
@@ -7717,6 +7721,7 @@ app.get('/api/monitor/series', (req, res) => {
     FROM monitored_series s
     LEFT JOIN monitored_issues i ON i.series_id = s.id
     LEFT JOIN monitored_series p ON p.id = s.parent_series_id
+    LEFT JOIN scanned_series hs ON hs.id = s.shelf_home_id
     LEFT JOIN scanned_series ss ON ss.path = s.directory
     GROUP BY s.id
     ORDER BY s.name
@@ -8567,14 +8572,22 @@ app.post('/api/monitor/series', requireDownloadAccess, async (req, res) => {
   let directory;
   let parentMonitoredId = null;
 
+  let shelfHomeId = null;
   if (parentScannedSeriesId) {
-    // Special series — use the parent scanned series' directory directly, no new folder created
+    // Special of … (2026-11-14): its own folder beside the series it belongs to, as a series in its
+    // own right; the Specials-shelf rules then put it on that series' shelf (shelf_home_id). Earlier
+    // specials shared the parent's folder; they stay as they are.
     const parentScanned = db.prepare('SELECT * FROM scanned_series WHERE id = ?').get(String(parentScannedSeriesId));
     if (!parentScanned) return res.status(404).json({ error: 'Parent series not found' });
-    directory = parentScanned.path;
-    const parentMon = db.prepare('SELECT id FROM monitored_series WHERE directory = ?').get(directory);
-    parentMonitoredId = parentMon?.id || null;
-    logger.info('monitor', `Adding special series "${name}" — using parent directory`, { directory, parentMonitoredId });
+    const folderName = `${name} (${year || 'Unknown'})`.replace(/[/\\:*?"<>|]/g, '');
+    try {
+      directory = require('./pathSecurity').resolveCreatableWithinRoot(COMICS_ROOT, path.join(path.dirname(parentScanned.path), folderName));
+      if (!fs.existsSync(directory)) fs.mkdirSync(directory, { recursive: true });
+    } catch (e) {
+      return res.status(e.status || 500).json({ error: e.status ? e.message : 'Could not create directory' });
+    }
+    shelfHomeId = parentScanned.id;
+    logger.info('monitor', `Adding special "${name}" in its own folder, for the Specials shelf of "${parentScanned.name}"`, { directory });
   } else {
     // Normal series — create a new folder
     let resolvedParentDir = parentDir;
@@ -8596,15 +8609,17 @@ app.post('/api/monitor/series', requireDownloadAccess, async (req, res) => {
   // "Special of …" picker — i.e. they provided parentScannedSeriesId.
   // We record this independently of parent_series_id so the prefix-strict
   // matcher fires even when the scanned parent isn't itself monitored.
-  const isSpecial = parentScannedSeriesId ? 1 : 0;
+  // Since 2026-11-14 a "Special of" series is not marked is_special: it has its own folder, so its
+  // files are its regular issues; shelf_home_id records where it is shelved.
+  const isSpecial = 0;
   try {
     const seriesType = detectSeriesType(publisher);
     db.prepare(`
-      INSERT OR REPLACE INTO monitored_series (id, name, publisher, year, total_issues, image_url, cv_url, directory, series_type, parent_series_id, is_special, source_name)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, publisher, year, total_issues || 0, image_url, cv_url, directory, seriesType, parentMonitoredId, isSpecial, source_name || null);
+      INSERT OR REPLACE INTO monitored_series (id, name, publisher, year, total_issues, image_url, cv_url, directory, series_type, parent_series_id, is_special, source_name, shelf_home_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, publisher, year, total_issues || 0, image_url, cv_url, directory, seriesType, parentMonitoredId, isSpecial, source_name || null, shelfHomeId);
     if (seriesType === 'manga') logger.info('monitor', `Auto-detected manga series: "${name}" (publisher: ${publisher})`);
-    if (isSpecial) logger.info('monitor', `Adding "${name}" as a SPECIAL`, { directory, parentMonitoredId, parentScannedSeriesId });
+    if (shelfHomeId) scheduleGroupingRun('special added');
   } catch (e) {
     return res.status(500).json({ error: e.message });
   }

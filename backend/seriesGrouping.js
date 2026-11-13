@@ -202,12 +202,37 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     return { links, events, S };
   }
 
+  // Specials added with "Special of …" in the download manager (2026-11-14): their own folder, put on
+  // the chosen series' shelf (monitored_series.shelf_home_id) once the folder has been scanned.
+  // Source 'monitor': hidden like a tie-in; a removal is remembered like the rules' and the AI's.
+  function linkMonitoredSpecials() {
+    if (!has('monitored_series')) return 0;
+    let rows;
+    try {
+      rows = db.prepare(`SELECT ss.id AS series_id, ms.shelf_home_id AS home_id, h.name AS home_name FROM monitored_series ms
+        JOIN scanned_series ss ON ss.path = ms.directory JOIN scanned_series h ON h.id = ms.shelf_home_id
+        WHERE ms.shelf_home_id IS NOT NULL AND ss.id <> ms.shelf_home_id`).all();
+    } catch { return 0; }   // no shelf_home_id column yet
+    const exists = db.prepare('SELECT 1 FROM series_links WHERE series_id = ? AND home_id = ?');
+    const rejected = db.prepare("SELECT 1 FROM series_link_overrides WHERE series_id = ? AND home_id = ? AND action = 'reject'");
+    const ins = db.prepare(`INSERT INTO series_links (series_id, home_id, source, role, hidden, reason, created_at) VALUES (?, ?, 'monitor', 'special', 1, ?, ?)
+      ON CONFLICT(series_id, home_id) DO NOTHING`);
+    let n = 0;
+    for (const r of rows) {
+      if (exists.get(r.series_id, r.home_id) || rejected.get(r.series_id, r.home_id)) continue;
+      n += ins.run(r.series_id, r.home_id, `Special of ${r.home_name} (added in the download manager)`, now()).changes;
+    }
+    if (n) logger && logger.info('grouping', `${n} special${n === 1 ? '' : 's'} put on their series' shelf`);
+    return n;
+  }
+
   let running = false;
   function run(reason = 'manual') {
     if (!enabled()) return { skipped: true, off: true };
     if (running) return { skipped: true };
     running = true;
     try {
+      const monitorAdded = linkMonitoredSpecials();
       const { links } = computeRuleLinks();
       const rejected = new Set(db.prepare("SELECT series_id || '|' || home_id AS k FROM series_link_overrides WHERE action = 'reject'").all().map(r => r.k));
       const previous = new Map(db.prepare("SELECT series_id || '|' || home_id AS k, created_at FROM series_links WHERE source = 'rule'").all().map(r => [r.k, r.created_at]));
@@ -230,7 +255,8 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
       } catch (e) { db.exec('ROLLBACK'); throw e; }
       const removed = [...previous.keys()].filter(k => !links.some(l => `${l.seriesId}|${l.homeId}` === k)).length;
       if (added || removed) { logger && logger.info('grouping', `Rules (${reason}): ${added} new, ${removed} gone, ${kept} unchanged`); onChange(); }
-      return { added, removed, kept };
+      else if (monitorAdded) onChange();
+      return { added, removed, kept, specials: monitorAdded };
     } finally { running = false; }
   }
 
@@ -289,11 +315,11 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     if (!l) return false;
     db.prepare('DELETE FROM series_links WHERE series_id = ? AND home_id = ?').run(seriesId, homeId);
     // A series taken off an event's shelf stays off that event's shelf, whichever series is its home.
-    if (l.source === 'rule' || l.source === 'ai') db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'reject', ?)")
+    if (l.source === 'rule' || l.source === 'ai' || l.source === 'monitor') db.prepare("INSERT OR REPLACE INTO series_link_overrides (series_id, home_id, action, created_at) VALUES (?, ?, 'reject', ?)")
       .run(seriesId, l.event_id ? `event:${l.event_id}` : homeId, now());
     db.prepare("DELETE FROM series_link_overrides WHERE series_id = ? AND action = 'user_keep' AND home_id IN (?, ?)").run(seriesId, homeId, `event:${l.event_id || ''}`);
     onChange();
-    return l.source;   // 'rule' | 'ai' | 'manual' (Undo: restore a rule link, link a manual one again)
+    return l.source;   // 'rule' | 'ai' | 'monitor' | 'manual' (Undo: restore a rule link, link a manual one again)
   }
 
   // ── Undo (2026-11-13) ──

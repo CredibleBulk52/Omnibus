@@ -657,13 +657,14 @@ function AddTimeParentPicker({ onSelect, onClose }) {
   );
 }
 
-// "Special of" choice shared by both add dialogs: a one-shot or special added
-// under an existing library series instead of getting its own folder.
+// "Special of" choice shared by both add dialogs: a one-shot or special that belongs to an existing
+// library series. Since 2026-11-14 it gets its own folder beside that series and goes on its
+// Specials shelf (earlier specials shared the series' folder and stay that way).
 function SpecialOfRow({ value, onChange }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <div className="a-flex a-ai-c a-gap-8" style={{ padding: '8px 20px', background: 'var(--adm-g1)', borderTop: '1px solid #2a1a3a' }}>
+      <div className="a-flex a-ai-c a-gap-8" style={{ padding: '8px 20px', background: 'var(--adm-g1)', borderTop: '1px solid #2a1a3a', flexWrap: 'wrap' }}>
         <span className="a-muted a-fs-11">◈ Special of:</span>
         {value
           ? <>
@@ -676,6 +677,8 @@ function SpecialOfRow({ value, onChange }) {
               className="a-ptr a-fs-11" style={{ background: 'transparent', border: '1px solid #3a2a4a', borderRadius: 3, color: '#9a80b0', padding: '2px 8px' }}>
               Select parent series (optional)
             </button>
+        }
+        {value && <span className="a-faint a-fs-10" style={{ width: '100%' }}>Gets its own folder beside {value.name} and goes on its Specials shelf.</span>
         }
       </div>
       {open && (
@@ -2272,11 +2275,11 @@ function SeriesCard({ series, onRemove, onTypeToggle }) {
           )}
 
           {/* Special of indicator — shown when this series has a parent */}
-          {series.parent_series_id && (
+          {(series.parent_series_id || series.shelf_home_id) && (
             <div className="a-flex a-ai-c a-gap-6" style={{ padding: '4px 12px', background: 'var(--adm-g1)', borderTop: '1px solid #2a1a3a' }}>
               <span className="a-fs-11" style={{ color: '#c090e0' }}>◈ Special of</span>
               <span className="a-fs-11 a-fw6" style={{ color: '#c090e0' }}>
-                {series._parent_name || series.parent_series_id}
+                {series._parent_name || series._shelf_home_name || series.parent_series_id || series.shelf_home_id}
               </span>
             </div>
           )}

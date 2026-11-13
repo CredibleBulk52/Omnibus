@@ -12,7 +12,7 @@ function fixture() {
     CREATE TABLE event_issues (id INTEGER PRIMARY KEY, event_id TEXT, scanned_book_id TEXT, tier TEXT, phase TEXT, sort_order INTEGER);`);
   let n = 0;
   const series = (id, name, year, issues, { json = true, status = 'Ended', desc = '', books = issues } = {}) => {
-    db.prepare('INSERT INTO scanned_series VALUES (?, ?, ?, ?, ?)').run(id, name, year,
+    db.prepare('INSERT INTO scanned_series (id, name, year, series_json, book_count) VALUES (?, ?, ?, ?, ?)').run(id, name, year,
       json ? JSON.stringify({ metadata: { name, year, total_issues: issues, status, description_text: desc } }) : null, books);
     const ids = [];
     for (let i = 0; i < books; i++) { const b = `${id}-${i}`; db.prepare('INSERT INTO scanned_books (id, series_id) VALUES (?, ?)').run(b, id); ids.push(b); }
@@ -225,4 +225,22 @@ test('with Specials shelves off, nothing runs and nothing is grouped; links are 
   assert.deepEqual([g.members('fp'), g.homesOf('cold')], [[], []]);
   on = true;
   assert.equal(g.groupMap().get('cold').homes[0].id, 'fp');
+});
+
+test('a special added with "Special of" lands on its series\' shelf once its own folder is scanned; a removal sticks', () => {
+  const { db, series } = fixture();
+  db.exec('ALTER TABLE scanned_series ADD COLUMN path TEXT');
+  db.exec(`CREATE TABLE monitored_series (id TEXT PRIMARY KEY, name TEXT, directory TEXT, shelf_home_id TEXT)`);
+  series('bat', 'Batman', 2025, 15);
+  db.prepare("INSERT INTO monitored_series VALUES ('cv9', 'Batman: Bad Seeds - Sunset', '/comics/DC/Batman Bad Seeds - Sunset (2026)', 'bat')").run();
+  const g = createSeriesGrouping({ db });
+  assert.equal(g.run().specials, 0);                                          // folder not scanned yet
+  series('bs', 'Batman: Bad Seeds - Sunset', 2026, 1);
+  db.prepare("UPDATE scanned_series SET path = '/comics/DC/Batman Bad Seeds - Sunset (2026)' WHERE id = 'bs'").run();
+  assert.equal(g.run().specials, 1);
+  const m = g.groupMap().get('bs');
+  assert.deepEqual([m.homes[0].id, m.homes[0].source, m.homes[0].role, m.hidden], ['bat', 'monitor', 'special', true]);
+  assert.equal(g.unlink('bs', 'bat'), 'monitor');
+  assert.equal(g.run().specials, 0);                                          // not put back
+  assert.equal(g.groupMap().has('bs'), false);
 });

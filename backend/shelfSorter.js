@@ -285,11 +285,26 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   }
 
   // The Metron lookups for the series the Shelf Sorter may ask about (seriesTypes.js), then the rule.
+  // Only the series a type can still change (2026-11-14): open suggestions first, then series not
+  // asked about yet. Settled ones (own, landmark, none, declined, shelved) are skipped: at Metron's
+  // pace (two requests, about 7 s a series) looking up all 800+ took hours for nothing.
+  function typeScope(bctx) {
+    const saved = answersMap('series');
+    const open = [], unasked = [];
+    for (const t of bctx.targets) {
+      if (!t.comicid) continue;
+      const row = saved.get(t.id);
+      if (!row) { if (B.seriesFacts(t, bctx).candidates.length) unasked.push(t); continue; }
+      if (row.applied === 'declined') continue;
+      let a = null; try { a = JSON.parse(row.answer); } catch {}
+      if (a && seriesOpen(a, t.id, bctx)) open.push(t);
+    }
+    return [...open, ...unasked];
+  }
   async function lookUpTypes({ limit = 60 } = {}) {
     if (!seriesTypes) return { skipped: true };
     const bctx = bContext();
-    const items = bctx.targets.filter(t => t.comicid && B.seriesFacts(t, bctx).candidates.length)
-      .map(t => ({ comicid: t.comicid, name: t.name, year: t.year }));
+    const items = typeScope(bctx).map(t => ({ comicid: t.comicid, name: t.name, year: t.year }));
     const r = await seriesTypes.run(items, { limit, onKinds: () => { bForget(); typeRule(); } });
     return r;
   }
@@ -666,7 +681,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     const shelved = db.prepare("SELECT series_id, home_id, reason, created_at FROM series_links WHERE source = 'ai' ORDER BY created_at DESC").all()
       .map(l => ({ seriesId: l.series_id, name: label2(l.series_id), homeId: l.home_id, homeName: label2(l.home_id), why: String(l.reason || '').replace(/^Shelf Sorter: /, '') }));
     const types = seriesTypes ? seriesTypes.all() : new Map();
-    const lookable = bctx.targets.filter(t => t.comicid);
+    const lookable = typeScope(bctx);
     const typesKnown = lookable.filter(t => types.has(t.comicid)).length;
     return { suggested, shelved, counts, ready, toAsk, asked: saved.size,
       types: seriesTypes ? { known: typesKnown, total: lookable.length, running: seriesTypes.status().running } : null };
