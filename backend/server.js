@@ -12163,6 +12163,8 @@ async function runCreateFromFiles(libraryId, userId) {
   try {
     for (const r of rows) {
       if (filesJob.stop) { filesJob.note = 'Stopped.'; break; }
+      // Created by hand since the list was made: leave it alone.
+      if (fs.existsSync(path.join(r.path, 'series.json'))) { filesJob.done++; continue; }
       filesJob.current = r.name;
       try {
         const v = await volumeForFolder(r.id);
