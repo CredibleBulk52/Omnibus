@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GenerateModal, RunEditorModal } from '../pages/TopShelfGenerators';
 import { NewEntryButton, NewEntryDialog } from './NewEntry';
-import { ImportButton } from './CuratedTransfer';
+import { ImportButton, StarterPackButton } from './CuratedTransfer';
 import '../adminBar.css';
 import { AiInfo } from './AiInfo';
 
@@ -132,6 +132,7 @@ export default function TopShelfAdmin({ onChanged, newTab = null, onNewTab = () 
         <span className="admin-bar-label">Admin</span>
         <NewEntryButton label="New run" onClick={() => onNewTab('generate')} />
         <ImportButton />
+        <StarterPackButton kind="runs" />
         <span className="tsa-menuwrap" ref={menuRef}>
           <button className="admin-bar-btn" disabled={catRunning} onClick={() => {
             if (!catMenu) getJson('/api/editor/runs/categories?awards=1').then(k => setAwardsCount(k && k.counts ? k.counts.awards || 0 : 0)).catch(() => {});

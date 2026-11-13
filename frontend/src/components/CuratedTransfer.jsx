@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // ─── Export and import of curated reading orders (2026-11-12) ─────
@@ -64,4 +64,45 @@ export function ImportButton() {
     <input ref={input} type="file" accept=".json,application/json" hidden onChange={pick} />
     {error && <span className="admin-bar-error" role="alert">{error}</span>}
   </>;
+}
+
+// ─── Starter pack (2026-11-14, backend/starterPack.js) ───────────
+// Admin bar button on an empty Timeline, Top Shelf or Essentials page: loads the curated events,
+// runs and Essentials that ship with Omnibus, published at once. Hidden once the pack is loaded or
+// when this page already has its own (kind: 'events' | 'runs' | 'lists').
+const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+export function StarterPackButton({ kind }) {
+  const [info, setInfo] = useState(null);
+  const [step, setStep] = useState('idle');   // idle | confirm | loading | done
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    let live = true;
+    fetch('/api/starter-pack').then(r => (r.ok ? r.json() : null)).then(d => { if (live) setInfo(d); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  if (!info || !info.available || !info.pack) return null;
+  if (step === 'idle' && (info.loaded || (info.have && info.have[kind] > 0))) return null;
+  const p = info.pack;
+  const what = `${plural(p.events, 'Timeline event', 'Timeline events')}, ${plural(p.runs, 'Top Shelf run', 'Top Shelf runs')} and ${plural(p.lists, 'Essential', 'Essentials')}`;
+  const load = async () => {
+    setStep('loading'); setMessage('');
+    try {
+      const r = await fetch('/api/starter-pack/load', { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `Loading failed (${r.status})`);
+      setStep('done');
+      setMessage(`Loaded ${plural(d.events, 'event', 'events')}, ${plural(d.runs, 'run', 'runs')} and ${plural(d.lists, 'Essential', 'Essentials')}${d.skipped ? ` (${d.skipped} you already had were left as they are)` : ''}. Matching them to your comics in the background…`);
+      setTimeout(() => window.location.reload(), 2500);
+    } catch (e) { setStep('confirm'); setMessage(e.message); }
+  };
+  if (step === 'done') return <span className="admin-bar-note" role="status">{message}</span>;
+  if (step === 'confirm' || step === 'loading') return <span className="starter-pack-confirm">
+    <span>Add {what}? Everyone sees them at once; you can edit or delete any of them.</span>
+    <button type="button" className="admin-bar-btn primary" onClick={load} disabled={step === 'loading'}>{step === 'loading' ? 'Loading…' : 'Load'}</button>
+    {step !== 'loading' && <button type="button" className="admin-bar-btn" onClick={() => { setStep('idle'); setMessage(''); }}>Cancel</button>}
+    {message && <span className="admin-bar-error" role="alert">{message}</span>}
+  </span>;
+  return <button type="button" className="admin-bar-btn primary" onClick={() => setStep('confirm')}
+    title={`Start with the reading orders that come with Omnibus: ${what}. They are matched to your comics; what you don't own shows as missing.`}>
+    ★ Load the starter pack</button>;
 }

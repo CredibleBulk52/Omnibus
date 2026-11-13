@@ -17428,7 +17428,11 @@ const readingLists = require('./readingLists')({
   runBackground: (name, fn) => (...a) => cvCtx.run({ lane: 'background', caller: name }, () => fn(...a)),
 });
 // Export and import of Essentials, Timeline events and Top Shelf runs between installs (2026-11-12).
-require('./curatedTransfer').createCuratedTransfer({ app, db, requireAdmin, logger, readingLists,
+const curatedTransfer = require('./curatedTransfer').createCuratedTransfer({ app, db, requireAdmin, logger, readingLists,
+  reconcileEvents: () => reconcileEventIssues(false), reconcileRuns: () => canonMatch.reconcile(false) });
+// Starter pack (2026-11-14, starterPack.js): the maintainer's curated reading orders, loaded published by a new admin.
+require('./starterPack').createStarterPack({ app, db, curated: curatedTransfer, requireAdmin, logger, getSetting,
+  setSetting: (k, v) => db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v),
   reconcileEvents: () => reconcileEventIssues(false), reconcileRuns: () => canonMatch.reconcile(false) });
 try { readingContexts = require('./readingContexts').create({ db, readingLists }); }
 catch (e) { logger.error('progress', 'Reading contexts unavailable', e.message); }

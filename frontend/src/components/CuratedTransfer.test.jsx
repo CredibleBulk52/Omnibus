@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
-import { ImportButton } from './CuratedTransfer';
+import { ImportButton, StarterPackButton } from './CuratedTransfer';
 import { ADAPTERS } from './listEditor/adapters';
 
 function Landed() { const s = useLocation().state; return <p id="landed">{s?.imported?.issues}</p>; }
@@ -39,4 +39,27 @@ test('the editor explains how to publish each kind of draft', () => {
   expect(ADAPTERS.run.draftNote({ details: { status: 'pending' } })).toMatch(/Approved/);
   expect(ADAPTERS.event.fields({ details: { draft: 1 }, rows: [] })[0].key).toBe('draft');
   expect(ADAPTERS.event.fields({ details: {}, rows: [] }).some(f => f.key === 'draft')).toBe(false);
+});
+
+test('the starter pack button: only on an empty page before the pack is loaded; asks first, then loads', async () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  const prev = global.fetch;
+  const status = { available: true, loaded: null, pack: { events: 180, runs: 225, lists: 13 }, have: { events: 0, runs: 4, lists: 0 } };
+  global.fetch = vi.fn(async (url, o = {}) => ({ ok: true, json: async () => (o.method === 'POST' ? { events: 180, runs: 225, lists: 13, skipped: 0 } : status) }));
+  const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)); });
+  const mount = kind => { const host = document.createElement('div'), root = createRoot(host); act(() => root.render(<StarterPackButton kind={kind} />)); return { host, root }; };
+  const runs = mount('runs');
+  const ev = mount('events');
+  try {
+    await tick();
+    expect(runs.host.textContent).toBe('');                       // Top Shelf already has runs
+    expect(ev.host.textContent).toBe('★ Load the starter pack');
+    await act(async () => { ev.host.querySelector('button').click(); });
+    expect(ev.host.textContent).toMatch(/Add 180 Timeline events, 225 Top Shelf runs and 13 Essentials\? Everyone sees them at once/);
+    expect(global.fetch).not.toHaveBeenCalledWith('/api/starter-pack/load', expect.anything());
+    vi.useFakeTimers();
+    await act(async () => { [...ev.host.querySelectorAll('button')].find(b => b.textContent === 'Load').click(); await Promise.resolve(); await Promise.resolve(); });
+    expect(global.fetch).toHaveBeenCalledWith('/api/starter-pack/load', expect.objectContaining({ method: 'POST' }));
+    expect(ev.host.textContent).toMatch(/Loaded 180 events, 225 runs and 13 Essentials/);
+  } finally { vi.useRealTimers(); act(() => { runs.root.unmount(); ev.root.unmount(); }); global.fetch = prev; }
 });

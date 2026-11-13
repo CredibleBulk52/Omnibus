@@ -1,6 +1,6 @@
 import { PublisherLogo } from '../components/Branding';
 import AdminBar from '../components/AdminBar';
-import { ImportButton } from '../components/CuratedTransfer';
+import { ImportButton, StarterPackButton } from '../components/CuratedTransfer';
 import CuratedMast from '../components/CuratedMast';
 import PageHeader from '../components/PageHeader';
 import { NewEntryButton, NewEntryDialog } from '../components/NewEntry';
@@ -210,6 +210,7 @@ export default function EventsPage() {
           <AdminBar>
             <NewEntryButton label="New event" onClick={() => setNewTab('generate')} />
             <ImportButton />
+            <StarterPackButton kind="events" />
             <TierNotesRefresh />
           </AdminBar>
         )}

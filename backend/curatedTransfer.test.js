@@ -176,3 +176,52 @@ test('the editor shows an imported event as a draft, and publishing it clears th
   assert.equal(saved.body.ok, true);
   assert.equal(t.db.prepare('SELECT draft FROM events WHERE id = ?').get(out.id).draft, 0);
 });
+
+// ── Starter pack (2026-11-14, starterPack.js) ──
+test('the starter pack: built without notes or excluded events, loaded published, twice adds nothing', async () => {
+  const { buildPack, createStarterPack, strip } = require('./starterPack');
+  const s = source();
+  require('./eventDrafts').ensure(s.db);
+  s.db.exec(`INSERT INTO events (id, name, year) VALUES ('ev-x', 'Batman: Bad Seeds', 2026), ('ev-d', 'Hidden one', 2020);
+    INSERT INTO event_issues (event_id, sort_order, series_name, issue_number) VALUES ('ev-x', 1, 'Batman', '1'), ('ev-d', 1, 'Batman', '2');
+    UPDATE events SET draft = 1 WHERE id = 'ev-d';
+    INSERT INTO canon_runs (id, title, status) VALUES (10, 'Not yet', 'pending');
+    INSERT INTO canon_runs (id, title, parent_series, status, event_id) VALUES (11, 'Blackest Night', 'Blackest Night', 'approved', 'ev-1');`);
+  const pack = buildPack({ db: s.db, curated: s.transfer });
+  assert.deepEqual(pack.counts, { events: 1, runs: 2, lists: 1 });                       // no draft, no pending run, no private list
+  assert.deepEqual(pack.left_out, ['Batman: Bad Seeds (2026)']);
+  const [ev, linked, run, list] = pack.items;
+  assert.deepEqual([ev.kind, linked.kind, run.kind, list.kind], ['event', 'run', 'run', 'list']);   // events first: runs and lists link to them
+  assert.deepEqual([linked.issues.length, linked.item.event.name], [0, 'Blackest Night']);   // a run that opens its Timeline event
+  assert.ok(ev.issues.every(i => i.tier_note === null && !('tier_reason' in i)));
+  assert.equal(ev.issues[0].tier, 'essential');                                         // tiers and phases stay
+  assert.ok(list.entries.every(e => e.note === null));
+  assert.equal(strip({ kind: 'run', item: { title: 'We3', description: 'old' } }).item.description.startsWith('Grant Morrison'), true);
+  assert.doesNotMatch(JSON.stringify(pack), /Start here|Read this first|The event opens here/);
+
+  // A new install loads it: published at once, matched afterwards, and a second load adds nothing.
+  const t = install({ books: [{ id: 'b-2001', num: '1', cv: '2001' }] });
+  const fs = require('fs'), os = require('os'), path = require('path');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pack-')), 'starter-pack.json');
+  fs.writeFileSync(file, JSON.stringify(pack));
+  const settings = new Map();
+  let matched = 0;
+  const sp = createStarterPack({ db: t.db, curated: t.transfer, getSetting: k => settings.get(k) || null, setSetting: (k, v) => settings.set(k, v),
+    reconcileEvents: async () => { matched++; }, reconcileRuns: async () => { matched++; }, packFile: file });
+  assert.deepEqual(sp.status().have, { events: 0, runs: 0, lists: 0 });
+  assert.equal(sp.status().available, true);
+  const r = await sp.load(t.admin);
+  assert.deepEqual([r.events, r.runs, r.lists, r.skipped, r.failed], [1, 2, 1, 0, 0]);
+  assert.equal(String(t.db.prepare("SELECT event_id FROM canon_runs WHERE title = 'Blackest Night'").get().event_id), e2id(t));
+  const e2 = t.db.prepare("SELECT * FROM events WHERE name = 'Blackest Night'").get();
+  assert.equal(e2.draft, 0);
+  assert.deepEqual(t.db.prepare("SELECT DISTINCT status FROM canon_runs").all().map(x => x.status), ['approved']);
+  const l2 = t.db.prepare("SELECT * FROM reading_lists").get();
+  assert.deepEqual([l2.visibility, l2.owner_id], ['essential', 'a1']);
+  assert.ok(sp.status().loaded);
+  await new Promise(res => setTimeout(res, 0));
+  assert.equal(matched, 2);                                                             // matched once, at the end
+  const again = await sp.load(t.admin);
+  assert.deepEqual([again.events, again.runs, again.lists, again.skipped], [0, 0, 0, 4]);
+});
+const e2id = t => t.db.prepare("SELECT id FROM events WHERE name = 'Blackest Night'").get().id;

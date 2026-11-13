@@ -11,7 +11,7 @@ import CatalogCollections from '../components/CatalogCollections';
 import EssentialCollectionDialog from '../components/EssentialCollectionDialog';
 import CuratedMast from '../components/CuratedMast';
 import AdminBar from '../components/AdminBar';
-import { ImportButton } from '../components/CuratedTransfer';
+import { ImportButton, StarterPackButton } from '../components/CuratedTransfer';
 import PageHeader from '../components/PageHeader';
 import { NewEntryButton, NewEntryDialog, AskForList } from '../components/NewEntry';
 import '../listCatalog.css';
@@ -80,7 +80,7 @@ function Catalog({ essentials = false }) {
           label="Reading Lists" intro="Build your next adventure, follow a great reading order, or pick up where you left off."
           stamp={['Your long box.', 'Your Journey.', 'Your Rules.']} />}
     {essentials
-      ? isAdmin() && <AdminBar><NewEntryButton label="New Essential" onClick={() => setCreating('generate')} /><NewEntryButton label="New collection" onClick={() => setCollectionEdit({name:"",appearance:{publisher:""}})} /><ImportButton /></AdminBar>
+      ? isAdmin() && <AdminBar><NewEntryButton label="New Essential" onClick={() => setCreating('generate')} /><NewEntryButton label="New collection" onClick={() => setCollectionEdit({name:"",appearance:{publisher:""}})} /><ImportButton /><StarterPackButton kind="lists" /></AdminBar>
       : <AdminBar label="My lists"><NewEntryButton label="New list" onClick={() => setCreating('generate')} /></AdminBar>}
     {!essentials && <div className="rl-tabs" role="tablist" aria-label="Reading lists">{[['mine','My Lists'],['following','Following'],['public','Public']].map(([key,label]) => <button key={key} className={`rl-tab ${scope === key ? 'rl-tab--active' : ''}`} role="tab" aria-selected={scope === key} onClick={() => setParams({ tab: key })}>{label}</button>)}</div>}
     <div className="lc-toolbar find-bar">

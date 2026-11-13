@@ -1696,7 +1696,10 @@ module.exports = function createReadingLists(deps) {
   // Import as the admin's own private list (a draft: readers cannot see it). The editor's Details
   // panel publishes it (Who can see it: Essential). Event and run entries follow an event or run of
   // the same name here; without one, they keep the exported issues as a story.
-  function importList(data, user) {
+  // opts.visibility: 'essential' for the starter pack (published at once); otherwise a private draft.
+  // opts.resolve false (the starter pack): entries that follow a Comic Vine volume keep the exported
+  // issues and are refreshed by the nightly run (25 volumes a night) instead of all at once.
+  function importList(data, user, { visibility = 'private', resolve = true } = {}) {
     const item = data && data.item && typeof data.item === 'object' ? data.item : {};
     const name = str(item.name, 200);
     if (!name) throw bad(400, 'The file has no list name');
@@ -1718,7 +1721,7 @@ module.exports = function createReadingLists(deps) {
     db.transaction(() => {
       const catalog = collections.length ? JSON.stringify({ publishers: [], library_ids: [], featured: false, collections: collections.map(c => collectionRegistry.ensure(c)) }) : null;
       listId = Number(db.prepare(`INSERT INTO reading_lists (name, description, owner_id, visibility, source, catalog_json) VALUES (?,?,?,?,?,?)`)
-        .run(name, str(item.description, 4000), user.sub, 'private', 'import', catalog).lastInsertRowid);
+        .run(name, str(item.description, 4000), user.sub, VISIBILITY.has(visibility) ? visibility : 'private', 'import', catalog).lastInsertRowid);
       require('./homepageFields').write(db, 'reading_lists', listId, { home_tagline: str(item.home_tagline, 120), home_description: str(item.home_description, 400) });
       const ins = db.prepare(`INSERT INTO reading_list_entries (list_id, sort_order, entry_type, ref_id, cv_volume_id, scanned_series_id,
           issue_start, issue_end, label, note, unpacked, resolve_status, resolve_source, tier_filter) VALUES (?,?,?,?,?,NULL,?,?,?,?,?,?,?,?)`);
@@ -1748,9 +1751,9 @@ module.exports = function createReadingLists(deps) {
         const entryType = type === 'issue' || live || x.unpacked ? type : 'story';
         const id = Number(ins.run(listId, ++pos, entryType, null, live ? cvVol : null, str(x.issue_start, 40), str(x.issue_end, 40),
           label || (issues[0] ? `${issues[0].series_name} #${issues[0].issue_number}` : 'Imported'), note, live ? 0 : (type === 'issue' ? 0 : 1),
-          live ? 'pending' : 'ok', live ? null : (type === 'issue' ? null : (str(x.resolve_source, 20) || 'story')), null).lastInsertRowid);
+          live && resolve ? 'pending' : 'ok', live ? null : (type === 'issue' ? null : (str(x.resolve_source, 20) || 'story')), null).lastInsertRowid);
         insertIssueRows(id, type === 'issue' ? issues.slice(0, 1) : issues);
-        if (live) { toResolve.push(id); summary.refreshing++; }
+        if (live && resolve) { toResolve.push(id); summary.refreshing++; }
         summary.entries++; summary.issues += type === 'issue' ? Math.min(1, issues.length) : issues.length;
       }
       touch(listId);
@@ -1761,7 +1764,7 @@ module.exports = function createReadingLists(deps) {
     for (const id of toResolve) startResolve(id);
     summary.owned = db.prepare(`SELECT COUNT(*) AS n FROM list_issues li JOIN reading_list_entries e ON e.id = li.owner_id
       WHERE li.owner_kind = ? AND e.list_id = ? AND li.scanned_book_id IS NOT NULL`).get(OWNER_KIND, listId).n;
-    logger?.info?.('reading-lists', 'Reading list imported', { listId, name, ...summary, by: user.username });
+    if (visibility === 'private') logger?.info?.('reading-lists', 'Reading list imported', { listId, name, ...summary, by: user.username });
     return { id: listId, name, summary };
   }
 

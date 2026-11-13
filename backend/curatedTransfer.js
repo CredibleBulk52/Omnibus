@@ -68,7 +68,8 @@ function createCuratedTransfer({ app, db, requireAdmin, logger, readingLists, re
       issues: rows.map(r => ({ ...issueOut(r), tier: r.tier || 'recommended', tier_note: r.tier_note || null, phase: r.phase || null, ...(r.tier_reason ? { tier_reason: r.tier_reason } : {}) })),
     };
   }
-  function importEvent(data, user) {
+  // publish (the starter pack, starterPack.js): arrives published instead of as a draft.
+  function importEvent(data, user, publish = false) {
     const it = data.item;
     const name = txt(it.name, 200);
     if (!name) throw new Bad('The file has no event name.');
@@ -82,8 +83,8 @@ function createCuratedTransfer({ app, db, requireAdmin, logger, readingLists, re
     const same = db.prepare('SELECT COUNT(*) AS n FROM events WHERE lower(name) = lower(?) AND (year IS ? OR year = ?)').get(name, year, year).n;
     db.transaction(() => {
       db.prepare(`INSERT INTO events (id, name, publisher, year, description, cover_image, event_tier, sort_order, source, draft)
-        VALUES (?,?,?,?,?,?,?,?,'import',1)`).run(id, name, txt(it.publisher, 120), year && year >= 1900 && year <= 2100 ? year : null,
-        txt(it.description, 8000), txt(it.cover_image, 1000), tier, Math.max(0, int(it.sort_order) || 0));
+        VALUES (?,?,?,?,?,?,?,?,'import',?)`).run(id, name, txt(it.publisher, 120), year && year >= 1900 && year <= 2100 ? year : null,
+        txt(it.description, 8000), txt(it.cover_image, 1000), tier, Math.max(0, int(it.sort_order) || 0), publish ? 0 : 1);
       require('./homepageFields').write(db, 'events', id, { home_tagline: txt(it.home_tagline, 120), home_description: txt(it.home_description, 400) });
       const ins = db.prepare(`INSERT INTO event_issues (event_id, cv_issue_id, scanned_book_id, sort_order, tier, tier_note, series_name, issue_number, issue_title,
           volume_year, manually_matched, phase${reason ? ', tier_reason' : ''}) VALUES (?,?,NULL,?,?,?,?,?,?,?,0,?${reason ? ',?' : ''})`);
@@ -111,23 +112,25 @@ function createCuratedTransfer({ app, db, requireAdmin, logger, readingLists, re
       issues: rows.map(issueOut),
     };
   }
-  function importRun(data, user) {
+  function importRun(data, user, publish = false) {
     const it = data.item;
     const title = txt(it.title, 300);
     if (!title) throw new Bad('The file has no run title.');
     const issues = (Array.isArray(data.issues) ? data.issues : []).slice(0, MAX_ISSUES).map(issueIn).filter(Boolean);
-    if (!issues.length) throw new Bad('The file has no issues.');
     let eventId = null;
     if (it.event && typeof it.event === 'object' && it.event.name) {
       const evs = db.prepare('SELECT id, year FROM events WHERE lower(name) = lower(?)').all(String(it.event.name));
       const ev = evs.find(e => it.event.year && Number(e.year) === Number(it.event.year)) || (evs.length === 1 ? evs[0] : null);
       eventId = ev ? String(ev.id) : null;
     }
+    // A run linked to a Timeline event may have no issues of its own: on Top Shelf it opens the event (Dark Nights: Metal).
+    if (!issues.length && !eventId) throw new Bad(it.event && it.event.name ? `The file has no issues, and there is no Timeline event "${it.event.name}" here to link to.` : 'The file has no issues.');
     const same = db.prepare('SELECT COUNT(*) AS n FROM canon_runs WHERE lower(title) = lower(?)').get(title).n;
     let id;
     db.transaction(() => {
       id = Number(db.prepare(`INSERT INTO canon_runs (title, parent_series, cv_volume_id, issue_range_hint, description, status, event_id)
-        VALUES (?,?,?,?,?,'pending',?)`).run(title, txt(it.parent_series, 200), txt(it.cv_volume_id, 40), txt(it.issue_range_hint, 120), txt(it.description, 8000), eventId).lastInsertRowid);
+        VALUES (?,?,?,?,?,?,?)`).run(title, txt(it.parent_series, 200), txt(it.cv_volume_id, 40), txt(it.issue_range_hint, 120), txt(it.description, 8000),
+        publish ? 'approved' : 'pending', eventId).lastInsertRowid);
       require('./homepageFields').write(db, 'canon_runs', id, { home_tagline: txt(it.home_tagline, 120), home_description: txt(it.home_description, 400) });
       const seen = new Set();
       for (const c of Array.isArray(it.categories) ? it.categories : []) {
@@ -156,22 +159,23 @@ function createCuratedTransfer({ app, db, requireAdmin, logger, readingLists, re
     const body = kind === 'list' ? readingLists.exportList(id) : kind === 'event' ? exportEvent(id) : exportRun(id);
     return { format: FORMAT, version: VERSION, kind, exported_at: new Date().toISOString(), ...(appVersion ? { app_version: appVersion } : {}), ...body };
   }
-  async function importFile(data, user) {
+  // opts.publish: published at once (the starter pack); opts.match false: the caller matches once at the end.
+  async function importFile(data, user, { publish = false, match = true } = {}) {
     const kind = checkFile(data);
     let out;
     if (kind === 'list') {
-      out = readingLists.importList(data, user);
+      out = readingLists.importList(data, user, publish ? { visibility: 'essential', resolve: false } : {});
       out.editUrl = `/reading-lists/${out.id}/edit`;
     } else if (kind === 'event') {
-      out = importEvent(data, user);
-      try { await reconcileEvents(); } catch (e) { logger?.warn?.('curated', 'Matching after import failed; the next scan will match', { error: e.message }); }
+      out = importEvent(data, user, publish);
+      if (match) try { await reconcileEvents(); } catch (e) { logger?.warn?.('curated', 'Matching after import failed; the next scan will match', { error: e.message }); }
       out.summary.owned = eventOwned(out.id);
     } else {
-      out = importRun(data, user);
-      try { await reconcileRuns(); } catch (e) { logger?.warn?.('curated', 'Matching after import failed; the next scan will match', { error: e.message }); }
+      out = importRun(data, user, publish);
+      if (match) try { await reconcileRuns(); } catch (e) { logger?.warn?.('curated', 'Matching after import failed; the next scan will match', { error: e.message }); }
       out.summary.owned = runOwned(out.id);
     }
-    logger?.info?.('curated', 'Imported', { kind, id: out.id, name: out.name, ...out.summary, by: user?.username });
+    if (!publish) logger?.info?.('curated', 'Imported', { kind, id: out.id, name: out.name, ...out.summary, by: user?.username });
     return { kind, ...out };
   }
 

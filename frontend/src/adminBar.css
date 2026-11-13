@@ -16,3 +16,6 @@
 .chron .admin-bar { margin: 16px 0 0; }
 /* Import errors (CuratedTransfer.jsx, 2026-11-12) */
 .admin-bar-error { color: #ff8a8a; font-size: 12px; max-width: 420px; }
+/* Starter pack (CuratedTransfer.jsx StarterPackButton, 2026-11-14) */
+.starter-pack-confirm { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.84rem; color: var(--om-text); }
+.admin-bar-note { font-size: 0.84rem; color: color-mix(in srgb, var(--om-text) 80%, var(--om-base)); }
