@@ -5564,7 +5564,40 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const SCRIPTS_PATH = path.join(__dirname, '../scripts');
 
 // ─── Comic Vine proxy ─────────────────────────────────────────────
+// Metron's series search, answered as Comic Vine volumes (2026-11-13): for installs without a Comic
+// Vine key, and when Comic Vine's search is at its limit. Only series Metron has linked to a Comic Vine
+// volume are returned (Omnibus keys everything on Comic Vine IDs). Metron's list has no Comic Vine ID,
+// so each candidate's record is read (3.5 s apart): the 8 nearest to the year asked for.
+async function metronVolumeSearch(query, year) {
+  const r = await metron.get('series/', { name: query });
+  const list = (r && r.results) || [];
+  const target = parseInt(year, 10) || null;
+  const picked = list.slice().sort((a, b) => target ? Math.abs((a.year_began || 0) - target) - Math.abs((b.year_began || 0) - target) : 0).slice(0, 8);
+  const out = [];
+  for (const x of picked) {
+    const d = await metron.get(`series/${x.id}/`).catch(() => null);
+    if (!d || !d.cv_id) continue;
+    const pub = d.publisher && typeof d.publisher === 'object' ? d.publisher.name : d.publisher;
+    out.push({ id: d.cv_id, name: d.name, start_year: d.year_began ? String(d.year_began) : null, publisher: pub ? { name: pub } : null,
+      count_of_issues: d.issue_count || 0, image: null, description: d.desc || null, source: 'metron', metron_id: d.id });
+  }
+  return out;
+}
+
 app.get('/api/comicvine/search', async (req, res) => {
+  const metronAnswer = async (why) => {
+    const cleanQ = String(req.query.q || '').replace(/[()\[\]{}#@!$%^&*+=|<>?/\\~`"]/g, ' ').replace(/\s+/g, ' ').trim();
+    const results = await metronVolumeSearch(cleanQ, req.query.year);
+    logger.info('cv-search', `Answered from Metron (${why})`, { q: cleanQ, results: results.length });
+    return res.json({ status_code: 1, results, source: 'metron',
+      notice: why === 'no-key' ? 'Results from Metron (no Comic Vine key set). Only series Metron has linked to Comic Vine are shown.'
+        : "Comic Vine's search is at its limit, so these results come from Metron. Only series Metron has linked to Comic Vine are shown." });
+  };
+  const metronOk = () => !!(getSetting('metron_api_token') || process.env.METRON_API_TOKEN);
+  if (!getCVKey()) {
+    if (!metronOk()) return res.status(400).json({ error: 'Set a Comic Vine API key or a Metron token first (Settings → Connections)' });
+    try { return await metronAnswer('no-key'); } catch (e) { return res.status(502).json({ error: `Metron search failed: ${e.message}` }); }
+  }
   try {
     const { q, limit = 100, year, publisher } = req.query;
 
@@ -5594,6 +5627,7 @@ app.get('/api/comicvine/search', async (req, res) => {
     if (r.data.status_code && r.data.status_code !== 1) {
       logger.warn('cv-search', `CV returned error in body`, { status_code: r.data.status_code, detail: r.data.error });
       if (r.data.status_code === 107) {
+        if (metronOk()) { try { return await metronAnswer('limit'); } catch {} }
         return res.status(429).json({ error: 'Comic Vine rate limit reached — please wait a few minutes before searching again.' });
       }
       return res.status(400).json({ error: r.data.error || `CV error ${r.data.status_code}` });
@@ -5665,6 +5699,9 @@ app.get('/api/comicvine/search', async (req, res) => {
     const status = e.response?.status;
     const cvError = e.response?.data?.error || e.response?.data?.status_detail || null;
     logger.error('cv-search', `CV search failed`, { status, cvError, message: e.message });
+    if ((e.code === 'CV_RATE_LIMIT' || status === 420 || status === 429) && metronOk()) {
+      try { return await metronAnswer('limit'); } catch (me) { logger.warn('cv-search', 'Metron fallback failed too', me.message); }
+    }
     if (e.code === 'CV_RATE_LIMIT') return res.status(429).json({ error: e.message });
     if (status === 420 || status === 429) {
       return res.status(429).json({ error: 'Comic Vine rate limit reached — please wait a few minutes before searching again.' });

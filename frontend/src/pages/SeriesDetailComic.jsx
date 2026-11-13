@@ -167,6 +167,7 @@ export default function SeriesDetailComic() {
   // CV search (Tools tab)
   const [cvQuery, setCvQuery] = useState('');
   const [cvResults, setCvResults] = useState([]);
+  const [cvNotice, setCvNotice] = useState('');   // e.g. results answered by Metron (2026-11-13)
   const [cvSearching, setCvSearching] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -384,7 +385,7 @@ export default function SeriesDetailComic() {
     const raw = (overrideQuery || cvQuery || '').trim();
     if (!raw) return;
     if (!overrideQuery) setCvQuery(raw);
-    setCvSearching(true); setCvResults([]);
+    setCvSearching(true); setCvResults([]); setCvNotice('');
     try {
       // Case 1: input contains a CV volume URL or bare 4050-XXXXX ID
       // → skip search, fetch that volume directly
@@ -417,6 +418,7 @@ export default function SeriesDetailComic() {
       const r = await fetch(url);
       const d = await r.json();
       setCvResults(d.results || []);
+      setCvNotice(d.notice || (!r.ok && d.error) || '');
     } catch {}
     setCvSearching(false);
   };
@@ -1280,6 +1282,7 @@ export default function SeriesDetailComic() {
                 </div>
               )}
               {createError && <ErrorNote>{createError}</ErrorNote>}
+              {cvNotice && !cvSearching && <div className="a-muted a-fs-12" style={{ padding: '4px 0' }}>{cvNotice}</div>}
               {cvResults.length > 0 && (
                 <div className="a-flex a-col a-gap-8">
                   {cvResults.map(vol => (
