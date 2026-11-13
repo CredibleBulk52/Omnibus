@@ -379,10 +379,12 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     if (!rerun) return { previous };
     return { ...run('event setting'), previous };
   }
-  // "All look right": approve and lock every event still waiting.
+  // "All look right": approve and lock every event still waiting that has a shelf.
   function confirmAll() {
     const previous = [];
-    const events = computeRuleLinks().events.filter(e => !e.confirmed);
+    // Only events with something on their shelf: an empty shelf needs no home (2026-11-13).
+    const withShelf = new Set(db.prepare("SELECT DISTINCT event_id FROM series_links WHERE event_id IS NOT NULL").all().map(r => r.event_id));
+    const events = computeRuleLinks().events.filter(e => !e.confirmed && withShelf.has(e.id));
     db.exec('BEGIN');
     try {
       for (const e of events) {

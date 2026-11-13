@@ -160,12 +160,16 @@ test('All look right locks every waiting event, and Undo restores them', () => {
   db.prepare("INSERT INTO events (id, name, year) VALUES ('x', 'Fear Itself', 2011), ('y', 'Shadowland', 2010)").run();
   inEvent('x', series('fi', 'Fear Itself', 2011, 7), 'essential');
   inEvent('y', series('sl', 'Shadowland', 2010, 5), 'essential');
+  inEvent('x', series('fit', 'Fear Itself: The Fearless', 2011, 3));
+  inEvent('y', series('slt', 'Shadowland: Blood on the Streets', 2010, 4));
+  db.prepare("INSERT INTO events (id, name, year) VALUES ('z', 'Empty Crossover', 1990)").run();
+  inEvent('z', series('ong', 'Some Ongoing', 1980, 100).slice(0, 2), 'essential');   // nothing on its shelf: not approved
   const g = createSeriesGrouping({ db });
   g.run();
   const r = g.confirmAll();
   assert.equal(r.confirmed, 2);
   assert.deepEqual(db.prepare("SELECT id, home_series_id, home_source FROM events ORDER BY id").all().map(x => ({ ...x })),
-    [{ id: 'x', home_series_id: 'fi', home_source: 'approved' }, { id: 'y', home_series_id: 'sl', home_source: 'approved' }]);
+    [{ id: 'x', home_series_id: 'fi', home_source: 'approved' }, { id: 'y', home_series_id: 'sl', home_source: 'approved' }, { id: 'z', home_series_id: null, home_source: null }]);
   g.restoreEvents(r.previous);
   assert.deepEqual({ ...db.prepare('SELECT SUM(home_confirmed) AS c, COUNT(home_series_id) AS h FROM events').get() }, { c: 0, h: 0 });
 });

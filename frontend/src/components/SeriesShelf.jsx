@@ -161,7 +161,8 @@ export function SeriesGroupingPanel() {
   const rule = data.counts?.rule || { links: 0, hidden: 0 }, manual = data.counts?.manual || { links: 0 };
   // To check: events the AI disagrees with come first.
   const aiDiffers = e => !!e.ai && !e.ai.stale && ((e.ai.home.verdict === 'change' && e.ai.home.open) || e.ai.home.verdict === 'none');
-  const toCheck = data.events.filter(e => !e.confirmed && (e.home || e.members.length)).sort((a, b) => aiDiffers(b) - aiDiffers(a));
+  // Only events with something on their shelf: a crossover with no minis or one-shots needs no home.
+  const toCheck = data.events.filter(e => !e.confirmed && e.members.length).sort((a, b) => aiDiffers(b) - aiDiffers(a));
   const aiInfo = data.ai || {};
   const withShelf = data.events.filter(e => e.members.length);
   const list = view === 'check' ? toCheck : view === 'shelves' ? withShelf : view === 'all' ? data.events : [];
@@ -231,7 +232,7 @@ export function SeriesGroupingPanel() {
           title="Approves and locks every home in this list. Undo is offered afterwards.">✓ All look right</button>}
       </div>
       {error && <p className="gp-error">{error}</p>}
-      {view === 'check' && !toCheck.length && <p className="gp-muted">Every event's home has been checked.</p>}
+      {view === 'check' && !toCheck.length && <p className="gp-muted">Every event with something on its shelf has been checked.</p>}
       {view === 'removed' && (removed.length
         ? <div className="gp-removed">{removed.map(x => (
             <div key={`${x.seriesId}|${x.homeId}`} className="gp-rm" title={`${x.name} · taken off ${x.homeName}'s shelf`}>

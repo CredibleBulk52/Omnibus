@@ -187,8 +187,10 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     return { text: out.join('\n'), ids };
   }
 
-  // Events worth asking about: not an initiative without a chosen home, with a series in the library.
-  const askable = (e, f) => !(e.initiative && !e.chosen) && f.rows.some(r => r.id && !r.notInOrder);
+  // Events worth asking about: something on the shelf (2026-11-13, user: a crossover that ran inside
+  // ongoing titles, with no minis or one-shots, needs no home), and not an initiative without a home.
+  const shelved = (e, ctx) => (ctx.members.get(e.id)?.size || 0) > 0;
+  const askable = (e, f, ctx) => !(e.initiative && !e.chosen) && shelved(e, ctx);
 
   // ── Saved answers ──
   const getAnswer = db.prepare("SELECT * FROM shelf_sorter_answers WHERE kind = 'event' AND item_id = ?");
@@ -237,7 +239,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     for (const e of ctx.events) {
       if (wanted && !wanted.has(e.id)) continue;
       const f = eventFacts(e, ctx);
-      if (!wanted && !askable(e, f)) continue;
+      if (!wanted && !askable(e, f, ctx)) continue;
       const hash = hashOf({ f, v: 1 });
       if (!force && saved.get(e.id)?.hash === hash) continue;
       todo.push({ f, hash });
@@ -326,6 +328,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
         if (!e) continue;
         if (!wanted && hashOf({ f: eventFacts(e, ctx), v: 1 }) !== row.hash) continue;    // changed since: ask again first
         let a; try { a = JSON.parse(row.answer); } catch { continue; }
+        if (!wanted && !shelved(e, ctx)) continue;   // an empty shelf needs no home
         const left = remaining(a, e, ctx);
         let n = 0;
         if (left.home && ok(a.home.confidence)) {
@@ -409,7 +412,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
       const stale = hashOf({ f: eventFacts(ev, ctx), v: 1 }) !== row.hash;
       const undone = String(row.applied || '').startsWith('undone:');
       const left = remaining(a, ev, ctx);
-      if (!stale && !undone) ready += (left.home && a.home.confidence === 'sure' ? 1 : 0) + left.members.filter(m => m.confidence === 'sure').length;
+      if (!stale && !undone && shelved(ev, ctx)) ready += (left.home && a.home.confidence === 'sure' ? 1 : 0) + left.members.filter(m => m.confidence === 'sure').length;
       e.ai = { home: { ...a.home, name: a.home.seriesId ? name(a.home.seriesId) : null, open: left.home },
         members: left.members.map(m => ({ ...m, name: name(m.seriesId) })),
         model: modelName(row.model), askedAt: row.asked_at, undone, stale };
