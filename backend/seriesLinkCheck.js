@@ -20,7 +20,7 @@
 const { parseComicInfoEvidence } = require('./metadata/evidence');
 const { titleKey } = require('./metadata/candidate');
 
-const PER_RUN = 30;
+const PER_RUN = 60;
 const MAX_GROUPS = 3;
 
 function initSeriesLinkCheck(db) {
@@ -104,7 +104,9 @@ function decide(comicid, groups) {
   return { status: 'mismatch', volumeId: main.volumeId, volumeName: main.volumeName };
 }
 
-// volumeOfIssue(issueId) → { id, name } | null (throws err.code 'CV_RATE_LIMIT' when the hour is used up).
+// volumeOfIssue(issueId) → { id, name } | null. It throws err.code 'CV_RATE_LIMIT' when Comic Vine's
+// hour is used up (the run stops), or 'CV_HEADROOM' when only the allowance kept for clicks is left
+// (that folder waits for a later run; folders the saved answers or Metron can settle go on).
 function createSeriesLinkCheck({ db, volumeOfIssue, logger, now = Date.now, pause = () => Promise.resolve() }) {
   initSeriesLinkCheck(db);
   const cached = db.prepare('SELECT volume_id, volume_name FROM cv_issue_volume WHERE issue_id = ?');
@@ -135,7 +137,7 @@ function createSeriesLinkCheck({ db, volumeOfIssue, logger, now = Date.now, paus
   async function run({ limit = PER_RUN } = {}) {
     if (running) return { skipped: true };
     running = true;
-    const stats = { checked: 0, ok: 0, mixed: 0, mismatch: 0, unknown: 0, requests: 0, rateLimited: false };
+    const stats = { checked: 0, ok: 0, mixed: 0, mismatch: 0, unknown: 0, requests: 0, deferred: 0, rateLimited: false };
     try {
       for (const s of suspects(db, { limit, markClear })) {
         const groups = [];
@@ -148,6 +150,7 @@ function createSeriesLinkCheck({ db, volumeOfIssue, logger, now = Date.now, paus
           }
         } catch (e) {
           if (e.code === 'CV_RATE_LIMIT') { stats.rateLimited = true; break; }
+          if (e.code === 'CV_HEADROOM') { stats.deferred++; continue; }
           logger.warn('series-links', `Check failed for "${s.name}"`, e.message);
           continue;
         }

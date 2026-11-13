@@ -335,7 +335,9 @@ export function SeriesLinksPanel() {
     try {
       const r = await fetch(`/api/series/${encodeURIComponent(it.seriesId)}/create-json`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ volumeId: it.proposed.volumeId }) });
       const d = await r.json().catch(() => ({}));
-      setNotice(r.ok && d.success ? `${it.folder}: re-linked to ${d.name || to}.` : `${it.folder}: ${d.error || 'HTTP ' + r.status}`);
+      setNotice(r.ok && d.success ? `${it.folder}: re-linked to ${d.name || to}.`
+        : r.status === 429 && d.retryAt ? `${it.folder}: Comic Vine's hourly limit is used up. Try again after ${when(d.retryAt)}.`
+        : `${it.folder}: ${d.error || 'HTTP ' + r.status}`);
     } finally { setBusy(''); await load(); healthChanged(); }
   };
   const keep = async it => {
@@ -346,7 +348,7 @@ export function SeriesLinksPanel() {
   const runNow = async () => {
     const r = await fetch('/api/admin/library-health/series-links/run', { method: 'POST' });
     const d = await r.json().catch(() => ({}));
-    setNotice(r.ok ? 'Checking the next folders now. Results appear here as they come in (refresh in a few minutes).' : (d.error || 'HTTP ' + r.status));
+    setNotice(r.ok ? 'Checking the remaining folders now (Metron answers most of them). Results appear here as they come in; refresh in a few minutes.' : (d.error || 'HTTP ' + r.status));
   };
 
   if (!data) return <p style={{ color: 'var(--text-muted)' }}>{notice || 'Loading…'}</p>;
@@ -357,7 +359,7 @@ export function SeriesLinksPanel() {
     <div className="dup2 links-panel">
       <p className="dup2-lead">
         {items.length ? <><b>{plural(items.length, 'folder')}</b> {items.length === 1 ? 'has a series.json' : 'have a series.json'} for a different Comic Vine series than the comics in {items.length === 1 ? 'it' : 'them'}.</> : 'No wrong links found so far.'}
-        {' '}<span className="dup2-aside">Omnibus checks folders that look suspect about 30 an hour, using the Comic Vine allowance left over.
+        {' '}<span className="dup2-aside">Omnibus checks folders that look suspect every hour: Metron first, then Comic Vine, always leaving some Comic Vine allowance for your clicks.
         {progress.notYetRead > 0 ? ` ${progress.notYetRead.toLocaleString()} folders not read yet.` : ''}
         {looked ? ` ${looked} looked up so far${c.mixed ? `, ${c.mixed} holding more than one series (kept for later)` : ''}.` : ''}</span>
       </p>

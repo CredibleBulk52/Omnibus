@@ -75,3 +75,16 @@ test('the Comic Vine hourly limit stops the run without recording a result', asy
   assert.equal(stats.rateLimited, true);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM series_link_checks WHERE series_id = 'a'").get().n, 0);
 });
+
+test('a folder that would need Comic Vine past the reserved allowance waits; the others go on', async () => {
+  const { db, folder } = fixture();
+  folder('a', 'Arkham Manor (2014)', { name: 'Arkham Manor: Endgame', comicid: 81000, total_issues: 1 }, [['Arkham Manor', '1'], ['Arkham Manor', '2']]);
+  folder('i', 'Ion', { name: 'Ion', comicid: 18143, total_issues: 12 }, [['Ion: Guardian of the Universe', '20']]);
+  const check = createSeriesLinkCheck({ db, logger: quiet, volumeOfIssue: async id => {
+    if (id === '1') throw Object.assign(new Error('reserved'), { code: 'CV_HEADROOM' });
+    return { id: '18143', name: 'Ion' };
+  } });
+  const stats = await check.run();
+  assert.equal(stats.deferred, 1); assert.equal(stats.ok, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM series_link_checks WHERE series_id = 'a'").get().n, 0);
+});

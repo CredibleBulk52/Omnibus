@@ -6253,6 +6253,11 @@ app.post('/api/series/:id/create-json', requireAdmin, async (req, res) => {
   try {
     const { volumeId } = req.body;
     if (!volumeId) return res.status(400).json({ error: 'volumeId required' });
+    const busy = cvBusyUntil();
+    if (busy) {
+      const at = new Date(busy).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: process.env.TZ || 'UTC' });
+      return res.status(429).json({ error: `Comic Vine's hourly limit is used up. Try again after ${at}.`, retryAt: busy });
+    }
 
     const scanned = db.prepare('SELECT path FROM scanned_series WHERE id = ?').get(req.params.id);
     const monitored = !scanned ? db.prepare('SELECT directory as path FROM monitored_series WHERE id = ?').get(req.params.id) : null;
@@ -12062,17 +12067,63 @@ app.post('/api/monitor/library-status/run', requireAdmin, (req, res) => {
   res.json({ ok: true, message: 'Library status check started — see server log (library-status)' });
 });
 // ─── Series linked to the wrong Comic Vine volume (hourly, 2026-11-13) ─
-// seriesLinkCheck.js; listed on the Library page. One Comic Vine 'issue' request per folder
-// group not already known, 30 suspect folders per run.
+// seriesLinkCheck.js; listed on the Library page. Which Comic Vine volume an issue belongs to:
+// Metron first (it keeps Comic Vine IDs; its own allowance), then one Comic Vine 'issue' request.
+// The background check never uses the last CV_LINK_RESERVE 'issue' requests of the hour, so a
+// re-link (which needs them) is not left waiting behind it.
+const CV_LINK_RESERVE = 40;
+let linkMetronOn = true;
+const metronSeriesCv = new Map();   // Metron series id → { id, name } (Comic Vine volume)
+async function metronVolumeOfIssue(cvIssueId) {
+  if (!linkMetronOn || !(getSetting('metron_api_token') || process.env.METRON_API_TOKEN)) return null;
+  try {
+    const r = await metron.get('issue/', { cv_id: cvIssueId });
+    const hit = (r && r.results || [])[0];
+    if (!hit) return null;
+    let seriesId = hit.series && hit.series.id;
+    if (!seriesId) {
+      const d = await metron.get(`issue/${hit.id}/`);
+      if (!d || String(d.cv_id) !== String(cvIssueId)) return null;
+      seriesId = d.series && d.series.id;
+    }
+    if (!seriesId) return null;
+    if (!metronSeriesCv.has(seriesId)) {
+      const sr = await metron.get(`series/${seriesId}/`);
+      metronSeriesCv.set(seriesId, sr && sr.cv_id ? { id: String(sr.cv_id), name: sr.name || null } : null);
+    }
+    return metronSeriesCv.get(seriesId);
+  } catch (e) {
+    if (e.code === 'METRON_AUTH' || e.code === 'METRON_TOKEN_MISSING') linkMetronOn = false;
+    logger.warn('series-links', `Metron lookup failed for issue ${cvIssueId} — using Comic Vine`, e.message);
+    return null;
+  }
+}
 const seriesLinkCheck = require('./seriesLinkCheck').createSeriesLinkCheck({
   db, logger, pause: () => sleepMs(1100),
   volumeOfIssue: async issueId => {
+    const m = await metronVolumeOfIssue(issueId);
+    if (m) return m;
+    if (cvWindow('issue').used >= CV_CAP_BACKGROUND - CV_LINK_RESERVE)
+      throw Object.assign(new Error('Comic Vine allowance kept for clicks'), { code: 'CV_HEADROOM' });
     const r = await cvApiGet(`https://comicvine.gamespot.com/api/issue/4000-${issueId}/`, {
       params: { api_key: getCVKey(), format: 'json', field_list: 'id,volume' }, headers: { 'User-Agent': 'Omnibus/1.0' }, timeout: 10000 });
     const v = r.data?.results?.volume;
     return v?.id ? { id: String(v.id), name: v.name || null } : null;
   },
 });
+// A re-link (enricher create) waits up to an hour when Comic Vine is at its limit; say so instead.
+// Returns null when Comic Vine can take the re-link's requests now, else the time it can.
+function cvBusyUntil() {
+  const now = Date.now();
+  let until = 0;
+  for (const resource of ['volume', 'issue']) {
+    const bo = db.prepare('SELECT until FROM cv_backoff WHERE resource = ?').get(resource);
+    if (bo && bo.until > now) until = Math.max(until, bo.until);
+    const w = cvWindow(resource);
+    if (w.resetAt && w.used >= CV_CAP_INTERACTIVE - 5) until = Math.max(until, w.resetAt);
+  }
+  return until || null;
+}
 cron.schedule('41 * * * *', () => {
   if (!getCVKey()) return;
   if (cvPollStartedAt && Date.now() - cvPollStartedAt < 6 * 60 * 60 * 1000) return;
@@ -12084,7 +12135,8 @@ app.get('/api/admin/library-health/series-links', requireAdmin, (req, res) => {
 });
 app.post('/api/admin/library-health/series-links/run', requireAdmin, (req, res) => {
   if (!getCVKey()) return res.status(400).json({ error: 'Set a Comic Vine API key first' });
-  setImmediate(() => seriesLinkCheck.run().catch(e => logger.error('series-links', 'Run failed', e.message)));
+  // A larger batch on request: most lookups go to Metron, and Comic Vine's reserve is kept.
+  setImmediate(() => seriesLinkCheck.run({ limit: 300 }).catch(e => logger.error('series-links', 'Run failed', e.message)));
   res.json({ ok: true });
 });
 // "Link is right": the folder's series.json stays as it is.
