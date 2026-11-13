@@ -174,7 +174,10 @@ function createMetron({ axios, getToken, db, logger, sleep = ms => new Promise(r
       for (const x of ((r && r.results) || []).slice(0, 3)) { d = await confirm(x.id); if (d) break; }
     }
     const raw = d ? String((d.status && typeof d.status === 'object' ? d.status.name : d.status) || '') : '';
-    const found = d ? { id: d.id, status: seriesStatusOf(raw), raw, issueCount: Number(d.issue_count) || 0, yearEnd: d.year_end || null } : null;
+    // seriesType: Metron's own kind of series ("Ongoing Series", "Limited Series", "One-Shot", …), used by
+    // the Shelf Sorter to tell an ongoing cut short from a planned mini (2026-11-14).
+    const type = d && d.series_type ? String((typeof d.series_type === 'object' ? d.series_type.name : d.series_type) || '') : '';
+    const found = d ? { id: d.id, status: seriesStatusOf(raw), raw, issueCount: Number(d.issue_count) || 0, yearEnd: d.year_end || null, seriesType: type || null } : null;
     cachePut(key, { found });
     return found;
   }

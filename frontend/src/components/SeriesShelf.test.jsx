@@ -192,3 +192,17 @@ test('Minis & one-shots: suggested homes as two covers; Shelve and Not this one,
     expect(global.fetch).toHaveBeenCalledWith('/api/series/kh/shelf/asm', expect.objectContaining({ method: 'DELETE' }));
   } finally { act(() => root.unmount()); global.fetch = prev; }
 });
+
+test('with shelves off, the panel explains them and offers the switch', async () => {
+  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const prev = global.fetch;
+  global.fetch = vi.fn(async url => ({ ok: true, json: async () => (url === '/api/grouping' ? { enabled: false } : url === '/api/grouping/removed' ? { items: [] } : { ok: true }) }));
+  const { host, root } = mount(<SeriesGroupingPanel />);
+  try {
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(host.textContent).toMatch(/Specials shelves are off\./);
+    expect(host.textContent).toMatch(/Nothing on disk moves/);
+    await act(async () => { [...host.querySelectorAll('button')].find(b => b.textContent === 'Turn on Specials shelves').click(); });
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/enabled', expect.objectContaining({ body: JSON.stringify({ on: true }) }));
+  } finally { act(() => root.unmount()); global.fetch = prev; }
+});

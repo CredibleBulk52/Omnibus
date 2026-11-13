@@ -71,7 +71,9 @@ function initSeriesGrouping(db) {
   }
 }
 
-function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = () => {} }) {
+// enabled(): whether Specials shelves are on (setting shelves_enabled, 2026-11-14; off on a new install).
+// When off, the rules do not run and nothing is grouped or hidden; the links stay stored for later.
+function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = () => {}, enabled = () => true }) {
   initSeriesGrouping(db);
   const has = t => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
 
@@ -202,6 +204,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
 
   let running = false;
   function run(reason = 'manual') {
+    if (!enabled()) return { skipped: true, off: true };
     if (running) return { skipped: true };
     running = true;
     try {
@@ -233,6 +236,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
 
   // seriesId → { homes: [{ id, name, role, source }], hidden } for the series list.
   function groupMap() {
+    if (!enabled()) return new Map();
     const names = new Map();
     for (const r of db.prepare('SELECT id, name, year, series_json FROM scanned_series').all()) {
       const m = metaOf(r.series_json); const y = parseInt(m && m.year, 10) || parseInt(r.year, 10) || null;
@@ -253,6 +257,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
 
   // The home's shelf: series linked to it.
   function members(homeId) {
+    if (!enabled()) return [];
     const keep = new Set(db.prepare("SELECT series_id FROM series_link_overrides WHERE action = 'keep_visible'").all().map(r => r.series_id));
     return db.prepare(`SELECT l.*, s.name, s.year, s.series_json, s.book_count FROM series_links l JOIN scanned_series s ON s.id = l.series_id
       WHERE l.home_id = ? ORDER BY s.year, s.name`).all(homeId).map(r => {
@@ -262,6 +267,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
     });
   }
   function homesOf(seriesId) {
+    if (!enabled()) return [];
     const g = groupMap().get(seriesId);
     return g ? g.homes : [];
   }
@@ -438,7 +444,7 @@ function createSeriesGrouping({ db, logger = null, now = Date.now, onChange = ()
   }
 
   return { run, groupMap, members, homesOf, link, unlink, keepVisible, setEvent, confirmAll, restoreEvents, removed, restore, emptyEvent, summary, computeRuleLinks,
-    curatedSeries, changed: () => onChange() };
+    curatedSeries, changed: () => onChange(), enabled };
 }
 
 module.exports = { createSeriesGrouping, initSeriesGrouping, norm, MAX_ISSUES, YEAR_WINDOW };

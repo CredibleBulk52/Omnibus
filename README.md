@@ -24,6 +24,7 @@
 - Monitored series, weekly releases and a personal **Pull Box** for new issues.
 - Optional downloads through Prowlarr, SABnzbd, qBittorrent and direct links, with post-processing into your folders.
 - Requests and problem reports from readers, duplicate and damaged-file checks, and missing-annual detection.
+- **Specials shelves** (optional, off until you turn them on in Library): event tie-ins, one-shots and side minis move to the Specials tab of the series they belong to, so the series list shows the series you read. Rules follow your Timeline events; the Shelf Sorter suggests homes for other minis (with an AI key, or Omnibus's own closest matches without one). Nothing on disk moves and every change can be undone.
 
 **Comic Book Guy** (optional, needs an AI key)
 - An in-app assistant with an opinion on everything. He answers continuity questions, recommends what you own, builds reading lists, and writes spoiler-aware "Previously on…" recaps up to the issue you're on.
@@ -111,7 +112,7 @@ On Windows, `.\deploy.ps1` builds and deploys with a health check and automatic 
 |---|---|---|
 | [Comic Vine](https://comicvine.gamespot.com/api/) API key | Recommended (free) | Matching, issue lists, covers for missing issues, series details |
 | Anthropic, OpenAI or Google Gemini key | Optional | Comic Book Guy, recaps, AI-drafted events and runs, descriptions, genre tagging. See [AI models](docs/AI_MODELS.md). |
-| Metron token | Optional | A second opinion on whether a series has ended |
+| Metron token | Optional | A second opinion on whether a series has ended, and whether a short series was a planned mini or an ongoing cut short (Specials shelves) |
 | Prowlarr, SABnzbd, qBittorrent | Optional | Searching for and downloading issues |
 | OIDC provider (Authentik, Keycloak and others) | Optional | Single sign-on alongside local accounts |
 
@@ -157,6 +158,8 @@ omnibus.yourdomain.com {
 ## FAQ
 
 **Do I need an AI key?** No. Reading, the library, lists, Essentials, Top Shelf, the Timeline and downloads all work without one. AI adds Comic Book Guy, recaps and the generators. Costs depend on the provider and model; a typical question costs a fraction of a cent.
+
+**What are Specials shelves?** A way to stop one-shots and event tie-ins crowding the series list. A shelved series leaves the main list and appears on its home series' Specials tab instead (Civil War II tie-ins under Civil War II, say). It is still in search and under **Tie-ins** in the series browser. Sequels and new volumes stay series of their own. Shelves are off on a new install: turn them on in **Library › Specials shelves**, review what's suggested, and take anything back off with one click. Files never move.
 
 **Does Omnibus come with comics?** No. It organises and reads comics you already have. It ships no comics, cover art or publisher logos; admins can upload their own logos and character art for shelves and themes.
 

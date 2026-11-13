@@ -209,3 +209,20 @@ test('homes approved before locking existed are locked to the home their shelf h
   assert.deepEqual({ ...db.prepare("SELECT home_series_id, home_source FROM events WHERE id = 'aoa'").get() }, { home_series_id: 'aoa2015', home_source: 'approved' });
   assert.deepEqual({ ...db.prepare("SELECT home_series_id, home_source FROM events WHERE id = 'w'").get() }, { home_series_id: null, home_source: null });
 });
+
+test('with Specials shelves off, nothing runs and nothing is grouped; links are kept for later', () => {
+  const { db, series, inEvent } = fixture();
+  db.prepare("INSERT INTO events (id, name, year) VALUES ('fp', 'Flashpoint', 2011)").run();
+  inEvent('fp', series('fp', 'Flashpoint', 2011, 5), 'essential');
+  inEvent('fp', series('cold', 'Flashpoint: Citizen Cold', 2011, 3));
+  let on = true;
+  const g = createSeriesGrouping({ db, enabled: () => on });
+  g.run();
+  assert.equal(g.groupMap().size, 1);
+  on = false;
+  assert.deepEqual(g.run(), { skipped: true, off: true });
+  assert.equal(g.groupMap().size, 0);
+  assert.deepEqual([g.members('fp'), g.homesOf('cold')], [[], []]);
+  on = true;
+  assert.equal(g.groupMap().get('cold').homes[0].id, 'fp');
+});

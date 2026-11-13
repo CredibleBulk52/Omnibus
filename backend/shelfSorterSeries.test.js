@@ -119,3 +119,95 @@ test('a series still publishing is shelved but stays visible', async () => {
   s.apply();
   assert.equal(g.groupMap().get('wow').hidden, false);
 });
+
+const { createSeriesTypes, kindOf } = require('./seriesTypes');
+
+test('Metron kinds: an ongoing is kept as its own without the AI; the kind is shown for the rest', async () => {
+  const { db, g, calls } = fixture(answer);
+  db.prepare("UPDATE scanned_series SET series_json = json_set(series_json, '$.metadata.comicid', ?) WHERE id = ?").run(100, 'am');
+  db.prepare("UPDATE scanned_series SET series_json = json_set(series_json, '$.metadata.comicid', ?) WHERE id = ?").run(200, 'wow');
+  const metron = { seriesStatus: async id => ({ id: Number(id) + 1, seriesType: id === '100' ? 'Ongoing Series' : 'Limited Series' }) };
+  const types = createSeriesTypes({ db, metron });
+  const settings = new Map();
+  const ai = { run: (o, fn) => fn(), choose: () => 'm', complete: async opts => { calls.push(opts); return { text: JSON.stringify(answer(opts)), jobId: 'j', model: 'm' }; } };
+  const s = createShelfSorter({ db, grouping: g, ai, getSetting: k => settings.get(k) || null, setSetting: (k, v) => settings.set(k, v), seriesTypes: types });
+  const r = await s.lookUpTypes();
+  assert.deepEqual([r.looked, r.ongoing, r.limited], [2, 1, 1]);
+  assert.equal(kindOf('One-Shot'), 'one-shot');
+  let sum = s.seriesSummary();
+  assert.deepEqual([sum.counts.own, sum.counts.ongoing, sum.types.known, sum.types.total], [1, 1, 2, 2]);
+  await s.ask({ kinds: ['series'] });
+  assert.doesNotMatch(calls[0].prompt, /T\d+ America /);                       // never sent to the AI
+  assert.match(calls[0].prompt, /Black Panther: World of Wakanda \(2016\) · Marvel · 6 issues · Metron: limited series/);
+});
+
+test('answers stay put: a new candidate does not ask again; "ask again about the suggested" covers only open suggestions; a lost home asks again', async () => {
+  const unsureAnswer = opts => ({ series: answer(opts).series.map(x => (/Killing Joke/.test(opts.prompt.split('\n').find(l => l.startsWith(x.item + ' ')) || '') ? { ...x, confidence: 'unsure' } : x)) });
+  const { s, db, calls, g } = fixture(unsureAnswer);
+  await s.ask({ kinds: ['series'] });
+  const n = calls.length;
+  db.prepare('INSERT INTO scanned_series (id, name, year, series_json, book_count) VALUES (?, ?, ?, ?, ?)')
+    .run('bp18', 'Black Panther', 2018, JSON.stringify({ metadata: { name: 'Black Panther', year: 2018, total_issues: 25, publisher: 'Marvel' } }), 25);
+  await s.ask({ kinds: ['series'] });
+  assert.match(calls[n].prompt, /Series to check \(1\)/);                   // only the one never answered (the fake skips it)
+  assert.match(calls[n].prompt, /Atlantis Attacks/);
+  const r = await s.ask({ kinds: ['series'], suggested: true });               // only the waiting suggestion (World of Wakanda)
+  assert.match(calls[n + 1].prompt, /Series to check \(1\)/);
+  assert.match(calls[n + 1].prompt, /World of Wakanda/);
+  assert.doesNotMatch(calls[n + 1].prompt, /Killing Joke|Ultimate Comics Hawkeye|Atlantis Attacks|T\d+ America /);
+  s.decline('wow');
+  const before = calls.length;
+  await s.ask({ kinds: ['series'], suggested: true });                         // declined: nothing left to ask
+  assert.equal(calls.length, before);
+  s.undecline('wow', null);
+  assert.ok(r.asked >= 1);
+  db.prepare("DELETE FROM scanned_series WHERE id = 'bp16'").run();            // the home it named is gone
+  const ai = { run: (o, fn) => fn(), choose: () => 'm', complete: async opts => { calls.push(opts); return { text: JSON.stringify(unsureAnswer(opts)), jobId: 'j', model: 'm' }; } };
+  const s2 = createShelfSorter({ db, grouping: g, ai, getSetting: () => null, setSetting: () => {} });   // a fresh library read
+  assert.equal(s2.seriesSummary().suggested.length, 0);
+  await s2.ask({ kinds: ['series'] });
+  assert.match(calls[calls.length - 1].prompt, /World of Wakanda/);
+});
+
+test('"main story": shelved under the series but kept visible', async () => {
+  const mainAnswer = opts => ({ series: answer(opts).series.map(x => (x.verdict === 'home' ? { ...x, verdict: 'main' } : x)) });
+  const { s, g } = fixture(mainAnswer);
+  await s.ask({ kinds: ['series'] });
+  assert.equal(s.seriesSummary().suggested[0].main, true);
+  s.apply();
+  const m = g.groupMap().get('wow');
+  assert.deepEqual([m.homes[0].id, m.homes[0].role, m.hidden], ['bp16', 'core', false]);
+});
+
+test('answers saved under the old rule (whole facts) carry over without asking again', async () => {
+  const { s, db, calls } = fixture(answer);
+  const crypto = require('crypto');
+  const ctx = B.seriesContext(db);
+  const f = B.seriesFacts(ctx.S.get('wow'), ctx);
+  const b2 = crypto.createHash('sha1').update(JSON.stringify({ f, v: 'b2' })).digest('hex').slice(0, 16);
+  db.prepare("INSERT INTO shelf_sorter_answers (kind, item_id, hash, model, answer, asked_at) VALUES ('series', 'wow', ?, 'm', ?, 1)")
+    .run(b2, JSON.stringify({ verdict: 'home', homeId: 'bp16', confidence: 'sure', why: 'x' }));
+  const sum = s.seriesSummary();
+  assert.deepEqual(sum.suggested.map(x => [x.seriesId, x.stale]), [['wow', false]]);
+  await s.ask({ kinds: ['series'] });
+  assert.doesNotMatch(calls[0].prompt, /World of Wakanda/);
+});
+
+test('without an AI key, Ask gives Omnibus\'s own cautious suggestions (never applied on their own)', async () => {
+  const { db, g } = fixture(answer);
+  const setRun = (id, run) => db.prepare("UPDATE scanned_series SET series_json = json_set(series_json, '$.metadata.publication_run', ?) WHERE id = ?").run(run, id);
+  setRun('wow', 'December 2016 - May 2017');                    // inside Black Panther (2016): June 2016 - June 2018
+  db.prepare('INSERT INTO scanned_series (id, name, year, series_json, book_count) VALUES (?, ?, ?, ?, ?)')
+    .run('bps', 'Black Panther: The Sequel', 2018, JSON.stringify({ metadata: { name: 'Black Panther: The Sequel', year: 2018, total_issues: 4, publisher: 'Marvel', publication_run: 'August 2018 - November 2018' } }), 4);
+  const calls = [];
+  const ai = { run: (o, fn) => fn(), choose: () => 'm', complete: async o => { calls.push(o); return { text: '{}', jobId: 'j' }; } };
+  const s = createShelfSorter({ db, grouping: g, ai, getSetting: () => null, setSetting: () => {}, aiAvailable: () => false });
+  const r = await s.ask();
+  assert.equal(r.local, true);
+  assert.equal(calls.length, 0);
+  const sum = s.seriesSummary();
+  assert.deepEqual(sum.suggested.map(x => [x.seriesId, x.homeId, x.confidence, x.model]), [['wow', 'bp16', 'likely', 'omnibus']]);   // not the one begun after it ended
+  assert.equal(s.apply().applied, 0);                            // "Apply sure" leaves it to the admin
+  assert.equal(s.apply({ seriesIds: ['wow'], sureOnly: false, mode: 'row' }).applied, 1);
+  assert.equal(s.status().aiAvailable, false);
+});

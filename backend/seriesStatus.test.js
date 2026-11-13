@@ -48,7 +48,7 @@ test('Metron lookup confirms the Comic Vine ID on the series record and falls ba
   } };
   const m = createMetron({ axios, getToken: () => 't', db: null, sleep: async () => {} });
   const r = await m.seriesStatus(155555, { name: 'Absolute Flash', year: 2025 });
-  assert.deepEqual(r, { id: 22, status: 'ended', raw: 'Completed', issueCount: 6, yearEnd: null });
+  assert.deepEqual(r, { id: 22, status: 'ended', raw: 'Completed', issueCount: 6, yearEnd: null, seriesType: null });
   assert.ok(calls.every(c => /\/api\/series\/(\d+\/)?(\?|$)/.test(c)), calls.join(' '));
   assert.equal(await m.seriesStatus(424242, {}), null);
 });

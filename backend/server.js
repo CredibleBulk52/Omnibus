@@ -3668,7 +3668,15 @@ app.get('/api/scan/status', (req, res) => {
 // them reads the description. A series page loads the full record from /api/series/:id.
 // Series grouping (seriesGrouping.js, 2026-11-13): each list item carries its homes and whether it
 // is hidden from the browser. Built once per change; any link change clears it and the series cache.
-const seriesGrouping = require('./seriesGrouping').createSeriesGrouping({ db, logger,
+// Specials shelves are optional (2026-11-14): off on a new install, on for an install that already
+// has shelves (set once, here). Library › Specials shelves turns them on or off.
+if (getSetting('shelves_enabled') == null) {
+  let had = false;
+  try { had = !!db.prepare('SELECT 1 FROM series_links LIMIT 1').get(); } catch {}
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('shelves_enabled', had ? '1' : '0');
+}
+const shelvesOn = () => getSetting('shelves_enabled') === '1';
+const seriesGrouping = require('./seriesGrouping').createSeriesGrouping({ db, logger, enabled: shelvesOn,
   onChange: () => { seriesGroupCache = null; invalidateSeriesCache(); } });
 let seriesGroupCache = null;
 // Run the Specials-shelf rules shortly after a change (several creates in a row run them once).
@@ -17304,11 +17312,18 @@ const problemReports = require('./problemReports')({ app, db, requireAuth, requi
 const groupingRoute = fn => (req, res) => { try { res.json(fn(req) ?? { ok: true }); } catch (e) { res.status(e.status || 500).json({ error: e.message }); } };
 // Shelf Sorter (shelfSorter.js, 2026-11-13): the AI's review of the shelves. Its answers are added
 // to each event (`ai`); its changes go through seriesGrouping like the admin's.
+// Metron's kind of series (seriesTypes.js, 2026-11-14): an ongoing cut short is kept as its own series
+// without asking the AI; the kind is shown to the AI for the rest.
+const seriesTypes = require('./seriesTypes').createSeriesTypes({ db, metron, logger });
 const shelfSorter = require('./shelfSorter').createShelfSorter({ db, grouping: seriesGrouping, ai, getSetting,
   setSetting: (k, v) => db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v),
-  modelFor: id => aiRouting.modelFor(id), logger, setJobOutcome: setAiJobOutcome, modelName: m => { try { return modelCatalog.displayName(m) || m; } catch { return m; } } });
+  modelFor: id => aiRouting.modelFor(id), logger, setJobOutcome: setAiJobOutcome, seriesTypes,
+  aiAvailable: () => { try { return hasAiProvider(aiModels.providerOfModel(aiRouting.modelFor('shelf_sorter'))); } catch { return false; } },
+  modelName: m => { if (m === 'metron') return 'Metron'; if (m === 'omnibus') return 'Omnibus (no AI)'; try { return modelCatalog.displayName(m) || m; } catch { return m; } } });
 app.get('/api/grouping', requireAdmin, groupingRoute(() => {
+  if (!shelvesOn()) return { enabled: false };
   const s = seriesGrouping.summary();
+  s.enabled = true;
   const ready = shelfSorter.annotate(s) + shelfSorter.seriesReady();
   s.ai = { ...shelfSorter.status(), ready };
   return s;
@@ -17316,7 +17331,11 @@ app.get('/api/grouping', requireAdmin, groupingRoute(() => {
 app.get('/api/grouping/ai', requireAdmin, groupingRoute(() => shelfSorter.status()));
 // Ask runs in the background (about a minute for every event); the panel polls GET /api/grouping/ai.
 app.post('/api/grouping/ai/ask', requireAdmin, groupingRoute(req => {
-  shelfSorter.ask({ force: !!req.body?.force, eventIds: Array.isArray(req.body?.eventIds) ? req.body.eventIds.map(String) : null })
+  if (!shelvesOn()) throw Object.assign(new Error('Specials shelves are off (Library › Specials shelves)'), { status: 400 });
+  // force: ask again about every event; suggested: ask again about the open series suggestions only.
+  const kinds = Array.isArray(req.body?.kinds) ? req.body.kinds.filter(k => k === 'event' || k === 'series') : undefined;
+  shelfSorter.ask({ force: !!req.body?.force, suggested: !!req.body?.suggested, ...(kinds && kinds.length ? { kinds } : {}),
+    eventIds: Array.isArray(req.body?.eventIds) ? req.body.eventIds.map(String) : null })
     .catch(e => logger.warn('shelf-sorter', 'Ask failed', e.message));
   return shelfSorter.status();
 }));
@@ -17330,11 +17349,26 @@ app.post('/api/grouping/ai/apply', requireAdmin, groupingRoute(req => {
 }));
 // Stage B (shelfSorterSeries.js): the AI's answers about minis and one-shots on no shelf.
 app.get('/api/grouping/series', requireAdmin, groupingRoute(() => shelfSorter.seriesSummary()));
+// Look up Metron's kind of series now (a few hundred at Metron's pace: minutes; runs in the background).
+app.post('/api/grouping/series/types/run', requireAdmin, groupingRoute(() => {
+  if (!metronToken()) throw Object.assign(new Error('Set a Metron API token first (Settings → Connections)'), { status: 400 });
+  shelfSorter.lookUpTypes({ limit: 300 }).catch(e => logger.warn('series-types', 'Lookup failed', e.message));
+  return { started: true };
+}));
 app.post('/api/grouping/series/:id/decline', requireAdmin, groupingRoute(req => shelfSorter.decline(req.params.id)));
 app.post('/api/grouping/series/:id/undecline', requireAdmin, groupingRoute(req => shelfSorter.undecline(req.params.id, req.body?.previous ?? null)));
 app.post('/api/grouping/ai/runs/:id/undo', requireAdmin, groupingRoute(req => shelfSorter.undo(req.params.id)));
 app.post('/api/grouping/ai/auto', requireAdmin, groupingRoute(req => shelfSorter.setAuto(!!req.body?.on)));
 app.post('/api/grouping/run', requireAdmin, groupingRoute(() => seriesGrouping.run('manual')));
+// Turn Specials shelves on (the rules run at once) or off (nothing grouped or hidden; links kept).
+app.post('/api/grouping/enabled', requireAdmin, groupingRoute(req => {
+  const on = !!req.body?.on;
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('shelves_enabled', on ? '1' : '0');
+  const r = on ? seriesGrouping.run('turned on') : null;
+  seriesGrouping.changed();
+  logger.info('grouping', `Specials shelves turned ${on ? 'on' : 'off'}`);
+  return { enabled: on, run: r };
+}));
 app.post('/api/grouping/events/confirm-all', requireAdmin, groupingRoute(() => seriesGrouping.confirmAll()));
 // Undo (2026-11-13): put back the event states an action returned as `previous`.
 app.post('/api/grouping/events/restore', requireAdmin, groupingRoute(req => seriesGrouping.restoreEvents(Array.isArray(req.body?.states) ? req.body.states : [])));
@@ -17354,7 +17388,12 @@ setTimeout(() => { try { seriesGrouping.run('startup'); } catch (e) { logger.war
 cron.schedule('17 * * * *', () => {
   try { seriesGrouping.run('hourly'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); }
   // With "Apply sure ones automatically" on: ask about new or changed events, apply sure answers.
-  shelfSorter.auto().catch(e => logger.warn('shelf-sorter', 'Automatic run failed', e.message));
+  if (shelvesOn()) shelfSorter.auto().catch(e => logger.warn('shelf-sorter', 'Automatic run failed', e.message));
+});
+// Metron series types for the Shelf Sorter, a batch an hour (about 7 minutes of Metron's pace).
+cron.schedule('29 * * * *', () => {
+  if (!metronToken() || !shelvesOn()) return;
+  shelfSorter.lookUpTypes({ limit: 60 }).catch(e => logger.warn('series-types', 'Hourly lookup failed', e.message));
 });
 
 const libraryHealth = require('./libraryHealth')({ app, db, requireAdmin, logger,
