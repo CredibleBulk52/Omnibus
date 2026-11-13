@@ -96,15 +96,39 @@ test('the admin wins: a home they approved and a series they put back are left a
   assert.equal(g.groupMap().get('omega').keepVisible, true);
 });
 
-test('automatic mode asks about new events and applies sure answers; off does nothing', async () => {
+test('no AI call runs on its own; "apply sure answers when I ask" applies only after a new ask, never after a re-ask', async () => {
   const { s, g, settings, calls } = fixture(answer);
-  assert.deepEqual(await s.auto(), { skipped: true });
+  assert.equal(typeof s.auto, 'undefined');                         // the hourly AI run is gone
   settings.set('shelf_sorter_auto', '1');
-  const r = await s.auto();
-  assert.equal(r.asked, 1); assert.equal(r.applied, 2);
+  const r = await s.ask({ kinds: ['event'] });
+  assert.deepEqual([r.asked, r.applied], [1, 2]);
   assert.equal(g.summary().events[0].home, 'ast');
-  await s.auto();
-  assert.ok(calls.length >= 1);
+  s.undo(r.appliedRun);
+  assert.equal(g.summary().events[0].home, 'gen');
+  const again = await s.ask({ scope: 'all', kinds: ['event'] });   // asked again: advice only
+  assert.deepEqual([again.asked, again.applied], [1, undefined]);
+  assert.equal(g.summary().events[0].home, 'gen');
+  assert.equal(calls.length, 2);
+});
+
+test('estimates before asking: new, open suggestions, outdated (another model or prompt), everything', async () => {
+  const { s, db, g } = fixture(answer);
+  assert.deepEqual(s.estimate({ kinds: ['event'] }), { scope: 'new', events: 1, series: 0, calls: 1, local: false, model: null });
+  await s.ask({ kinds: ['event'] });
+  const n = scope => s.estimate({ scope, kinds: ['event'] }).events;
+  assert.deepEqual(['new', 'suggested', 'outdated', 'all'].map(n), [0, 1, 0, 1]);
+  s.apply({ eventIds: ['aoa'], sureOnly: false, mode: 'row' });   // everything used: nothing open
+  assert.equal(n('suggested'), 0);
+  assert.equal(n('all'), 1);
+  // The model was changed in Settings: the open advice of the old one is outdated.
+  const f = fixture(answer);
+  await f.s.ask({ kinds: ['event'] });
+  const s2 = createShelfSorter({ db: f.db, grouping: f.g, ai: { run: (o, fn) => fn() }, getSetting: () => null, setSetting: () => {}, modelFor: () => 'claude-opus-5-5' });
+  assert.equal(s2.estimate({ scope: 'outdated', kinds: ['event'] }).events, 1);
+  const sum = f.g.summary(); s2.annotate(sum);
+  assert.equal(sum.events[0].ai.outdated, true);
+  assert.equal(JSON.parse(f.db.prepare("SELECT answer FROM shelf_sorter_answers WHERE kind = 'event'").get().answer).p, 1);   // prompt version saved
+  void db; void g;
 });
 
 test('answers naming series outside the event, or a missing key, change nothing', async () => {

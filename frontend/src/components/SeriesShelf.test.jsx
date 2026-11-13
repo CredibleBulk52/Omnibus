@@ -113,9 +113,9 @@ test('each row says why and links to the reading order; every action offers Undo
   } finally { act(() => root.unmount()); global.fetch = prev; }
 });
 
-test('the AI line: Ask, its view on a row, Use the AI\'s advice, and Apply sure changes with Undo', async () => {
+test('the AI line: Ask (after showing its cost), its view on a row, Use the AI\'s advice, and Apply sure changes with Undo', async () => {
   const { SeriesGroupingPanel } = await import('./SeriesShelf');
-  const summary = { counts: { rule: { links: 2, hidden: 1 } }, ai: { asked: 1, ready: 2, model: 'Claude Sonnet 5.5', auto: false, running: null, lastApplied: null },
+  const summary = { counts: { rule: { links: 2, hidden: 1 } }, ai: { asked: 1, ready: 2, model: 'Claude Sonnet 5.5', auto: false, running: null, lastApplied: null, outdated: { events: 1, series: 0 } },
     events: [
       { id: 'ok', name: 'Siege', year: 2010, confirmed: false, how: 'name', why: 'Named like the event · 2010', home: 'siege', homeName: 'Siege (2010)', members: [{ id: 'emb', name: 'Siege: Embedded (2010)', role: 'tie-in', hidden: true }],
         ai: { home: { verdict: 'agree', confidence: 'sure', why: 'The event\'s own series', open: true }, members: [], stale: false } },
@@ -129,6 +129,9 @@ test('the AI line: Ask, its view on a row, Use the AI\'s advice, and Apply sure 
     if (url === '/api/grouping') return summary;
     if (url === '/api/grouping/removed') return { items: [] };
     if (url === '/api/grouping/ai/apply') return { applied: 2, runId: 'run1' };
+    if (url === '/api/grouping/ai/estimate') return JSON.parse(opts.body).scopes[0] === 'new'
+      ? { new: { scope: 'new', events: 1, series: 4, calls: 2, model: 'Claude Sonnet 5.5', local: false } }
+      : { suggested: { scope: 'suggested', events: 1, series: 0, calls: 1, local: false }, all: { scope: 'all', events: 0, series: 0, calls: 0, local: false } };
     return { ok: true };
   } }));
   const { host, root } = mount(<SeriesGroupingPanel />);
@@ -149,8 +152,19 @@ test('the AI line: Ask, its view on a row, Use the AI\'s advice, and Apply sure 
     expect(host.querySelector('.gp-undo').textContent).toMatch(/Applied 2 changes from the AI/);
     await act(async () => { button('Undo').click(); }); await tick();
     expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/runs/run1/undo', expect.objectContaining({ method: 'POST' }));
+    expect(host.querySelector('.gp-outdated').textContent).toMatch(/1 suggestion came from another model or an older prompt · Ask again/);
     await act(async () => { button('✦ Ask the AI').click(); }); await tick();
-    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/ask', expect.objectContaining({ method: 'POST' }));
+    expect(global.fetch).not.toHaveBeenCalledWith('/api/grouping/ai/ask', expect.anything());   // nothing runs before the go
+    const card = host.querySelector('.gp-pending');
+    expect(card.textContent).toMatch(/✦ Ask the AI · Claude Sonnet 5.5New and changed: 1 event and 4 series · 2 AI calls/);
+    await act(async () => { card.querySelector('.adm-btn').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/ask', expect.objectContaining({ body: JSON.stringify({ kinds: ['event', 'series'], scope: 'new' }) }));
+    expect(host.querySelector('.gp-pending')).toBeNull();
+    // Review the events again: only the choices with something to ask about.
+    await act(async () => { button('Review the events again…').click(); }); await tick();
+    expect([...host.querySelectorAll('.gp-pending .adm-btn')].map(b => b.textContent)).toEqual(['Open suggestions only: 1 event · 1 AI call']);
+    await act(async () => { button('Cancel').click(); });
+    expect(host.querySelector('.gp-pending')).toBeNull();
   } finally { act(() => root.unmount()); global.fetch = prev; }
 });
 
@@ -158,8 +172,9 @@ test('Minis & one-shots: suggested homes as two covers; Shelve and Not this one,
   const { SeriesGroupingPanel } = await import('./SeriesShelf');
   const summary = { counts: { rule: { links: 1, hidden: 1 }, ai: { links: 1, hidden: 1 } }, ai: { asked: 0, askedSeries: 3, ready: 1 }, events: [] };
   const minis = { suggested: [{ seriesId: 'wow', name: 'Black Panther: World of Wakanda (2016)', homeId: 'bp16', homeName: 'Black Panther (2016)', confidence: 'sure', why: 'Companion to that run' }],
-    shelved: [{ seriesId: 'kh', name: 'Kraven Hunts (2020)', homeId: 'asm', homeName: 'The Amazing Spider-Man (2018)', why: 'A spin-off' }],
-    counts: { own: 1, landmark: 1, none: 0 }, toAsk: 5, asked: 3, ready: 1 };
+    shelved: [{ seriesId: 'kh', name: 'Kraven Hunts (2020)', homeId: 'asm', homeName: 'The Amazing Spider-Man (2018)', why: 'A spin-off',
+      rethink: { verdict: 'own', confidence: 'likely', why: 'A Kraven series in its own right' } }],
+    counts: { own: 1, landmark: 1, none: 0, rethink: 1 }, toAsk: 5, asked: 3, ready: 1 };
   const prev = global.fetch;
   global.fetch = vi.fn(async url => ({ ok: true, json: async () => {
     if (url === '/api/grouping') return summary;
@@ -167,6 +182,7 @@ test('Minis & one-shots: suggested homes as two covers; Shelve and Not this one,
     if (url === '/api/grouping/removed') return { items: [] };
     if (url === '/api/grouping/ai/apply') return { applied: 1, runId: 'r9' };
     if (url === '/api/grouping/series/wow/decline') return { declined: true, previous: null };
+    if (url === '/api/grouping/series/kh/keep') return { kept: true, previous: 'run3' };
     return { ok: true };
   } }));
   const { host, root } = mount(<SeriesGroupingPanel />);
@@ -187,7 +203,13 @@ test('Minis & one-shots: suggested homes as two covers; Shelve and Not this one,
     await act(async () => { button('Not this one').click(); }); await tick();
     await act(async () => { button('Undo').click(); }); await tick();
     expect(global.fetch).toHaveBeenCalledWith('/api/grouping/series/wow/undecline', expect.objectContaining({ body: JSON.stringify({ previous: null }) }));
-    await act(async () => { button('Shelved by the AI 1').click(); });
+    expect([...host.querySelectorAll('[role=tab]')].find(b => /Minis/.test(b.textContent)).textContent).toBe('Minis & one-shots 2');   // 1 suggested + 1 to recheck
+    await act(async () => { button('Shelved by the AI 1 1 to recheck').click(); });
+    expect(host.querySelector('.gp-mcard').textContent).toMatch(/AI now says: a series of its own/);
+    await act(async () => { button('Keep it').click(); }); await tick();
+    expect(host.querySelector('.gp-undo').textContent).toMatch(/Kraven Hunts \(2020\) stays on The Amazing Spider-Man \(2018\)'s shelf/);
+    await act(async () => { button('Undo').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/series/kh/keep', expect.objectContaining({ body: JSON.stringify({ undo: true, previous: 'run3' }) }));
     await act(async () => { button('✕ Take it off').click(); }); await tick();
     expect(global.fetch).toHaveBeenCalledWith('/api/series/kh/shelf/asm', expect.objectContaining({ method: 'DELETE' }));
   } finally { act(() => root.unmount()); global.fetch = prev; }

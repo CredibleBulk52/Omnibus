@@ -21,11 +21,16 @@ const crypto = require('crypto');
 const B = require('./shelfSorterSeries');   // stage B: homeless minis and one-shots
 
 const TASK = 'shelf_sorter';
+// "Apply sure answers when I ask" (2026-11-14): no AI call is made without an admin's click (user:
+// costs could grow unchecked). With this on, the sure answers about series and events asked about
+// for the first time are applied right after the admin's ask; a re-ask never applies on its own.
 const AUTO_KEY = 'shelf_sorter_auto';
 const PER_CALL = 6;           // events per AI call
-const AUTO_LIMIT = 24;        // events asked about per automatic run
 const PER_CALL_SERIES = 12;   // series per AI call (stage B)
-const AUTO_LIMIT_SERIES = 60; // series asked about per automatic run
+// Bump when a prompt changes in a way that should offer a re-ask (answers made under an older
+// prompt or another model are counted as "outdated" on the panel; nothing re-asks on its own).
+const PROMPT_V = { event: 1, series: 1 };
+const SCOPES = ['new', 'suggested', 'outdated', 'all'];
 const MAX_ROWS = 40;          // reading-order lines per event
 const PRELUDE = /prelude|prologue|lead[- ]?in|road to|countdown/i;
 const CONF = ['sure', 'likely', 'unsure'];
@@ -204,6 +209,15 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   const putAnswer = { run: (...a) => putAnswerKind.run('event', ...a) };
   const rehash = db.prepare("UPDATE shelf_sorter_answers SET hash = ? WHERE kind = 'event' AND item_id = ?");
   const answersMap = (kind = 'event') => new Map(db.prepare('SELECT * FROM shelf_sorter_answers WHERE kind = ?').all(kind).map(r => [r.item_id, r]));
+  const parse = row => { try { return row ? JSON.parse(row.answer) : null; } catch { return null; } };
+  const currentModel = () => { try { return modelFor(TASK) || null; } catch { return null; } };
+  // An answer from another model or an older prompt. Omnibus's own suggestions (no AI) count once an
+  // AI key is saved; Metron's rule never does.
+  function outdated(row, a, kind, cur) {
+    if (!row || row.model === 'metron') return false;
+    if (row.model === 'omnibus') return !!aiAvailable();
+    return (!!cur && row.model !== cur) || ((a && a.p) || 1) !== PROMPT_V[kind];
+  }
 
   // ── Stage B context (cached briefly: the Library panel reads it twice per load) ──
   let bCache = null;
@@ -339,48 +353,92 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   const endRun = (id, fields) => db.prepare('UPDATE shelf_sorter_runs SET finished_at = ?, status = ?, asked = ?, applied = ?, error = ? WHERE id = ?')
     .run(now(), fields.status, fields.asked || 0, fields.applied || 0, fields.error || null, id);
 
-  // Ask about events (all askable ones whose facts changed, or the given ids). Saves answers only.
-  // kinds: 'event' and/or 'series' (stage B). seriesIds / eventIds limit the ask to those.
-  // suggested: series only, ask again about the open suggestions (the Suggested tab: a home not yet
-  // shelved or declined), nothing else (2026-11-14, user: re-ask the ~65 waiting, not 800+).
-  async function ask({ eventIds = null, seriesIds = null, force = false, suggested = false, limit = Infinity, seriesLimit = Infinity, mode = 'ask', kinds = ['event', 'series'] } = {}) {
-    if (state.running) return { skipped: true, running: true };
-    if (!aiAvailable()) return mode === 'auto' ? { asked: 0, noAi: true } : localSuggest({ force });
-    const ctx = context();
-    const wanted = eventIds ? new Set(eventIds) : null;
-    const saved = answersMap();
-    const todo = [];
-    const bTodo = [];
+  // What an ask would cover. scope (2026-11-14, claude/SHELF_SORTER.md "Admin-triggered workflow"):
+  //   new        series and events not asked about yet, or whose facts changed (✦ Ask the AI)
+  //   suggested  the open suggestions only: advice not yet applied, declined or decided by the admin
+  //   outdated   the open suggestions made by another model or an older prompt
+  //   all        everything the admin has not decided: also answers already applied and series the
+  //              AI shelved (a disagreement comes back as advice, never applied on its own)
+  // The admin's own choices are never asked about again in a re-ask (declined, shelved with ✓ or kept),
+  // and never changed by an answer (remaining()). fresh: the ids with no answer before.
+  function plan({ scope = 'new', kinds = ['event', 'series'], eventIds = null, seriesIds = null, limit = Infinity, seriesLimit = Infinity } = {}) {
+    if (!SCOPES.includes(scope)) scope = 'new';
+    const cur = currentModel();
+    const todo = [], bTodo = [];
+    const fresh = { events: new Set(), series: new Set() };
     if (kinds.includes('series') && !eventIds) {
       const bctx = bContext();
       typeRule(bctx);
       const bWanted = seriesIds ? new Set(seriesIds) : null;
       const bSaved = answersMap('series');
-      for (const t of bctx.targets) {
+      const aiHomes = aiHomesOf();
+      const shelvedIds = new Set((bctx.aiShelved || []).map(t => t.id));
+      const pool = scope === 'new' && !bWanted ? bctx.targets : [...bctx.targets, ...(bctx.aiShelved || [])];
+      for (const t of pool) {
         if (bWanted && !bWanted.has(t.id)) continue;
         const f = B.seriesFacts(t, bctx);
         if (!f.candidates.length || f.kind === 'ongoing') continue;   // ongoing: decided by typeRule
         const hash = bHash(f);
         const row = bSaved.get(t.id);
-        let a = null; try { a = row ? JSON.parse(row.answer) : null; } catch {}
-        if (row && row.applied === 'declined' && !bWanted) continue;
-        const again = suggested ? !!(row && a && row.applied !== 'declined' && seriesOpen(a, t.id, bctx))
-          : force || !row || !a || bStale(row, a, f);
+        const a = parse(row);
+        if (!bWanted && row && (row.applied === 'declined' || (scope !== 'new' && row.applied === 'user'))) continue;
+        const onShelf = shelvedIds.has(t.id);
+        const open = !!(row && a && (onShelf ? rethinks(a, t.id, aiHomes) : seriesOpen(a, t.id, bctx)));
+        const again = bWanted ? true
+          : scope === 'all' ? true
+          : scope === 'suggested' ? open
+          : scope === 'outdated' ? open && outdated(row, a, 'series', cur)
+          : !onShelf && (!row || !a || bStale(row, a, f));
         if (!again) continue;
         bTodo.push({ f, hash });
+        if (!row) fresh.series.add(t.id);
         if (bTodo.length >= seriesLimit) break;
       }
     }
-    if (kinds.includes('event') && !seriesIds && !suggested) for (const e of ctx.events) {
-      if (wanted && !wanted.has(e.id)) continue;
-      const f = eventFacts(e, ctx);
-      if (!wanted && !askable(e, f, ctx)) continue;
-      const hash = hashOf({ f, v: 1 });
-      if (!force && saved.get(e.id)?.hash === hash) continue;
-      todo.push({ f, hash });
-      if (todo.length >= limit) break;
+    if (kinds.includes('event') && !seriesIds) {
+      const ctx = context();
+      const wanted = eventIds ? new Set(eventIds) : null;
+      const saved = answersMap();
+      for (const e of ctx.events) {
+        if (wanted && !wanted.has(e.id)) continue;
+        const f = eventFacts(e, ctx);
+        if (!wanted && !askable(e, f, ctx)) continue;
+        const hash = hashOf({ f, v: 1 });
+        const row = saved.get(e.id);
+        const a = parse(row);
+        const left = a ? remaining(a, e, ctx) : null;
+        const open = !!(left && (left.home || left.members.length));
+        const again = wanted ? true
+          : scope === 'all' ? true
+          : scope === 'suggested' ? open
+          : scope === 'outdated' ? open && outdated(row, a, 'event', cur)
+          : row?.hash !== hash;
+        if (!again) continue;
+        todo.push({ f, hash });
+        if (!row) fresh.events.add(e.id);
+        if (todo.length >= limit) break;
+      }
     }
-    if (!todo.length && !bTodo.length) return { asked: 0, runId: null };
+    return { todo, bTodo, fresh, scope };
+  }
+  const callsFor = (events, series) => Math.ceil(events / PER_CALL) + Math.ceil(series / PER_CALL_SERIES);
+  // What an ask would cost, shown before it runs. Without an AI key, Omnibus's own suggestions cost nothing.
+  function estimate(opts = {}) {
+    const { todo, bTodo, scope } = plan(opts);
+    const model = currentModel();
+    return { scope, events: todo.length, series: bTodo.length, calls: aiAvailable() ? callsFor(todo.length, bTodo.length) : 0,
+      local: !aiAvailable(), model: model && aiAvailable() ? modelName(model) : null };
+  }
+
+  // Ask the AI (only ever on an admin's click). Saves answers; with "Apply sure answers when I ask"
+  // on, a new ask then applies the sure answers about what had no answer before.
+  // Older callers: force = scope 'all'; suggested = scope 'suggested'.
+  async function ask({ eventIds = null, seriesIds = null, force = false, suggested = false, scope = null, limit = Infinity, seriesLimit = Infinity, mode = 'ask', kinds = ['event', 'series'] } = {}) {
+    if (state.running) return { skipped: true, running: true };
+    scope = scope || (force ? 'all' : suggested ? 'suggested' : 'new');
+    if (!aiAvailable()) return localSuggest({ force: scope === 'all' });
+    const { todo, bTodo, fresh } = plan({ scope, kinds, eventIds, seriesIds, limit, seriesLimit });
+    if (!todo.length && !bTodo.length) return { asked: 0, runId: null, scope };
     const model = ai.choose ? ai.choose(TASK) : modelFor(TASK);
     const runId = newRun(mode, model);
     Object.assign(state, { running: runId, done: 0, total: todo.length + bTodo.length, stop: false });
@@ -409,7 +467,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
             const eventId = ids.get(item.event);
             const b = batch.find(x => x.f.id === eventId);
             if (!b) continue;
-            putAnswer.run(eventId, b.hash, r.model || model, JSON.stringify(resolve(item, b.f, ids)), now(), runId);
+            putAnswer.run(eventId, b.hash, r.model || model, JSON.stringify({ ...resolve(item, b.f, ids), p: PROMPT_V.event }), now(), runId);
             got++; asked++;
           }
           setJobOutcome(r.jobId, got === batch.length ? 'ok' : 'truncated');
@@ -437,7 +495,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
             const sid = ids.get(item.item);
             const b = batch.find(x => x.f.id === sid);
             if (!b) continue;
-            putAnswerKind.run('series', sid, b.hash, r.model || model, JSON.stringify(B.resolveSeries(item, b.f, ids)), now(), runId);
+            putAnswerKind.run('series', sid, b.hash, r.model || model, JSON.stringify({ ...B.resolveSeries(item, b.f, ids), p: PROMPT_V.series }), now(), runId);
             got++; asked++;
           }
           setJobOutcome(r.jobId, got === batch.length ? 'ok' : 'truncated');
@@ -448,8 +506,15 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
       endRun(runId, { status: state.stop ? 'stopped' : failed && !asked ? 'failed' : 'done', asked, error: failed });
       Object.assign(state, { running: null });
     }
-    logger?.info?.('shelf-sorter', `Asked about ${asked} of ${todo.length + bTodo.length} (${what})`, { run: runId, model, error: failed });
-    return { asked, total: todo.length + bTodo.length, runId, error: failed };
+    logger?.info?.('shelf-sorter', `Asked about ${asked} of ${todo.length + bTodo.length} (${what})`, { run: runId, model, scope, error: failed });
+    const out = { asked, total: todo.length + bTodo.length, runId, scope, error: failed };
+    // Only a new ask, by the admin, and only answers about what was never asked before.
+    if (asked && scope === 'new' && mode === 'ask' && getSetting(AUTO_KEY) === '1' && (fresh.events.size || fresh.series.size)) {
+      bForget();
+      const r = apply({ only: fresh, mode: 'ask-apply' });
+      Object.assign(out, { applied: r.applied, appliedRun: r.runId });
+    }
+    return out;
   }
 
   // ── Applying answers ──
@@ -476,7 +541,8 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   // a row's "Use the AI's advice" (eventIds) applies all of that event's advice: the admin decided.
   // Applying is idempotent (what is already done is skipped); answers of an event whose AI changes
   // were undone are not applied again except from its row.
-  function apply({ eventIds = null, seriesIds = null, sureOnly = true, mode = 'apply' } = {}) {
+  // only: { events: Set, series: Set } limits a sure-only apply to those (after a new ask).
+  function apply({ eventIds = null, seriesIds = null, sureOnly = true, mode = 'apply', only = null } = {}) {
     const ctx = context();
     const byId = new Map(ctx.events.map(e => [e.id, e]));
     const wanted = eventIds ? new Set(eventIds) : seriesIds ? new Set() : null;
@@ -488,6 +554,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     try {
       for (const row of answersMap().values()) {
         if (wanted ? !wanted.has(row.item_id) : String(row.applied || '').startsWith('undone:')) continue;
+        if (only && !only.events.has(row.item_id)) continue;
         const e = byId.get(row.item_id);
         if (!e) continue;
         if (!wanted && hashOf({ f: eventFacts(e, ctx), v: 1 }) !== row.hash) continue;    // changed since: ask again first
@@ -517,7 +584,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
         applied += n;
       }
       // Stage B: shelve minis and one-shots under the home the AI named.
-      if (!eventIds) applied += applySeries({ wanted: seriesIds ? new Set(seriesIds) : null, ok, rid, sureOnly });
+      if (!eventIds) applied += applySeries({ wanted: seriesIds ? new Set(seriesIds) : null, ok, rid, sureOnly, only: only ? only.series : null });
     } finally {
       if (runId) endRun(runId, { status: 'done', applied });
       if (applied) { grouping.run('shelf sorter'); grouping.changed && grouping.changed(); }
@@ -536,13 +603,22 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     return (a.verdict === 'home' || a.verdict === 'main') && !!a.homeId && !bctx.linked.has(sid) && bctx.S.has(sid) && bctx.S.has(a.homeId)
       && !db.prepare("SELECT 1 FROM series_link_overrides WHERE series_id = ? AND home_id = ? AND action = 'reject'").get(sid, a.homeId);
   }
-  function applySeries({ wanted, ok, rid, sureOnly }) {
+  // A series the AI shelved whose latest answer no longer names that home (asked again in a full
+  // review): shown on Shelved by the AI for the admin to take off or keep. Never changed on its own.
+  const aiHomesOf = () => {
+    const m = new Map();
+    for (const l of db.prepare("SELECT series_id, home_id FROM series_links WHERE source = 'ai'").all()) { if (!m.has(l.series_id)) m.set(l.series_id, new Set()); m.get(l.series_id).add(l.home_id); }
+    return m;
+  };
+  const rethinks = (a, sid, aiHomes) => !!a && !((a.verdict === 'home' || a.verdict === 'main') && !!aiHomes.get(sid)?.has(a.homeId));
+  function applySeries({ wanted, ok, rid, sureOnly, only = null }) {
     const bctx = bContext();
     const targets = new Map(bctx.targets.map(t => [t.id, t]));
     let n = 0;
     for (const row of answersMap('series').values()) {
       const tag = String(row.applied || '');
       if (wanted ? !wanted.has(row.item_id) : (tag.startsWith('undone:') || tag === 'declined')) continue;
+      if (only && !only.has(row.item_id)) continue;
       let a; try { a = JSON.parse(row.answer); } catch { continue; }
       if (!ok(a.confidence) || !seriesOpen(a, row.item_id, bctx)) continue;
       const t = targets.get(row.item_id);
@@ -582,6 +658,16 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     return { ok: true };
   }
 
+  // "Keep it": the admin keeps a series the AI shelved although its latest answer disagrees. A kept
+  // series is the admin's decision: not asked about again in a re-ask.
+  function keep(seriesId, { undo = false, previous = null } = {}) {
+    const row = answersMap('series').get(seriesId);
+    if (!row) throw Object.assign(new Error('No answer for that series'), { status: 404 });
+    const before = row.applied || null;
+    markSeries.run(undo ? previous : 'user', seriesId);
+    return { kept: !undo, previous: before };
+  }
+
   function refreshHashes(ids) {
     const ctx = context();
     for (const id of ids) { const e = ctx.events.find(x => x.id === id); if (e) rehash.run(hashOf({ f: eventFacts(e, ctx), v: 1 }), id); }
@@ -612,14 +698,6 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     return { undone: changes.length };
   }
 
-  // The hourly rules run: with the switch on, ask about new or changed events, then apply sure answers.
-  async function auto() {
-    if (getSetting(AUTO_KEY) !== '1' || state.running) return { skipped: true };
-    const r = await ask({ limit: AUTO_LIMIT, seriesLimit: AUTO_LIMIT_SERIES, mode: 'auto' });
-    if (r.error && !r.asked) return r;
-    return { ...r, ...apply({ mode: 'auto' }) };
-  }
-
   // ── For the Library panel ──
   // Adds `ai` to each event of grouping.summary(): the saved answer with names, and whether the
   // event changed since it was asked.
@@ -627,6 +705,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     const answers = answersMap();
     if (!answers.size) return 0;
     const ctx = context();
+    const cur = currentModel();
     const byId = new Map(ctx.events.map(e => [e.id, e]));
     const name = id => label(ctx.S.get(id)) || null;
     let ready = 0;
@@ -641,7 +720,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
       if (!stale && !undone && shelved(ev, ctx)) ready += (left.home && a.home.confidence === 'sure' ? 1 : 0) + left.members.filter(m => m.confidence === 'sure').length;
       e.ai = { home: { ...a.home, name: a.home.seriesId ? name(a.home.seriesId) : null, open: left.home },
         members: left.members.map(m => ({ ...m, name: name(m.seriesId) })),
-        model: modelName(row.model), askedAt: row.asked_at, undone, stale };
+        model: modelName(row.model), askedAt: row.asked_at, undone, stale, outdated: outdated(row, a, 'event', cur) };
     }
     return ready;
   }
@@ -658,6 +737,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     const suggested = [];
     let ready = 0, toAsk = 0;
     const saved = answersMap('series');
+    const cur = currentModel();
     for (const t of bctx.targets) {
       const row = saved.get(t.id);
       const f = row ? null : B.seriesFacts(t, bctx);
@@ -675,12 +755,23 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
       if (!stale && !undone && a.confidence === 'sure') ready++;
       const s = bctx.S.get(row.item_id);
       suggested.push({ seriesId: row.item_id, name: label2(row.item_id), issues: s ? s.size : null, homeId: a.homeId, homeName: label2(a.homeId),
-        confidence: a.confidence, why: a.why, main: a.verdict === 'main', stale, undone, model: modelName(row.model) });
+        confidence: a.confidence, why: a.why, main: a.verdict === 'main', stale, undone, model: modelName(row.model), outdated: outdated(row, a, 'series', cur) });
     }
     const rank = { sure: 0, likely: 1, unsure: 2 };
     suggested.sort((x, y) => (rank[x.confidence] - rank[y.confidence]) || String(x.homeName).localeCompare(String(y.homeName)) || String(x.name).localeCompare(String(y.name)));
+    // Shelved by the AI; a series whose latest answer disagrees (asked again in a full review) comes
+    // first with what the AI now says, for the admin to take off or keep.
+    const aiHomes = aiHomesOf();
     const shelved = db.prepare("SELECT series_id, home_id, reason, created_at FROM series_links WHERE source = 'ai' ORDER BY created_at DESC").all()
-      .map(l => ({ seriesId: l.series_id, name: label2(l.series_id), homeId: l.home_id, homeName: label2(l.home_id), why: String(l.reason || '').replace(/^Shelf Sorter: /, '') }));
+      .map(l => {
+        const row = saved.get(l.series_id), a = parse(row);
+        const kept = row?.applied === 'user';
+        const re = row && a && !kept && rethinks(a, l.series_id, aiHomes)
+          ? { verdict: a.verdict, homeName: a.homeId ? label2(a.homeId) : null, confidence: a.confidence, why: a.why, model: modelName(row.model) } : null;
+        return { seriesId: l.series_id, name: label2(l.series_id), homeId: l.home_id, homeName: label2(l.home_id), why: String(l.reason || '').replace(/^Shelf Sorter: /, ''), rethink: re };
+      })
+      .sort((x, y) => (!!y.rethink - !!x.rethink));
+    counts.rethink = shelved.filter(x => x.rethink).length;
     const types = seriesTypes ? seriesTypes.all() : new Map();
     const lookable = typeScope(bctx);
     const typesKnown = lookable.filter(t => types.has(t.comicid)).length;
@@ -708,7 +799,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   function setAuto(on) { setSetting(AUTO_KEY, on ? '1' : ''); return status(); }
   function stop() { state.stop = true; return { stopping: !!state.running }; }
 
-  return { ask, apply, undo, auto, annotate, status, setAuto, stop, eventFacts, render, context, seriesSummary, seriesReady, decline, undecline, lookUpTypes, typeRule, _state: state };
+  return { ask, plan, estimate, apply, undo, annotate, status, setAuto, stop, eventFacts, render, context, seriesSummary, seriesReady, decline, undecline, keep, lookUpTypes, typeRule, _state: state };
 }
 
-module.exports = { createShelfSorter, initShelfSorter, parseReply, SYSTEM, SCHEMA, TASK, AUTO_KEY };
+module.exports = { createShelfSorter, initShelfSorter, parseReply, SYSTEM, SCHEMA, TASK, AUTO_KEY, PROMPT_V, SCOPES };

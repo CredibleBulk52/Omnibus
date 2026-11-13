@@ -128,6 +128,14 @@ export function PutOnShelfDialog({ seriesId, seriesName, onClose, onDone }) {
 const STRIP = 14;
 const CONF_LABEL = { sure: 'sure', likely: 'likely', unsure: 'unsure' };
 const UNDO_MS = 10000;
+const SCOPE_LABEL = { new: 'New and changed', suggested: 'Open suggestions only', outdated: 'Those suggestions', all: 'Everything you have not decided' };
+const SCOPE_HINT = {
+  new: 'Events and series not asked about yet, or whose facts changed since.',
+  suggested: 'Only the advice still waiting for you. Cheapest after changing the model.',
+  outdated: 'Only the waiting advice that came from another model or an older prompt.',
+  all: 'Everything except what you decided yourself. Answers that disagree with what is in place wait for you; nothing changes on its own.',
+};
+const askWhat = o => [o.events && `${o.events} event${o.events === 1 ? '' : 's'}`, o.series && `${o.series} series`].filter(Boolean).join(' and ');
 const enc = encodeURIComponent;
 export function SeriesGroupingPanel() {
   const navigate = useNavigate();
@@ -141,6 +149,7 @@ export function SeriesGroupingPanel() {
   const [view, setView] = useState('check');
   const [open, setOpen] = useState({});
   const [undo, setUndo] = useState(null);   // { text, run }
+  const [pending, setPending] = useState(null);   // an ask waiting for the admin's go: { title, model, options }
   const load = useCallback(() => Promise.all([
     fetch('/api/grouping').then(r => r.json()).then(d => { if (d.error) throw new Error(d.error); setData(d); }),
     fetch('/api/grouping/removed').then(r => r.ok ? r.json() : { items: [] }).then(d => setRemoved(d.items || [])).catch(() => {}),
@@ -198,6 +207,17 @@ export function SeriesGroupingPanel() {
     run: () => call('POST', '/api/grouping/events/restore', { states: r?.previous || [] }),
   }));
   const askAi = body => act('ai', () => call('POST', '/api/grouping/ai/ask', body || {}));
+  // No AI call runs without the admin's go (2026-11-14): every ask shows what it covers and how many
+  // AI calls it takes first. Without an AI key a new ask (Omnibus's own suggestions) costs nothing.
+  const prepare = (kinds, scopes, title) => act('est', async () => {
+    const est = await call('POST', '/api/grouping/ai/estimate', { kinds, scopes });
+    const options = scopes.map(k => ({ key: k, kinds, ...est[k] })).filter(o => o.events + o.series > 0);
+    if (!options.length) return { none: true };
+    if (options.length === 1 && options[0].local) { await call('POST', '/api/grouping/ai/ask', { kinds, scope: options[0].key }); return {}; }
+    setPending({ title, model: options[0].model, options });
+    return {};
+  }, r => r?.none ? { text: 'Nothing to ask the AI about.', run: null } : null);
+  const go = o => { setPending(null); askAi({ kinds: o.kinds, scope: o.key }); };
   const undoAiRun = id => () => call('POST', `/api/grouping/ai/runs/${enc(id)}/undo`);
   const applyAi = () => act('ai', () => call('POST', '/api/grouping/ai/apply'), r => r?.applied
     ? { text: `Applied ${r.applied} change${r.applied === 1 ? '' : 's'} from the AI.`, run: undoAiRun(r.runId) } : { text: 'Nothing new to apply.', run: null });
@@ -218,28 +238,30 @@ export function SeriesGroupingPanel() {
       <div className="gp-ai">
         {asking
           ? <><span className="gp-ai-progress"><span style={{ width: `${Math.round(100 * aiInfo.running.done / Math.max(1, aiInfo.running.total))}%` }} /></span>
-              <span>✦ Asking the AI… {aiInfo.running.done} of {aiInfo.running.total} events</span>
+              <span>✦ Asking the AI… {aiInfo.running.done} of {aiInfo.running.total}</span>
               <button type="button" className="gp-link" onClick={() => act('ai', () => call('POST', '/api/grouping/ai/stop'))}>Stop</button></>
-          : <><button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => askAi()}
+          : <><button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => prepare(['event', 'series'], ['new'], 'Ask the AI')}
               title={aiInfo.aiAvailable === false
                 ? 'No AI key is saved for the Shelf Sorter, so Omnibus suggests only its strongest matches for minis and one-shots (same title, published while that series ran). Nothing changes until you Shelve.'
-                : "The AI checks each event's home and shelf against its reading order, and suggests homes for minis and one-shots. It only answers; nothing changes until you apply."}>
+                : "The AI checks new or changed events against their reading orders, and suggests homes for new minis and one-shots. You see how many AI calls it takes before it starts."}>
               {aiInfo.aiAvailable === false ? '✦ Suggest homes' : '✦ Ask the AI'}</button>
               {aiInfo.ready > 0 && <button className="adm-btn" disabled={!!busy} onClick={applyAi} title="Applies the answers the AI is sure of. Undo is offered afterwards.">✓ Apply {aiInfo.ready} sure change{aiInfo.ready === 1 ? '' : 's'}</button>}
               <span className="gp-muted gp-ai-line" title={aiInfo.lastAsk?.error || ''}>
                 {aiInfo.lastAsk?.error && !aiInfo.lastAsk.asked ? `Last try failed: ${aiInfo.lastAsk.error}` : aiInfo.asked || aiInfo.askedSeries ? `Asked about ${aiInfo.asked} events and ${aiInfo.askedSeries || 0} series` : 'Not asked yet'}
-                {aiInfo.aiAvailable === false ? ' · no AI key: Omnibus suggests its strongest matches' : aiInfo.model ? ` · ${aiInfo.model}` : ''}{aiInfo.auto ? ' · applies sure answers on its own' : ''}
+                {aiInfo.aiAvailable === false ? ' · no AI key: Omnibus suggests its strongest matches' : aiInfo.model ? ` · ${aiInfo.model}` : ''}{aiInfo.auto ? ' · applies sure answers when you ask' : ''}
               </span></>}
         <details className="gp-menu gp-ai-menu">
           <summary aria-label="AI options">⋯</summary>
           <div className="gp-menu-items">
-            <label className="gp-menu-check" title="Each hour the AI checks new or changed events and applies the answers it is sure of. Each run can be undone.">
-              <input type="checkbox" checked={!!aiInfo.auto} disabled={!!busy} onChange={ev => act('ai', () => call('POST', '/api/grouping/ai/auto', { on: ev.target.checked }))} /> Apply sure answers on its own
+            <label className="gp-menu-check" title="When you click ✦ Ask the AI, the answers it is sure of about events and series asked for the first time are applied at once (Undo is in this menu). Asking again never applies anything on its own. The AI never runs without your click.">
+              <input type="checkbox" checked={!!aiInfo.auto} disabled={!!busy} onChange={ev => act('ai', () => call('POST', '/api/grouping/ai/auto', { on: ev.target.checked }))} /> Apply sure answers when I ask
             </label>
             {aiInfo.lastApplied && <button type="button" disabled={!!busy} onClick={ev => { closeMenu(ev); act('ai', undoAiRun(aiInfo.lastApplied.id), () => ({ text: 'Undid the AI\'s last changes.', run: null })); }}>
               Undo the AI's last changes ({aiInfo.lastApplied.applied})</button>}
-            <button type="button" disabled={!!busy || asking} onClick={ev => { closeMenu(ev); askAi({ force: true, kinds: ['event'] }); }} title="Asks about every event again, also the ones that have not changed">Ask again about every event</button>
-            <button type="button" disabled={!!busy || asking} onClick={ev => { closeMenu(ev); askAi({ suggested: true, kinds: ['series'] }); }} title="Asks again only about the minis waiting on the Suggested tab (after changing the model, say). Nothing you shelved or set aside, and nothing left alone, is asked again.">Ask again about the suggested minis</button>
+            <button type="button" disabled={!!busy || asking} onClick={ev => { closeMenu(ev); prepare(['event'], ['suggested', 'all'], 'Review the events again'); }}
+              title="Ask again about the open suggestions only, or about every event with a shelf. Homes you approved and series you put back are never changed; new advice waits on To check.">Review the events again…</button>
+            <button type="button" disabled={!!busy || asking} onClick={ev => { closeMenu(ev); prepare(['series'], ['suggested', 'all'], 'Review the minis again'); }}
+              title="Ask again about the suggestions waiting, or about every mini and one-shot you have not decided (also those the AI shelved). Nothing changes on its own: new advice waits on the Minis tab.">Review the minis again…</button>
             <button type="button" onClick={ev => { closeMenu(ev); navigate('/settings?tab=ai'); }}>Choose the AI model…</button>
             <button type="button" disabled={!!busy} onClick={ev => { closeMenu(ev); act('off', () => call('POST', '/api/grouping/enabled', { on: false }), () => ({
               text: 'Specials shelves are off: nothing is grouped or hidden. Your shelves are kept.', run: () => call('POST', '/api/grouping/enabled', { on: true }) })); }}
@@ -247,8 +269,21 @@ export function SeriesGroupingPanel() {
           </div>
         </details>
       </div>
+      {pending && !asking && (
+        <div className="gp-pending" role="dialog" aria-label={pending.title}>
+          <span><b>✦ {pending.title}</b>{pending.model ? <span className="gp-muted"> · {pending.model}</span> : null}</span>
+          {pending.options.map(o => (
+            <button key={o.key} className="adm-btn" disabled={!!busy} onClick={() => go(o)} title={SCOPE_HINT[o.key]}>
+              {SCOPE_LABEL[o.key]}: {askWhat(o)} · {o.calls} AI call{o.calls === 1 ? '' : 's'}</button>))}
+          <button type="button" className="gp-link" onClick={() => setPending(null)}>Cancel</button>
+        </div>)}
+      {!pending && !asking && aiInfo.outdated && aiInfo.outdated.events + aiInfo.outdated.series > 0 && (
+        <p className="gp-muted gp-outdated" title="Advice still waiting that came from another AI model or an older Shelf Sorter prompt. Nothing is asked again until you click.">
+          {aiInfo.outdated.events + aiInfo.outdated.series} suggestion{aiInfo.outdated.events + aiInfo.outdated.series === 1 ? '' : 's'} came from another model or an older prompt
+          {' · '}<button type="button" className="gp-link" disabled={!!busy} onClick={() => prepare(['event', 'series'], ['outdated'], 'Ask again')}>Ask again</button>
+        </p>)}
       <div className="gp-tabs" role="tablist">
-        {[['check', 'To check', toCheck.length], ['shelves', 'Events with a shelf', withShelf.length], ['all', 'All events', data.events.length], ['minis', 'Minis & one-shots', minis ? minis.suggested.length : 0], ['removed', 'Removed', removed.length]].map(([k, label, n]) => (
+        {[['check', 'To check', toCheck.length], ['shelves', 'Events with a shelf', withShelf.length], ['all', 'All events', data.events.length], ['minis', 'Minis & one-shots', minis ? minis.suggested.length + (minis.counts?.rethink || 0) : 0], ['removed', 'Removed', removed.length]].map(([k, label, n]) => (
           <button key={k} role="tab" aria-selected={view === k} onClick={() => setView(k)}>{label} <b>{n}</b></button>))}
         {view === 'check' && toCheck.length > 0 && <button className="adm-btn gp-all" disabled={!!busy} onClick={confirmAll}
           title="Approves and locks every home in this list. Undo is offered afterwards.">✓ All look right</button>}
@@ -390,6 +425,8 @@ export function SeriesGroupingPanel() {
         .gp-ai-progress { width: 120px; height: 6px; border-radius: 3px; background: var(--border-subtle); overflow: hidden; }
         .gp-ai-progress span { display: block; height: 100%; background: var(--td-yellow, var(--color-primary)); transition: width .4s; }
         .gp-ai-menu { margin-left: auto; }
+        .gp-pending { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; margin: 0 0 10px; border: 1px solid var(--border, #333); border-radius: 8px; background: var(--bg-elevated, rgba(255,255,255,0.03)); }
+        .gp-outdated { margin: -4px 0 10px; font-size: 0.85rem; }
         .gp-menu-check { display: flex; gap: 8px; align-items: center; padding: 7px 10px; font-size: 0.85rem; cursor: pointer; }
         .gp-airow { display: flex; gap: 8px; align-items: baseline; min-width: 0; font-size: 0.8rem; }
         .gp-airow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -426,6 +463,8 @@ export function SeriesGroupingPanel() {
 // suggested homes for minis and one-shots on no shelf, as two covers each: ✓ Shelve or Not this one
 // (both can be undone). "Shelved by the AI" lists what it put on shelves, with ✕ to take one off.
 const MINIS_SHOWN = 60;
+const rethinkText = r => r.verdict === 'own' ? 'a series of its own' : r.verdict === 'landmark' ? 'a standalone to leave off shelves'
+  : r.verdict === 'none' ? 'no home in your library fits' : r.homeName ? `belongs on ${r.homeName}'s shelf` : 'it does not belong here';
 function MinisPanel({ data, busy, act }) {
   const [sub, setSub] = useState('suggested');
   const [all, setAll] = useState(false);
@@ -440,11 +479,13 @@ function MinisPanel({ data, busy, act }) {
     text: `${x.name} stays where it is.`, run: () => call('POST', `/api/grouping/series/${enc(x.seriesId)}/undecline`, { previous: r?.previous ?? null }) }));
   const takeOff = x => act(`m:${x.seriesId}`, () => call('DELETE', `/api/series/${enc(x.seriesId)}/shelf/${enc(x.homeId)}`), () => ({
     text: `Took ${x.name} off ${x.homeName}'s shelf.`, run: () => call('POST', '/api/grouping/restore', { items: [{ seriesId: x.seriesId, homeId: x.homeId }] }) }));
+  const keep = x => act(`m:${x.seriesId}`, () => call('POST', `/api/grouping/series/${enc(x.seriesId)}/keep`), r => ({
+    text: `${x.name} stays on ${x.homeName}'s shelf.`, run: () => call('POST', `/api/grouping/series/${enc(x.seriesId)}/keep`, { undo: true, previous: r?.previous ?? null }) }));
   return (
     <div className="gp-minis">
       <div className="gp-subtabs">
         {[['suggested', 'Suggested', data.suggested.length], ['shelved', 'Shelved by the AI', data.shelved.length]].map(([k, label, n]) => (
-          <button key={k} type="button" aria-pressed={sub === k} onClick={() => { setSub(k); setAll(false); }}>{label} <b>{n}</b></button>))}
+          <button key={k} type="button" aria-pressed={sub === k} onClick={() => { setSub(k); setAll(false); }}>{label} <b>{n}</b>{k === 'shelved' && c.rethink ? <small className="gp-conf gp-conf-unsure"> {c.rethink} to recheck</small> : null}</button>))}
         <span className="gp-muted" title={`Series left alone, and series not asked about yet (✦ Ask the AI asks about them).${c.ongoing ? ` ${c.ongoing} of the own series are ongoings Metron knows, kept without asking the AI.` : ''}`}>
           Left alone: {c.own || 0} own series · {c.landmark || 0} landmarks · {c.none || 0} no fitting home{data.toAsk ? ` · ${data.toAsk} not asked yet` : ''}
         </span>
@@ -463,16 +504,22 @@ function MinisPanel({ data, busy, act }) {
               <span className="gp-marrow">→</span>
               <figure className="gp-mhome" title={x.homeName}>{cover(x.homeId)}<figcaption>{x.homeName}</figcaption></figure>
             </div>
-            <div className="gp-airow" title={`${x.why || ''}${x.main ? '\nPart of the main story: it goes on the shelf but stays in the series list.' : ''}${x.model ? `\nModel: ${x.model}` : ''}`}>
-              {x.confidence && <small className={`gp-conf gp-conf-${x.confidence}`}>{CONF_LABEL[x.confidence] || x.confidence}</small>}
-              {x.main && <small className="gp-conf">main story</small>}
-              <span>{x.why}{x.stale ? ' · out of date' : ''}{x.undone ? ' · undone before' : ''}</span>
-            </div>
+            {x.rethink
+              ? <div className="gp-airow gp-ai-differs" title={`Asked again, the AI no longer puts it here: ${x.rethink.why || ''}${x.rethink.model ? `\nModel: ${x.rethink.model}` : ''}\nShelved because: ${x.why || ''}`}>
+                  <small className={`gp-conf gp-conf-${x.rethink.confidence}`}>{CONF_LABEL[x.rethink.confidence] || x.rethink.confidence}</small>
+                  <span>AI now says: {rethinkText(x.rethink)}</span>
+                </div>
+              : <div className="gp-airow" title={`${x.why || ''}${x.main ? '\nPart of the main story: it goes on the shelf but stays in the series list.' : ''}${x.model ? `\nModel: ${x.model}` : ''}`}>
+                  {x.confidence && <small className={`gp-conf gp-conf-${x.confidence}`}>{CONF_LABEL[x.confidence] || x.confidence}</small>}
+                  {x.main && <small className="gp-conf">main story</small>}
+                  <span>{x.why}{x.stale ? ' · out of date' : ''}{x.undone ? ' · undone before' : ''}{x.outdated ? ' · older model or prompt' : ''}</span>
+                </div>}
             <div className="gp-mactions">
               {sub === 'suggested'
                 ? <><button className="adm-btn" disabled={busy} onClick={() => shelve(x)}>✓ Shelve</button>
                     <button className="adm-btn adm-btn-ghost" disabled={busy} onClick={() => decline(x)}>Not this one</button></>
-                : <button className="adm-btn adm-btn-ghost" disabled={busy} onClick={() => takeOff(x)}>✕ Take it off</button>}
+                : <><button className="adm-btn adm-btn-ghost" disabled={busy} onClick={() => takeOff(x)}>✕ Take it off</button>
+                    {x.rethink && <button className="adm-btn adm-btn-ghost" disabled={busy} onClick={() => keep(x)} title="Keeps it on this shelf. The AI is not asked about it again.">Keep it</button>}</>}
             </div>
           </div>))}
       </div>

@@ -89,9 +89,15 @@ function seriesContext(db, { curated = new Set(), types = new Map() } = {}) {
   const rejected = new Set(db.prepare("SELECT series_id || '|' || home_id AS k FROM series_link_overrides WHERE action = 'reject'").all().map(r => r.k));
   const byName = new Map();
   for (const s of S.values()) { if (!s.hasJson) continue; const k = norm(s.name); if (!byName.has(k)) byName.set(k, []); byName.get(k).push(s); }
-  const targets = [...S.values()].filter(s => s.hasJson && !linked.has(s.id) && !homes.has(s.id) && s.size > 0 && s.size <= MAX_ISSUES);
-  // Main characters and team (ComicInfo), for the targets only. Only the tag text is read.
-  const want = new Set(targets.map(s => s.id));
+  const fits = s => s.hasJson && !homes.has(s.id) && s.size > 0 && s.size <= MAX_ISSUES;
+  const targets = [...S.values()].filter(s => fits(s) && !linked.has(s.id));
+  // Series on a shelf only by the Shelf Sorter's doing (2026-11-14): a full review asks about them
+  // again, so a shelving the AI got wrong can come up for a second look. Links by the rules or by
+  // hand are not the AI's to question.
+  const aiOnly = new Set(db.prepare("SELECT series_id FROM series_links GROUP BY series_id HAVING SUM(source <> 'ai') = 0").all().map(r => r.series_id));
+  const aiShelved = [...S.values()].filter(s => fits(s) && aiOnly.has(s.id));
+  // Main characters and team (ComicInfo), for these series only. Only the tag text is read.
+  const want = new Set([...targets, ...aiShelved].map(s => s.id));
   const chars = new Map(), teams = new Map();
   const add = (map, sid, list) => {
     if (!map.has(sid)) map.set(sid, new Map());
@@ -122,7 +128,7 @@ function seriesContext(db, { curated = new Set(), types = new Map() } = {}) {
       .slice(0, MAX_CANDIDATES);
   }
   const kindOf = s => (s && s.comicid && types.get(s.comicid)) || null;
-  return { S, targets, candidatesOf, linked, homes, curated, kindOf, chars: sid => top(chars, sid, 5), teams: sid => top(teams, sid, 2), running };
+  return { S, targets, aiShelved, candidatesOf, linked, homes, curated, kindOf, chars: sid => top(chars, sid, 5), teams: sid => top(teams, sid, 2), running };
 }
 
 // One series' facts (real ids): what is sent, and what its saved answer is checked against.

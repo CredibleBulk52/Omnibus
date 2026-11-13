@@ -238,3 +238,29 @@ test('Metron kinds: a cancelled series counts as an ongoing, also for types save
   db.prepare("INSERT INTO series_types (comicid, metron_id, type, kind, checked_at) VALUES ('7', 1, 'Cancelled Series', 'other', 1)").run();
   assert.equal(types.all().get('7').kind, 'ongoing');
 });
+
+test('a full review asks about what the AI shelved too; a disagreement waits on Shelved by the AI; Keep it ends it', async () => {
+  let reply = answer;
+  const { s, db, settings } = fixture(o => reply(o));
+  await s.ask({ kinds: ['series'] });
+  s.apply();
+  const linked = () => db.prepare("SELECT home_id FROM series_links WHERE series_id = 'wow'").all().map(r => r.home_id);
+  assert.deepEqual(linked(), ['bp16']);
+  const n = scope => s.estimate({ scope, kinds: ['series'] }).series;
+  assert.deepEqual(['new', 'suggested', 'all'].map(n), [1, 0, 5]);   // new: Atlantis Attacks (never answered); all: the 4 with a candidate and wow on its shelf
+  // Asked again, the model now says World of Wakanda is a series of its own.
+  reply = o => ({ series: answer(o).series.map(x => /World of Wakanda/.test(o.prompt) && x.verdict === 'home' ? { ...x, verdict: 'own', home: null, why: 'Its own team book' } : x) });
+  settings.set('shelf_sorter_auto', '1');
+  const r = await s.ask({ scope: 'all', kinds: ['series'] });
+  assert.equal(r.applied, undefined);                                         // a re-ask never applies
+  assert.deepEqual(linked(), ['bp16']);                                       // still on its shelf
+  let sum = s.seriesSummary();
+  assert.deepEqual([sum.shelved[0].seriesId, sum.shelved[0].rethink.verdict, sum.counts.rethink], ['wow', 'own', 1]);
+  assert.equal(n('suggested'), 1);                                            // the disagreement is open advice
+  const k = s.keep('wow');
+  sum = s.seriesSummary();
+  assert.equal(sum.shelved[0].rethink, null);
+  assert.equal(n('all'), 4);                                                  // kept: the admin's decision
+  s.keep('wow', { undo: true, previous: k.previous });
+  assert.equal(s.seriesSummary().counts.rethink, 1);
+});

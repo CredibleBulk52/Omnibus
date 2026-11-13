@@ -17206,19 +17206,33 @@ app.get('/api/grouping', requireAdmin, groupingRoute(() => {
   const s = seriesGrouping.summary();
   s.enabled = true;
   const ready = shelfSorter.annotate(s) + shelfSorter.seriesReady();
-  s.ai = { ...shelfSorter.status(), ready };
+  // outdated: open suggestions made by another model or an older prompt (a hint to ask again; nothing runs on its own).
+  let outdated = null; try { outdated = shelfSorter.estimate({ scope: 'outdated' }); } catch {}
+  s.ai = { ...shelfSorter.status(), ready, outdated };
   return s;
 }));
 app.get('/api/grouping/ai', requireAdmin, groupingRoute(() => shelfSorter.status()));
+const SHELF_SCOPES = require('./shelfSorter').SCOPES;
+const shelfAskOpts = body => {
+  const kinds = Array.isArray(body?.kinds) ? body.kinds.filter(k => k === 'event' || k === 'series') : [];
+  return { scope: SHELF_SCOPES.includes(body?.scope) ? body.scope : 'new', ...(kinds.length ? { kinds } : {}),
+    eventIds: Array.isArray(body?.eventIds) ? body.eventIds.map(String) : null };
+};
 // Ask runs in the background (about a minute for every event); the panel polls GET /api/grouping/ai.
 app.post('/api/grouping/ai/ask', requireAdmin, groupingRoute(req => {
   if (!shelvesOn()) throw Object.assign(new Error('Specials shelves are off (Library › Specials shelves)'), { status: 400 });
-  // force: ask again about every event; suggested: ask again about the open series suggestions only.
-  const kinds = Array.isArray(req.body?.kinds) ? req.body.kinds.filter(k => k === 'event' || k === 'series') : undefined;
-  shelfSorter.ask({ force: !!req.body?.force, suggested: !!req.body?.suggested, ...(kinds && kinds.length ? { kinds } : {}),
-    eventIds: Array.isArray(req.body?.eventIds) ? req.body.eventIds.map(String) : null })
-    .catch(e => logger.warn('shelf-sorter', 'Ask failed', e.message));
+  // Only ever on an admin's click (no AI call runs on its own). scope: new | suggested | outdated | all
+  // (shelfSorter.js plan()); the panel shows the estimate first.
+  shelfSorter.ask(shelfAskOpts(req.body)).catch(e => logger.warn('shelf-sorter', 'Ask failed', e.message));
   return shelfSorter.status();
+}));
+// What an ask would cover and cost, before it runs: { [scope]: { events, series, calls, model, local } }.
+app.post('/api/grouping/ai/estimate', requireAdmin, groupingRoute(req => {
+  if (!shelvesOn()) throw Object.assign(new Error('Specials shelves are off (Library › Specials shelves)'), { status: 400 });
+  const scopes = (Array.isArray(req.body?.scopes) ? req.body.scopes : [req.body?.scope || 'new']).filter(x => SHELF_SCOPES.includes(x));
+  const out = {};
+  for (const scope of scopes) out[scope] = shelfSorter.estimate({ ...shelfAskOpts(req.body), scope });
+  return out;
 }));
 app.post('/api/grouping/ai/stop', requireAdmin, groupingRoute(() => shelfSorter.stop()));
 app.post('/api/grouping/ai/apply', requireAdmin, groupingRoute(req => {
@@ -17238,6 +17252,8 @@ app.post('/api/grouping/series/types/run', requireAdmin, groupingRoute(() => {
 }));
 app.post('/api/grouping/series/:id/decline', requireAdmin, groupingRoute(req => shelfSorter.decline(req.params.id)));
 app.post('/api/grouping/series/:id/undecline', requireAdmin, groupingRoute(req => shelfSorter.undecline(req.params.id, req.body?.previous ?? null)));
+// Keep a series the AI shelved although its latest answer disagrees ({ undo, previous } puts it back).
+app.post('/api/grouping/series/:id/keep', requireAdmin, groupingRoute(req => shelfSorter.keep(req.params.id, { undo: !!req.body?.undo, previous: req.body?.previous ?? null })));
 app.post('/api/grouping/ai/runs/:id/undo', requireAdmin, groupingRoute(req => shelfSorter.undo(req.params.id)));
 app.post('/api/grouping/ai/auto', requireAdmin, groupingRoute(req => shelfSorter.setAuto(!!req.body?.on)));
 app.post('/api/grouping/run', requireAdmin, groupingRoute(() => seriesGrouping.run('manual')));
@@ -17268,8 +17284,7 @@ app.post('/api/series/:id/keep-visible', requireAdmin, groupingRoute(req => { se
 setTimeout(() => { try { seriesGrouping.run('startup'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } }, 60000);
 cron.schedule('17 * * * *', () => {
   try { seriesGrouping.run('hourly'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); }
-  // With "Apply sure ones automatically" on: ask about new or changed events, apply sure answers.
-  if (shelvesOn()) shelfSorter.auto().catch(e => logger.warn('shelf-sorter', 'Automatic run failed', e.message));
+  // No AI here (2026-11-14): the Shelf Sorter asks only when an admin clicks (claude/SHELF_SORTER.md).
 });
 // Metron series types for the Shelf Sorter, a batch an hour (about 7 minutes of Metron's pace).
 cron.schedule('29 * * * *', () => {
