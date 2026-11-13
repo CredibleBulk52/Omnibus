@@ -37,7 +37,18 @@ const { metronStatusOf: seriesStatusOf } = require('./seriesStatus');
 function createMetron({ axios, getToken, db, logger, sleep = ms => new Promise(r => setTimeout(r, ms)), now = () => Date.now() }) {
   let last = 0;
   let scheme = 'Bearer';   // Metron's client sends a Bearer token; "Token" is tried once if refused
-  if (db) db.exec(`CREATE TABLE IF NOT EXISTS metron_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, at INTEGER NOT NULL)`);
+  if (db) db.exec(`CREATE TABLE IF NOT EXISTS metron_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS metron_pace (id INTEGER PRIMARY KEY CHECK (id = 1), last INTEGER NOT NULL)`);
+  // One pace for every Metron caller (2026-11-13): this process and the enricher (enricher.py
+  // MetronClient) reserve their request time in metron_pace, so together they stay under the limit.
+  const takeSlot = () => {
+    let shared = 0;
+    if (db) { try { shared = db.prepare('SELECT last FROM metron_pace WHERE id = 1').get()?.last || 0; } catch {} }
+    const at = Math.max(now(), last + SPACING_MS, shared + SPACING_MS);
+    last = at;
+    if (db) { try { db.prepare('INSERT INTO metron_pace (id, last) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET last = excluded.last').run(at); } catch {} }
+    return at - now();
+  };
   const cacheGet = key => {
     if (!db) return null;
     const r = db.prepare('SELECT value, at FROM metron_cache WHERE key = ?').get(key);
@@ -56,9 +67,8 @@ function createMetron({ axios, getToken, db, logger, sleep = ms => new Promise(r
     if (!u.pathname.endsWith('/')) u.pathname += '/';
     for (const [k, v] of Object.entries(params || {})) if (v != null) u.searchParams.set(k, String(v));
     for (let attempt = 0; attempt < 3; attempt++) {
-      const wait = last + SPACING_MS - now();
+      const wait = takeSlot();
       if (wait > 0) await sleep(wait);
-      last = now();
       const r = await axios.get(u.href, { timeout: 20000, validateStatus: () => true,
         headers: { Authorization: `${scheme} ${token}`, Accept: 'application/json', 'User-Agent': USER_AGENT } });
       if (r.status === 401 && scheme === 'Bearer' && attempt === 0) { scheme = 'Token'; continue; }

@@ -267,6 +267,24 @@ class CvPool:
             time.sleep(min(wait, 300))
             waited += min(wait, 300)
 
+    def available(self, resource: str) -> bool:
+        """True when a request to this resource could go now (not paused, under this lane's cap)."""
+        if not self.conn:
+            return True
+        try:
+            now = self._now()
+            row = self.conn.execute("SELECT until FROM cv_backoff WHERE resource = ?", (resource,)).fetchone()
+            if row and row[0] > now:
+                return False
+            row = self.conn.execute("SELECT start FROM cv_windows WHERE resource = ?", (resource,)).fetchone()
+            start = row[0] if row and now < row[0] + self.WINDOW_MS else None
+            if start is None:
+                return True
+            used = self.conn.execute("SELECT COUNT(*) FROM cv_api_log WHERE resource = ? AND ts >= ?", (resource, start)).fetchone()[0]
+            return used < self.CAPS.get(self.lane, 120)
+        except Exception:
+            return True
+
     def finish(self, row_id, status, started_ms):
         if not self.conn or not row_id:
             return
@@ -289,19 +307,187 @@ class CvPool:
 
 
 # =============================================================================
+# METRON CLIENT (2026-11-13)
+# =============================================================================
+# Metron (metron.cloud) keeps Comic Vine IDs and has its own allowance. Creating or enriching a
+# series.json asks Metron first for what it knows best (status, book type, first and last issue
+# dates, cover) so Comic Vine's scarce single-issue allowance is not spent on two date lookups per
+# series. Comic Vine's one volume request still supplies the name, year, issue count, publisher,
+# description and characters, and wins where the two disagree (Omnibus matches by Comic Vine IDs).
+# Requests are spaced 3.5 s apart, under Metron's 20 a minute (its maintainer asked us to stay under).
+
+def _month_year(d: Optional[str]) -> Optional[str]:
+    try:
+        return datetime.strptime(str(d)[:10], "%Y-%m-%d").strftime("%B %Y")
+    except Exception:
+        return None
+
+
+class MetronClient:
+    BASE_URL = "https://metron.cloud/api/"
+    SPACING_S = 3.5
+    USER_AGENT = "Omnibus/1.0 (personal comic library app; series details)"
+
+    def __init__(self, token: str, conn=None):
+        self.token = token
+        self.scheme = "Bearer"
+        self.last = 0.0
+        self.off = False
+        self.conn = conn   # the app database: one pace shared with the server (metron_pace)
+
+    def _slot(self) -> float:
+        """Seconds to wait before the next request, reserving the slot in metron_pace."""
+        now = time.time()
+        at = max(now, self.last + self.SPACING_S)
+        if self.conn is not None:
+            try:
+                self.conn.execute("BEGIN IMMEDIATE")
+                self.conn.execute("CREATE TABLE IF NOT EXISTS metron_pace (id INTEGER PRIMARY KEY CHECK (id = 1), last INTEGER NOT NULL)")
+                row = self.conn.execute("SELECT last FROM metron_pace WHERE id = 1").fetchone()
+                if row:
+                    at = max(at, row[0] / 1000 + self.SPACING_S)
+                self.conn.execute("INSERT INTO metron_pace (id, last) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET last = excluded.last", (int(at * 1000),))
+                self.conn.execute("COMMIT")
+            except Exception:
+                try:
+                    self.conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+        self.last = at
+        return at - now
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": self.USER_AGENT, "Accept": "application/json"})
+
+    def _get(self, url: str, params: Optional[Dict] = None) -> Optional[Any]:
+        if self.off:
+            return None
+        if not url.startswith("https://"):
+            url = self.BASE_URL + url.lstrip("/")
+        if not url.startswith(self.BASE_URL):
+            return None
+        for attempt in range(3):
+            wait = self._slot()
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                r = self.session.get(url, params=params, timeout=20, headers={"Authorization": f"{self.scheme} {self.token}"})
+            except Exception as e:
+                print(f"  [Metron] Error: {e}", file=sys.stderr)
+                return None
+            if r.status_code == 401 and self.scheme == "Bearer" and attempt == 0:
+                self.scheme = "Token"
+                continue
+            if r.status_code == 429 and attempt < 2:
+                time.sleep(min(int(r.headers.get("Retry-After") or 30), 90))
+                continue
+            if r.status_code in (401, 403):
+                print("  [Metron] Token refused; using Comic Vine only", file=sys.stderr)
+                self.off = True
+                return None
+            if not r.ok:
+                return None
+            try:
+                return r.json()
+            except Exception:
+                return None
+        return None
+
+    @staticmethod
+    def _status(series: Dict) -> Optional[str]:
+        st = series.get("status")
+        t = str((st.get("name") if isinstance(st, dict) else st) or "").lower()
+        if re.search(r"ongoing|hiatus", t):
+            return "Continuing"
+        if re.search(r"complet|cancel|ended|finished", t):
+            return "Ended"
+        return None
+
+    @staticmethod
+    def _booktype(series: Dict) -> Optional[str]:
+        st = series.get("series_type")
+        t = str((st.get("name") if isinstance(st, dict) else st) or "").lower()
+        if "one-shot" in t or "one shot" in t:
+            return "One-Shot"
+        if "trade" in t:
+            return "TPB"
+        if "hard" in t:
+            return "HC"
+        if "graphic" in t:
+            return "GN"
+        return "Print" if t else None
+
+    def series_facts(self, cv_id) -> Optional[Dict]:
+        """The Metron series whose Comic Vine ID is cv_id, confirmed on its own record, with its first
+        and last issue dates and first cover. None when Metron does not know it."""
+        found = self._get("series/", {"cv_id": cv_id})
+        hit = ((found or {}).get("results") or [None])[0]
+        if not hit or not hit.get("id"):
+            return None
+        s = self._get(f"series/{hit['id']}/")
+        if not s or str(s.get("cv_id")) != str(cv_id):
+            return None
+        first = last = image = None
+        page = self._get("issue/", {"series_id": s["id"]})
+        rows = (page or {}).get("results") or []
+        if rows:
+            first = rows[0].get("cover_date") or rows[0].get("store_date")
+            image = rows[0].get("image")
+            count = (page or {}).get("count") or len(rows)
+            last_rows = rows
+            if count > len(rows) and len(rows):
+                n = -(-count // len(rows))
+                tail = self._get("issue/", {"series_id": s["id"], "page": n})
+                last_rows = (tail or {}).get("results") or rows
+            last = last_rows[-1].get("cover_date") or last_rows[-1].get("store_date")
+        pub = s.get("publisher")
+        imp = s.get("imprint")
+        desc = s.get("desc") or None
+        return {
+            "metron_id": s.get("id"),
+            "name": s.get("name"),
+            "year": int(s["year_began"]) if s.get("year_began") else None,
+            "year_end": s.get("year_end"),
+            "publisher": pub.get("name") if isinstance(pub, dict) else pub,
+            "imprint": imp.get("name") if isinstance(imp, dict) else imp,
+            "issue_count": s.get("issue_count"),
+            "status": self._status(s),
+            "booktype": self._booktype(s),
+            "first": _month_year(first),
+            "last": _month_year(last),
+            "image": image,
+            "description": re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", desc)).strip() if desc else None,
+        }
+
+
+def publication_run(first: Optional[str], last: Optional[str], status: Optional[str]) -> Optional[str]:
+    """'April 1998', 'July 2015 - April 2016' or 'May 2024 - Present'."""
+    if not first:
+        return None
+    if status == "Continuing" or (not last and status != "Ended"):
+        return f"{first} - Present"
+    if not last or last == first:
+        return first
+    return f"{first} - {last}"
+
+
+# =============================================================================
 # COMIC VINE CLIENT
 # =============================================================================
 
 class ComicVineClient:
     BASE_URL = "https://comicvine.gamespot.com/api"
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, metron: Optional[MetronClient] = None):
         self.api_key = api_key
         self.last_request_time = 0
         self.request_delay = 3.0
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "Omnibus/1.0"})
         self.pool = CvPool()
+        self.metron = metron
+        if metron is not None and metron.conn is None:
+            metron.conn = self.pool.conn
+        self._volumes: Dict[str, Optional[Dict]] = {}   # create, then enrich, ask for the same volume
 
     def _rate_limit(self):
         elapsed = time.time() - self.last_request_time
@@ -310,6 +496,8 @@ class ComicVineClient:
         self.last_request_time = time.time()
 
     def _request(self, endpoint: str, params: Dict, retry: int = 0) -> Optional[Any]:
+        if not self.api_key:   # Metron-only install: no Comic Vine key
+            return None
         self._rate_limit()
         params.update({"api_key": self.api_key, "format": "json"})
         resource = CvPool.resource_of(endpoint)
@@ -345,12 +533,39 @@ class ComicVineClient:
             return None
 
     def get_volume(self, volume_id: int) -> Optional[Dict]:
-        result = self._request(
-            f"volume/4050-{volume_id}",
-            {"field_list": "id,name,start_year,publisher,count_of_issues,image,description,first_issue,last_issue,characters,concepts"}
-        )
-        if not result:
+        key = str(volume_id)
+        if key not in self._volumes:
+            self._volumes[key] = self._get_volume(volume_id)
+        return self._volumes[key]
+
+    def _get_volume(self, volume_id: int) -> Optional[Dict]:
+        # Metron first (own allowance); then one Comic Vine volume request. With Metron's issue
+        # dates, Comic Vine's first/last issue lookups are skipped. When Comic Vine's volume
+        # allowance is used up or paused, Metron's facts are used alone (characters come later).
+        m = None
+        if self.metron:
+            try:
+                m = self.metron.series_facts(volume_id)
+            except Exception as e:
+                print(f"  [Metron] {e}", file=sys.stderr)
+            if m:
+                print(f"  [Metron] series {m['metron_id']}: {m.get('status') or '?'} · {m.get('booktype') or '?'} · "
+                      f"{m.get('first') or '?'} – {m.get('last') or '?'}", file=sys.stderr)
+        if m and not self.api_key:
+            return self._from_metron(volume_id, m)
+        if m and not self.pool.available("volume"):
+            print("  [CV] volume allowance used up — using Metron's details now; characters on a later enrich", file=sys.stderr)
+            return self._from_metron(volume_id, m)
+        if not self.api_key:
             return None
+        fields = "id,name,start_year,publisher,count_of_issues,image,description,characters,concepts"
+        if not (m and m.get("first")):
+            fields += ",first_issue,last_issue"
+        result = self._request(f"volume/4050-{volume_id}", {"field_list": fields})
+        if not result:
+            return self._from_metron(volume_id, m) if m else None
+        if m and m.get("first"):
+            return self._merge(result, m)
 
         # Publication run
         pub_run = None
@@ -386,7 +601,7 @@ class ComicVineClient:
         cv_genres = [c.get("name") for c in (result.get("concepts") or [])
                      if c.get("name") in VALID_GENRES]
 
-        return {
+        vol = {
             "id": result.get("id"),
             "name": result.get("name"),
             "year": int(result["start_year"]) if result.get("start_year") else None,
@@ -397,6 +612,64 @@ class ComicVineClient:
             "publication_run": pub_run,
             "characters": characters,
             "cv_genres": cv_genres,
+            "sources": ["comicvine"],
+        }
+        if m:   # Metron knew the series but had no issue dates: still take its status and book type
+            vol.update({"imprint": m.get("imprint"), "booktype": m.get("booktype"), "sources": ["comicvine", "metron"]})
+            if m.get("status"):
+                vol["status"] = m["status"]
+                if pub_run:
+                    end = pub_run.split(" - ")[-1] if " - " in pub_run else pub_run
+                    vol["publication_run"] = publication_run(pub_run.split(" - ")[0], None if end == "Present" else end, m["status"])
+        return vol
+
+    @staticmethod
+    def _clean_desc(text: Optional[str]) -> Optional[str]:
+        if not text:
+            return None
+        return re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', '', text)).strip() or None
+
+    def _merge(self, result: Dict, m: Dict) -> Dict:
+        """Comic Vine's volume plus Metron's status, book type, run and (if missing) cover."""
+        status = m.get("status")
+        run = publication_run(m.get("first"), m.get("last"), status)
+        VALID_GENRES = set(GENRES)
+        return {
+            "id": result.get("id"),
+            "name": result.get("name") or m.get("name"),
+            "year": int(result["start_year"]) if result.get("start_year") else m.get("year"),
+            "publisher": (result.get("publisher") or {}).get("name") or m.get("publisher"),
+            "imprint": m.get("imprint"),
+            "issue_count": result.get("count_of_issues", m.get("issue_count") or 0),
+            "image": (result.get("image") or {}).get("medium_url") or m.get("image"),
+            "description": self._clean_desc(result.get("description")) or m.get("description"),
+            "publication_run": run,
+            "status": status or (derive_status(run) if run else None),
+            "booktype": m.get("booktype"),
+            "characters": [c.get("name") for c in (result.get("characters") or []) if c.get("name")][:10],
+            "cv_genres": [c.get("name") for c in (result.get("concepts") or []) if c.get("name") in VALID_GENRES],
+            "sources": ["comicvine", "metron"],
+        }
+
+    def _from_metron(self, volume_id, m: Dict) -> Dict:
+        """Metron alone (Comic Vine's volume allowance used up, or its request failed)."""
+        status = m.get("status")
+        run = publication_run(m.get("first"), m.get("last"), status)
+        return {
+            "id": int(volume_id),
+            "name": m.get("name"),
+            "year": m.get("year"),
+            "publisher": m.get("publisher"),
+            "imprint": m.get("imprint"),
+            "issue_count": m.get("issue_count") or 0,
+            "image": m.get("image"),
+            "description": m.get("description"),
+            "publication_run": run,
+            "status": status or (derive_status(run) if run else None),
+            "booktype": m.get("booktype"),
+            "characters": [],
+            "cv_genres": [],
+            "sources": ["metron"],
         }
 
     def _issue_date(self, issue_id) -> Optional[str]:
@@ -1001,9 +1274,13 @@ class SeriesEnricher:
     @property
     def cv(self) -> Optional[ComicVineClient]:
         if self._cv is None:
-            key = self.config.get("api_keys", {}).get("comicvine")
-            if key:
-                self._cv = ComicVineClient(key)
+            # Either source alone works (an install may have only one): Comic Vine only, Metron
+            # only (series known to Metron by their Comic Vine ID), or both (Metron first).
+            keys = self.config.get("api_keys", {})
+            key = keys.get("comicvine") or ""
+            metron_token = keys.get("metron") or ""
+            if key or metron_token:
+                self._cv = ComicVineClient(key, MetronClient(metron_token) if metron_token else None)
         return self._cv
 
     @property
@@ -1023,13 +1300,14 @@ class SeriesEnricher:
     def create(self, folder_path: str, cv_volume_id: int, context_folder: str = None) -> bool:
         """Fetch CV data, write series.json, then enrich. Prints JSON result to stdout."""
         if not self.cv:
-            print(json.dumps({"error": "No ComicVine API key configured"}))
+            print(json.dumps({"error": "No Comic Vine API key or Metron token configured (Settings → Connections)"}))
             return False
 
-        print(f"[create] Fetching CV volume {cv_volume_id}...", file=sys.stderr)
+        print(f"[create] Fetching volume {cv_volume_id}...", file=sys.stderr)
         vol = self.cv.get_volume(cv_volume_id)
         if not vol:
-            print(json.dumps({"error": f"Could not fetch CV volume {cv_volume_id}"}))
+            why = "Metron does not know this Comic Vine series" if not self.cv.api_key else f"Could not fetch Comic Vine volume {cv_volume_id}"
+            print(json.dumps({"error": why}))
             return False
 
         os.makedirs(folder_path, exist_ok=True)
@@ -1046,13 +1324,14 @@ class SeriesEnricher:
             comicid=vol.get("id"),
             year=vol.get("year"),
             volume=vol.get("year"),
+            imprint=vol.get("imprint"),
             description_text=vol.get("description", ""),
             description_formatted=vol.get("description", ""),
-            booktype="Print",
+            booktype=vol.get("booktype") or "Print",
             comic_image=vol.get("image"),
             total_issues=vol.get("issue_count"),
             publication_run=vol.get("publication_run"),
-            status=derive_status(vol.get("publication_run")),
+            status=vol.get("status") or derive_status(vol.get("publication_run")),
             characters=vol.get("characters") or [],
             genres=vol.get("cv_genres") or [],
             reading_direction=reading_direction,
@@ -1115,14 +1394,18 @@ class SeriesEnricher:
         if self.cv and series.metadata.comicid:
             cv_vol = self.cv.get_volume(series.metadata.comicid)
             if cv_vol:
-                sources.append("comicvine")
+                sources.extend(cv_vol.get("sources") or ["comicvine"])
 
                 if cv_vol.get("characters") and (force or not series.metadata.characters):
                     series.metadata.characters = cv_vol["characters"]
                     print(f"  Characters ({len(cv_vol['characters'])}): {cv_vol['characters']}")
 
+                if cv_vol.get("booktype") and series.metadata.booktype in (None, "", "Print") and cv_vol["booktype"] != "Print":
+                    print(f"  Book type: {cv_vol['booktype']}")
+                    series.metadata.booktype = cv_vol["booktype"]
+
                 if cv_vol.get("publication_run"):
-                    new_status = derive_status(cv_vol["publication_run"])
+                    new_status = cv_vol.get("status") or derive_status(cv_vol["publication_run"])
                     if series.metadata.status != new_status:
                         print(f"  Status: {new_status}")
                         series.metadata.status = new_status

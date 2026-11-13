@@ -6892,6 +6892,8 @@ function buildEnricherConfig(force = false, run = null) {
       comicvine: getCVKey(),
       anthropic: getAnthropicKey(),
       openai: getOpenAIKey(),
+      // Metron first for series facts and issue dates (enricher.py MetronClient, 2026-11-13).
+      metron: getSetting('metron_api_token') || process.env.METRON_API_TOKEN || '',
     },
     anthropic: {
       model: aiRouting.pick('enricher'),   // trial split applies per enricher run
@@ -12044,6 +12046,7 @@ async function libraryStatusLookup(comicid, { name, year } = {}) {
     }
   }
   if (m && m.status === 'ended') return { metron: m, yearEnd: m.yearEnd || null };
+  if (!getCVKey()) return { metron: m, yearEnd: m?.yearEnd || null };   // Metron-only install
   const r = await cvApiGet('https://comicvine.gamespot.com/api/issues/', {
     params: { api_key: getCVKey(), format: 'json', filter: `volume:${comicid}`, sort: 'cover_date:desc', limit: 1, field_list: 'id,cover_date,store_date' },
     headers: { 'User-Agent': 'Omnibus/1.0' }, timeout: 15000,
@@ -12062,7 +12065,7 @@ const runLibraryStatusCheck = libraryStatus.createLibraryStatusCheck({
 });
 // Manual run (admin): one batch now; results go to the server log (library-status).
 app.post('/api/monitor/library-status/run', requireAdmin, (req, res) => {
-  if (!getCVKey()) return res.status(400).json({ error: 'Set a Comic Vine API key first' });
+  if (!anyProvider()) return res.status(400).json({ error: 'Set a Comic Vine API key or a Metron token first (Settings → Connections)' });
   setImmediate(() => runLibraryStatusCheck().catch(e => logger.error('library-status', 'Run failed', e.message)));
   res.json({ ok: true, message: 'Library status check started — see server log (library-status)' });
 });
@@ -12103,6 +12106,7 @@ const seriesLinkCheck = require('./seriesLinkCheck').createSeriesLinkCheck({
   volumeOfIssue: async issueId => {
     const m = await metronVolumeOfIssue(issueId);
     if (m) return m;
+    if (!getCVKey()) return null;   // Metron-only install: unknown for now
     if (cvWindow('issue').used >= CV_CAP_BACKGROUND - CV_LINK_RESERVE)
       throw Object.assign(new Error('Comic Vine allowance kept for clicks'), { code: 'CV_HEADROOM' });
     const r = await cvApiGet(`https://comicvine.gamespot.com/api/issue/4000-${issueId}/`, {
@@ -12125,7 +12129,7 @@ function cvBusyUntil() {
   return until || null;
 }
 cron.schedule('41 * * * *', () => {
-  if (!getCVKey()) return;
+  if (!anyProvider()) return;
   if (cvPollStartedAt && Date.now() - cvPollStartedAt < 6 * 60 * 60 * 1000) return;
   seriesLinkCheck.run().catch(e => logger.error('series-links', 'Run failed', e.message));
 });
@@ -12134,7 +12138,7 @@ app.get('/api/admin/library-health/series-links', requireAdmin, (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/admin/library-health/series-links/run', requireAdmin, (req, res) => {
-  if (!getCVKey()) return res.status(400).json({ error: 'Set a Comic Vine API key first' });
+  if (!anyProvider()) return res.status(400).json({ error: 'Set a Comic Vine API key or a Metron token first (Settings → Connections)' });
   // A larger batch on request: most lookups go to Metron, and Comic Vine's reserve is kept.
   setImmediate(() => seriesLinkCheck.run({ limit: 300 }).catch(e => logger.error('series-links', 'Run failed', e.message)));
   res.json({ ok: true });
@@ -12143,8 +12147,11 @@ app.post('/api/admin/library-health/series-links/run', requireAdmin, (req, res) 
 app.post('/api/admin/library-health/series-links/:id/dismiss', requireAdmin, (req, res) => {
   res.json({ ok: seriesLinkCheck.dismiss(req.params.id) });
 });
+// Either source is enough: Comic Vine, Metron, or both (an install may have only one key).
+const metronToken = () => getSetting('metron_api_token') || process.env.METRON_API_TOKEN || '';
+const anyProvider = () => !!(getCVKey() || metronToken());
 cron.schedule('23 * * * *', () => {
-  if (!getCVKey()) return;
+  if (!anyProvider()) return;
   if (cvPollStartedAt && Date.now() - cvPollStartedAt < 6 * 60 * 60 * 1000) return;
   runLibraryStatusCheck().catch(e => logger.error('library-status', 'Run failed', e.message));
 });
