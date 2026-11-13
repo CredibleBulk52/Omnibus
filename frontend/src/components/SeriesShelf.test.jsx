@@ -183,7 +183,7 @@ test('Minis & one-shots: suggested homes as two covers; Shelve and Not this one,
   const minis = { suggested: [{ seriesId: 'wow', name: 'Black Panther: World of Wakanda (2016)', homeId: 'bp16', homeName: 'Black Panther (2016)', confidence: 'sure', why: 'Companion to that run' }],
     shelved: [{ seriesId: 'kh', name: 'Kraven Hunts (2020)', homeId: 'asm', homeName: 'The Amazing Spider-Man (2018)', why: 'A spin-off',
       rethink: { verdict: 'own', confidence: 'likely', why: 'A Kraven series in its own right' } }],
-    counts: { own: 1, landmark: 1, none: 0, rethink: 1 }, toAsk: 5, asked: 3, ready: 1 };
+    counts: { own: 1, landmark: 1, none: 0, rethink: 1 }, toAsk: 5, waiting: 2, asked: 3, ready: 1 };
   const prev = global.fetch;
   global.fetch = vi.fn(async url => ({ ok: true, json: async () => {
     if (url === '/api/grouping') return summary;
@@ -204,7 +204,7 @@ test('Minis & one-shots: suggested homes as two covers; Shelve and Not this one,
     await act(async () => { [...host.querySelectorAll('[role=tab]')].find(b => /Minis & one-shots/.test(b.textContent)).click(); });
     const card = host.querySelector('.gp-mcard');
     expect(card.textContent).toMatch(/Black Panther: World of Wakanda \(2016\)→Black Panther \(2016\)sureCompanion to that run/);
-    expect(host.querySelector('.gp-subtabs').textContent).toMatch(/1 own series · 1 landmarks · 0 no fitting home · 5 not asked yet/);
+    expect(host.querySelector('.gp-subtabs').textContent).toMatch(/1 own series · 1 landmarks · 0 no fitting home · 5 not asked yet · 2 new, waiting for #2/);
     await act(async () => { button('✓ Shelve').click(); }); await tick();
     expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/apply', expect.objectContaining({ body: JSON.stringify({ seriesIds: ['wow'] }) }));
     await act(async () => { button('Undo').click(); }); await tick();

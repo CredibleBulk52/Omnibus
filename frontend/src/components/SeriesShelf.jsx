@@ -513,6 +513,7 @@ function MinisPanel({ data, busy, act }) {
           <button key={k} type="button" aria-pressed={sub === k} onClick={() => { setSub(k); setAll(false); }}>{label} <b>{n}</b>{k === 'shelved' && c.rethink ? <small className="gp-conf gp-conf-unsure"> {c.rethink} to recheck</small> : null}</button>))}
         <span className="gp-muted" title={`Series left alone, and series not asked about yet (✦ Ask the AI asks about them).${c.ongoing ? ` ${c.ongoing} of the own series are ongoings Metron knows, kept without asking the AI.` : ''}`}>
           Left alone: {c.own || 0} own series · {c.landmark || 0} landmarks · {c.none || 0} no fitting home{data.toAsk ? ` · ${data.toAsk} not asked yet` : ''}
+          {data.waiting ? <span title="New series with only #1 out: a one-issue book can't be told from a one-shot yet. They are asked about once Metron gives their type or a second issue arrives."> · {data.waiting} new, waiting for #2</span> : null}
         </span>
       </div>
       {data.types && data.types.known < data.types.total && (

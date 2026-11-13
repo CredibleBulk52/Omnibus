@@ -284,7 +284,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     let n = 0, looked = 0;
     for (const t of bctx.targets) {
       const f = B.seriesFacts(t, bctx);
-      if (!f.candidates.length || f.kind === 'ongoing') continue;
+      if (!f.candidates.length || f.kind === 'ongoing' || B.tooNew(f)) continue;
       const row = saved.get(t.id);
       if (row && !force) continue;
       if (row && (row.applied === 'declined' || row.model !== 'omnibus')) continue;
@@ -378,6 +378,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
         if (bWanted && !bWanted.has(t.id)) continue;
         const f = B.seriesFacts(t, bctx);
         if (!f.candidates.length || f.kind === 'ongoing') continue;   // ongoing: decided by typeRule
+        if (!bWanted && B.tooNew(f)) continue;                         // only #1 out: wait for Metron or a second issue
         const hash = bHash(f);
         const row = bSaved.get(t.id);
         const a = parse(row);
@@ -735,13 +736,13 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     const targets = new Map(bctx.targets.map(t => [t.id, t]));
     const counts = { own: 0, landmark: 0, none: 0, declined: 0, ongoing: 0 };
     const suggested = [];
-    let ready = 0, toAsk = 0;
+    let ready = 0, toAsk = 0, waiting = 0;
     const saved = answersMap('series');
     const cur = currentModel();
     for (const t of bctx.targets) {
       const row = saved.get(t.id);
       const f = row ? null : B.seriesFacts(t, bctx);
-      if (!row && f.candidates.length && f.kind !== 'ongoing') toAsk++;
+      if (!row && f.candidates.length && f.kind !== 'ongoing') { if (B.tooNew(f)) waiting++; else toAsk++; }
     }
     for (const row of saved.values()) {
       let a; try { a = JSON.parse(row.answer); } catch { continue; }
@@ -775,7 +776,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     const types = seriesTypes ? seriesTypes.all() : new Map();
     const lookable = typeScope(bctx);
     const typesKnown = lookable.filter(t => types.has(t.comicid)).length;
-    return { suggested, shelved, counts, ready, toAsk, asked: saved.size,
+    return { suggested, shelved, counts, ready, toAsk, waiting, asked: saved.size,
       types: seriesTypes ? { known: typesKnown, total: lookable.length, running: seriesTypes.status().running, words: typeWords(types) } : null };
   }
   // Metron's own words for the types saved so far, most common first (shown on hover).

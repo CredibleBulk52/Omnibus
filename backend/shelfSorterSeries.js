@@ -141,6 +141,11 @@ function seriesFacts(s, ctx) {
     candidates: cands.map(h => ({ id: h.id, name: h.name, year: h.year, issues: h.size, run: h.run, running: ctx.running(h, s.year) })) };
 }
 
+// Too new to judge (2026-11-14, user: Gangs of Gotham, a new ongoing with only #1 out, was taken for a
+// one-shot): one issue so far, still publishing, and no type from Metron yet. Not asked about until
+// Metron gives its type or a second issue arrives. A real one-shot is not "still publishing".
+const tooNew = f => !!f && f.issues <= 1 && f.status === 'Continuing' && !f.kind;
+
 function renderSeries(list) {
   const ids = new Map();
   let c = 0;
@@ -204,4 +209,4 @@ function localSuggestion(s, f, ctx) {
 // library grows does not ask again; a home that is no longer a candidate does (checked by the caller).
 const stableFacts = f => ({ id: f.id, name: f.name, year: f.year, issues: f.issues, run: f.run || '', status: f.status || '' });
 
-module.exports = { SERIES_SCHEMA, SERIES_SYSTEM, seriesContext, seriesFacts, renderSeries, resolveSeries, stableFacts, localSuggestion, prefixOf, MAX_ISSUES };
+module.exports = { tooNew, SERIES_SCHEMA, SERIES_SYSTEM, seriesContext, seriesFacts, renderSeries, resolveSeries, stableFacts, localSuggestion, prefixOf, MAX_ISSUES };

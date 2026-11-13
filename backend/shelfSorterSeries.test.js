@@ -264,3 +264,20 @@ test('a full review asks about what the AI shelved too; a disagreement waits on 
   s.keep('wow', { undo: true, previous: k.previous });
   assert.equal(s.seriesSummary().counts.rethink, 1);
 });
+
+test('too new to judge: a series with only #1 out and still publishing waits for Metron or a second issue', async () => {
+  const { db, s, g, calls } = fixture(answer);
+  db.prepare('INSERT INTO scanned_series VALUES (?, ?, ?, ?, ?, ?)').run('bpn', 'Black Panther: Gangs of Wakanda', 2027,
+    JSON.stringify({ metadata: { name: 'Black Panther: Gangs of Wakanda', year: 2027, total_issues: 1, publisher: 'Marvel', publication_run: 'January 2027 - Present', status: 'Continuing', comicid: 999 } }), 1, '/comics/Marvel/x/Black Panther - Gangs of Wakanda (2027)');
+  assert.equal(B.tooNew({ issues: 1, status: 'Continuing' }), true);
+  assert.equal(B.tooNew({ issues: 1, status: 'Ended' }), false);                 // a real one-shot is asked about
+  assert.equal(B.tooNew({ issues: 1, status: 'Continuing', kind: 'limited' }), false);   // Metron knows: ask
+  await s.ask({ kinds: ['series'] });
+  assert.doesNotMatch(calls[0].prompt, /Gangs of Wakanda/);
+  assert.equal(s.seriesSummary().waiting, 1);
+  // A second issue arrives: it is asked about.
+  db.prepare("UPDATE scanned_series SET series_json = json_set(series_json, '$.metadata.total_issues', 2), book_count = 2 WHERE id = 'bpn'").run();
+  const fresh = createShelfSorter({ db, grouping: g, ai: { run: (o, fn) => fn() }, getSetting: () => null, setSetting: () => {} });   // no cached library facts
+  assert.ok(fresh.plan({ kinds: ['series'] }).bTodo.some(b => b.f.id === 'bpn'));
+  assert.equal(fresh.seriesSummary().waiting, 0);
+});
