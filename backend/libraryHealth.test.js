@@ -38,7 +38,7 @@ function setup() {
 test('needs-you counts feed the badge; information rows do not', () => {
   const { health } = setup();
   const s = health.summary();
-  assert.deepEqual(s.needsYou, { stuck: 1, damaged: 1, unsafe: 1, duplicates: 1, failedDownloads: 2, heldDownloads: 1, requests: 1 });
+  assert.deepEqual(s.needsYou, { stuck: 1, damaged: 1, unsafe: 1, duplicates: 1, failedDownloads: 2, heldDownloads: 1, requests: 1, seriesLinks: 0 });
   assert.equal(s.badge, 8);
   assert.deepEqual(s.info, { noCvId: 3, seriesWithoutDetails: 1, comicVinePausedUntil: 5000 });
 });

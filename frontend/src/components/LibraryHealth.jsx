@@ -53,6 +53,7 @@ export function AttentionList({ onOpen, compact = false, onHealth }) {
     ['Failed downloads', n.failedDownloads, 'Downloads or packs that failed. Retry or remove them in the Download Manager.', () => navigate('/downloads?tab=queue')],
     ['Downloads held', n.heldDownloads || 0, 'Downloaded files that could not be added: a damaged file (Convert anyway or download a new copy) or a match to check.', () => navigate('/downloads?tab=queue')],
     ['User requests', n.requests, 'Readers asked for issues that are missing from their lists.', () => navigate('/admin/requests')],
+    ['Series linked to the wrong volume', n.seriesLinks || 0, "A folder's series.json names a different Comic Vine series than the comics in it. Re-link it, or keep it if the link is right.", () => onOpen('series-links')],
   ];
   const fyi = [
     ['No Comic Vine ID yet', i.noCvId, 'Omnibus works through these on its own, mostly overnight.', () => onOpen('metadata', 'unidentified')],
@@ -309,4 +310,82 @@ export function ReidentifySeriesButton({ seriesId, onDone }) {
       {job?.running ? '⏳ Re-identifying…' : '⟲ Re-identify all issues'}</button>
     {(status || error) && <div style={{ fontSize: 12, opacity: 0.8, padding: '2px 4px' }}>{error || status}</div>}
   </>;
+}
+
+// Series linked to the wrong Comic Vine volume (2026-11-13, backend/seriesLinkCheck.js).
+// Each card: the folder, what its series.json says, what its comics are. Re-link rebuilds
+// series.json from the files' volume (the existing series-page re-link; a backup of the old file is
+// kept); "Link is right" keeps it.
+export function SeriesLinksPanel() {
+  const confirm = useConfirm();
+  const navigate = useNavigate();
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [notice, setNotice] = useState('');
+  const load = useCallback(() => fetch('/api/admin/library-health/series-links').then(r => r.json())
+    .then(d => { if (d.error) throw new Error(d.error); setData(d); })
+    .catch(e => setNotice('Could not load: ' + e.message)), []);
+  useEffect(() => { load(); }, [load]);
+
+  const relink = async it => {
+    const to = it.proposed.name ? `${it.proposed.name} (Comic Vine ${it.proposed.volumeId})` : `Comic Vine volume ${it.proposed.volumeId}`;
+    if (!(await confirm({ title: 'Re-link this folder?', confirmLabel: 'Re-link',
+      message: `Rebuild ${it.folder}'s series.json from ${to}?\n\nIt is fetched again from Comic Vine and enriched (description, genres), as on the series page. A backup of the current file is kept.` }))) return;
+    setBusy(it.seriesId); setNotice('');
+    try {
+      const r = await fetch(`/api/series/${encodeURIComponent(it.seriesId)}/create-json`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ volumeId: it.proposed.volumeId }) });
+      const d = await r.json().catch(() => ({}));
+      setNotice(r.ok && d.success ? `${it.folder}: re-linked to ${d.name || to}.` : `${it.folder}: ${d.error || 'HTTP ' + r.status}`);
+    } finally { setBusy(''); await load(); healthChanged(); }
+  };
+  const keep = async it => {
+    setBusy(it.seriesId);
+    try { await fetch(`/api/admin/library-health/series-links/${encodeURIComponent(it.seriesId)}/dismiss`, { method: 'POST' }); }
+    finally { setBusy(''); await load(); healthChanged(); }
+  };
+  const runNow = async () => {
+    const r = await fetch('/api/admin/library-health/series-links/run', { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    setNotice(r.ok ? 'Checking the next folders now. Results appear here as they come in (refresh in a few minutes).' : (d.error || 'HTTP ' + r.status));
+  };
+
+  if (!data) return <p style={{ color: 'var(--text-muted)' }}>{notice || 'Loading…'}</p>;
+  const { items = [], progress = {} } = data;
+  const c = progress.counts || {};
+  const looked = (c.ok || 0) + (c.mixed || 0) + (c.mismatch || 0) + (c.unknown || 0);
+  return (
+    <div className="dup2 links-panel">
+      <p className="dup2-lead">
+        {items.length ? <><b>{plural(items.length, 'folder')}</b> {items.length === 1 ? 'has a series.json' : 'have a series.json'} for a different Comic Vine series than the comics in {items.length === 1 ? 'it' : 'them'}.</> : 'No wrong links found so far.'}
+        {' '}<span className="dup2-aside">Omnibus checks folders that look suspect about 30 an hour, using the Comic Vine allowance left over.
+        {progress.notYetRead > 0 ? ` ${progress.notYetRead.toLocaleString()} folders not read yet.` : ''}
+        {looked ? ` ${looked} looked up so far${c.mixed ? `, ${c.mixed} holding more than one series (kept for later)` : ''}.` : ''}</span>
+      </p>
+      <div className="dup2-bar"><span /><button className="adm-btn adm-btn-ghost" onClick={runNow}>Check more now</button></div>
+      {notice && <p className="dup2-notice">{notice}</p>}
+      {items.map(it => (
+        <div key={it.seriesId} className="dup2-card">
+          <div className="dup2-head"><b>{it.folder}</b></div>
+          <div className="dup2-why">
+            series.json: <b>{it.current.name || '—'}</b>{it.current.year ? ` (${it.current.year})` : ''} · Comic Vine {it.current.comicid}{it.current.totalIssues != null ? ` · ${plural(it.current.totalIssues, 'issue')}` : ''}<br />
+            The comics: {it.groups.map((g, i) => <span key={i}>{i ? ' · ' : ''}<b>{g.name || 'untagged'}</b> ({plural(g.books, 'file')}{g.volumeId ? `, Comic Vine ${g.volumeId}` : ''})</span>)}
+          </div>
+          <div className="dup2-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+            <button className="adm-btn" disabled={!!busy || !it.proposed.volumeId} onClick={() => relink(it)}>{busy === it.seriesId ? 'Working…' : `Re-link to ${it.proposed.name || 'Comic Vine ' + it.proposed.volumeId}`}</button>
+            <button className="adm-btn adm-btn-ghost" disabled={!!busy} onClick={() => keep(it)} title="The series.json is right; stop listing this folder">Link is right</button>
+            <button className="adm-btn adm-btn-ghost" onClick={() => navigate(`/series/${encodeURIComponent(it.seriesId)}`)}>Open series</button>
+          </div>
+        </div>
+      ))}
+      <style>{`
+        .links-panel .dup2-lead { margin: 0 0 10px; }
+        .links-panel .dup2-aside { color: var(--text-muted); font-size: 0.85rem; }
+        .links-panel .dup2-bar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 10px; }
+        .links-panel .dup2-notice { color: var(--td-yellow, var(--color-primary)); font-size: 0.9rem; }
+        .links-panel .dup2-card { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+        .links-panel .dup2-head { margin-bottom: 6px; overflow-wrap: anywhere; }
+        .links-panel .dup2-why { color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; overflow-wrap: anywhere; }
+      `}</style>
+    </div>
+  );
 }

@@ -12061,6 +12061,36 @@ app.post('/api/monitor/library-status/run', requireAdmin, (req, res) => {
   setImmediate(() => runLibraryStatusCheck().catch(e => logger.error('library-status', 'Run failed', e.message)));
   res.json({ ok: true, message: 'Library status check started — see server log (library-status)' });
 });
+// ─── Series linked to the wrong Comic Vine volume (hourly, 2026-11-13) ─
+// seriesLinkCheck.js; listed on the Library page. One Comic Vine 'issue' request per folder
+// group not already known, 30 suspect folders per run.
+const seriesLinkCheck = require('./seriesLinkCheck').createSeriesLinkCheck({
+  db, logger, pause: () => sleepMs(1100),
+  volumeOfIssue: async issueId => {
+    const r = await cvApiGet(`https://comicvine.gamespot.com/api/issue/4000-${issueId}/`, {
+      params: { api_key: getCVKey(), format: 'json', field_list: 'id,volume' }, headers: { 'User-Agent': 'Omnibus/1.0' }, timeout: 10000 });
+    const v = r.data?.results?.volume;
+    return v?.id ? { id: String(v.id), name: v.name || null } : null;
+  },
+});
+cron.schedule('41 * * * *', () => {
+  if (!getCVKey()) return;
+  if (cvPollStartedAt && Date.now() - cvPollStartedAt < 6 * 60 * 60 * 1000) return;
+  seriesLinkCheck.run().catch(e => logger.error('series-links', 'Run failed', e.message));
+});
+app.get('/api/admin/library-health/series-links', requireAdmin, (req, res) => {
+  try { res.json({ items: seriesLinkCheck.mismatches(), progress: seriesLinkCheck.progress() }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/library-health/series-links/run', requireAdmin, (req, res) => {
+  if (!getCVKey()) return res.status(400).json({ error: 'Set a Comic Vine API key first' });
+  setImmediate(() => seriesLinkCheck.run().catch(e => logger.error('series-links', 'Run failed', e.message)));
+  res.json({ ok: true });
+});
+// "Link is right": the folder's series.json stays as it is.
+app.post('/api/admin/library-health/series-links/:id/dismiss', requireAdmin, (req, res) => {
+  res.json({ ok: seriesLinkCheck.dismiss(req.params.id) });
+});
 cron.schedule('23 * * * *', () => {
   if (!getCVKey()) return;
   if (cvPollStartedAt && Date.now() - cvPollStartedAt < 6 * 60 * 60 * 1000) return;
@@ -17063,6 +17093,7 @@ async function requestRowFor(src, owner, issue) {
 // Problem reports from users (problemReports.js); the admin's Reports tab in the Download Manager.
 const problemReports = require('./problemReports')({ app, db, requireAuth, requireAdmin, logger });
 const libraryHealth = require('./libraryHealth')({ app, db, requireAdmin, logger,
+  seriesLinkMismatches: () => seriesLinkCheck.count(),
   // Bulk duplicate cleanup: retag by filename through the normal retag runtime
   // (Comic Vine background lane) and move extra copies to a holding folder
   // outside the library, which the admin empties when satisfied.

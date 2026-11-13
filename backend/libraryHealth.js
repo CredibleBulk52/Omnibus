@@ -173,7 +173,7 @@ function chooseKeep(books) {
 }
 
 module.exports = function createLibraryHealth({ app, db, requireAdmin, logger, now = () => Date.now(), fileExists = p => fs.existsSync(p),
-  retag = null, forgetBook = null, withWrite = fn => fn(), holdingRoot = '/downloads/_Removed duplicates', sleep = ms => new Promise(r => setTimeout(r, ms)),
+  retag = null, forgetBook = null, seriesLinkMismatches = () => 0, withWrite = fn => fn(), holdingRoot = '/downloads/_Removed duplicates', sleep = ms => new Promise(r => setTimeout(r, ms)),
   // Pages in a CBZ from its central directory (names only); 0 = empty or unreadable.
   measure = file => pageResolution(file),
   countPages = async file => { if (!/\.cbz$/i.test(file)) return null; try { return (await listNames(file)).filter(e => !e.directory && PAGE.test(e.name) && !/__MACOSX/.test(e.name)).length; } catch { return 0; } },
@@ -223,6 +223,8 @@ module.exports = function createLibraryHealth({ app, db, requireAdmin, logger, n
       heldDownloads: count(`SELECT COUNT(*) n FROM monitored_issues WHERE status = 'downloaded'
         AND (last_fail_reason LIKE 'ARCHIVE_DAMAGED:%' OR last_fail_reason GLOB '[A-Z]*_[A-Z]*: *')`),
       requests: has('download_requests') ? count("SELECT COUNT(*) n FROM download_requests WHERE status = 'open'") : 0,
+      // Folders whose series.json names a different Comic Vine volume than their files (seriesLinkCheck.js).
+      seriesLinks: (() => { try { return seriesLinkMismatches(); } catch { return 0; } })(),
     };
     const retryAt = has('metadata_worker_state') ? (db.prepare('SELECT provider_retry_at FROM metadata_worker_state WHERE id = 1').get()?.provider_retry_at || 0) : 0;
     const info = {
