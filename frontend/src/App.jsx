@@ -288,6 +288,12 @@ export default function App() {
   const [activeLibrary, setActiveLibrary] = useState(null);
   const [appSettings, setAppSettings] = useState({});
 
+  // Settings that change while the app is open (Specials shelves on/off) send 'omnibus:settings'.
+  useEffect(() => {
+    const reload = () => fetch('/api/settings').then(r => r.json()).then(d => setAppSettings({ ...(d || {}), __loaded: true })).catch(() => {});
+    window.addEventListener('omnibus:settings', reload);
+    return () => window.removeEventListener('omnibus:settings', reload);
+  }, []);
   useEffect(() => {
     if (!getToken()) return;
     // Use a short timeout so offline startup doesn't hang waiting for

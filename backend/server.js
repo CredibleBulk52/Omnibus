@@ -6928,7 +6928,7 @@ app.get('/api/home/discover', (req, res) => {
 // ─── Settings API ────────────────────────────────────────────────
 // Settings hold API keys and service passwords, so only the admin sees them.
 // Other users get just the flags the app's menus need.
-const USER_VISIBLE_SETTINGS = ['download_manager_admin_only', 'catalog_publisher_notes'];   // catalog_publisher_notes: admin text on the Essentials publisher bars (2026-10-28)
+const USER_VISIBLE_SETTINGS = ['download_manager_admin_only', 'catalog_publisher_notes', 'shelves_enabled'];   // catalog_publisher_notes: admin text on the Essentials publisher bars (2026-10-28); shelves_enabled: the series page's views (2026-11-14)
 //   // legacy_edit_order and legacy_admin_pages retired 2026-10-26 (old Edit Order mode, Events Admin / Canon Admin).
 app.get('/api/settings', (req, res) => {
   const rows = db.prepare('SELECT key, value FROM settings').all();

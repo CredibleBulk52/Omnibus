@@ -82,24 +82,27 @@ function SeriesLibraryPage({ maintenance }) {
 
   // Browser views (components/seriesViews.js): Series | One-shots | Tie-ins, for everyone.
   // A search shows everything, with each shelved series labelled with its home.
+  // With Specials shelves off (Library › Specials shelves) there are no views: one flat list of
+  // every series, as before the shelves (2026-11-14, user).
+  const appSettings = useAppSettings();
+  const shelvesOn = appSettings.shelves_enabled !== '0';
   const [groupViewRaw, setGroupView] = useViewState('series:group', 'main');
-  const groupView = groupViewRaw === 'homeless' ? 'oneshots' : groupViewRaw;   // the older view name
+  const groupView = !shelvesOn ? 'flat' : groupViewRaw === 'homeless' ? 'oneshots' : groupViewRaw;   // 'homeless': the older view name
   const groupCounts = useMemo(() => viewCounts(characterFiltered), [characterFiltered]);
-  const groupFiltered = useMemo(() => (search.trim() ? characterFiltered : filterSeriesView(characterFiltered, groupView)),
+  const groupFiltered = useMemo(() => (search.trim() || groupView === 'flat' ? characterFiltered : filterSeriesView(characterFiltered, groupView)),
     [characterFiltered, groupView, search]);
   const currentSeries = activeTab === 'all' ? groupFiltered : noMetaSeries;
   // The view switch sits in the toolbar beside the count (2026-11-13).
   const views = [['main', 'Series', null, 'Ongoing series and minis'],
     ['oneshots', 'One-shots', groupCounts.oneShots, 'Single-issue books that are not on a Specials shelf'],
     ['grouped', 'Tie-ins', groupCounts.tieIns, 'Event tie-ins and other series kept on a home series\' Specials tab']];
-  const viewSwitch = activeTab === 'all' && (groupCounts.tieIns > 0 || groupCounts.oneShots > 0) && !search.trim()
+  const viewSwitch = shelvesOn && activeTab === 'all' && (groupCounts.tieIns > 0 || groupCounts.oneShots > 0) && !search.trim()
     ? <div className="csb-view-switch" role="radiogroup" aria-label="Which series to show">
         {views.map(([k, label, n, tip]) => <button key={k} type="button" role="radio" aria-checked={groupView === k} title={tip}
           onClick={() => { setGroupView(k); setPage(0); }}>{label}{n != null && <b>{n.toLocaleString()}</b>}</button>)}
       </div>
     : null;
   const currentLoading = activeTab === 'all' ? loading : noMetaLoading;
-  const appSettings = useAppSettings();
   const canDownload = isAdmin() || appSettings.download_manager_admin_only !== 'true';
   const [asking, setAsking] = useState(false);
   const currentPage = activeTab === 'all' ? page : noMetaPage;

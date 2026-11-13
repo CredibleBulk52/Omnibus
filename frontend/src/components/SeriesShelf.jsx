@@ -137,6 +137,12 @@ const SCOPE_HINT = {
 };
 const askWhat = o => [o.events && `${o.events} event${o.events === 1 ? '' : 's'}`, o.series && `${o.series} series`].filter(Boolean).join(' and ');
 const enc = encodeURIComponent;
+// Turning shelves on or off also changes the series page's views (App reloads its settings).
+const setShelves = async on => {
+  const r = await call('POST', '/api/grouping/enabled', { on });
+  try { window.dispatchEvent(new Event('omnibus:settings')); } catch {}
+  return r;
+};
 export function SeriesGroupingPanel() {
   const navigate = useNavigate();
   const { invalidate } = useSeriesCache();
@@ -176,7 +182,7 @@ export function SeriesGroupingPanel() {
         so the series list shows the series you read. Nothing on disk moves, search still finds everything, and every change can be undone.</p>
       <p className="gp-muted">Event shelves follow your Timeline events. With an AI key (Settings › AI Models) the Shelf Sorter can suggest homes for minis and one-shots too.</p>
       {error && <p className="gp-error">{error}</p>}
-      <button className="adm-btn" disabled={!!busy} onClick={() => act('on', () => call('POST', '/api/grouping/enabled', { on: true }))}>Turn on Specials shelves</button>
+      <button className="adm-btn" disabled={!!busy} onClick={() => act('on', () => setShelves(true))}>Turn on Specials shelves</button>
       <style>{`.gp-off { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; max-width: 720px; } .gp-off p { margin: 0; }
         .gp-off .gp-muted { color: var(--text-muted); font-size: 0.85rem; } .gp-off .gp-error { color: var(--td-red, #e55); }`}</style>
     </div>
@@ -263,9 +269,9 @@ export function SeriesGroupingPanel() {
             <button type="button" disabled={!!busy || asking} onClick={ev => { closeMenu(ev); prepare(['series'], ['suggested', 'all'], 'Review the minis again'); }}
               title="Ask again about the suggestions waiting, or about every mini and one-shot you have not decided (also those the AI shelved). Nothing changes on its own: new advice waits on the Minis tab.">Review the minis again…</button>
             <button type="button" onClick={ev => { closeMenu(ev); navigate('/settings?tab=ai'); }}>Choose the AI model…</button>
-            <button type="button" disabled={!!busy} onClick={ev => { closeMenu(ev); act('off', () => call('POST', '/api/grouping/enabled', { on: false }), () => ({
-              text: 'Specials shelves are off: nothing is grouped or hidden. Your shelves are kept.', run: () => call('POST', '/api/grouping/enabled', { on: true }) })); }}
-              title="Shows every series in the list again. Shelves and choices are kept for when you turn them back on.">Turn Specials shelves off</button>
+            <button type="button" disabled={!!busy} onClick={ev => { closeMenu(ev); act('off', () => setShelves(false), () => ({
+              text: 'Specials shelves are off: the series page shows one list of every series again. Your shelves are kept.', run: () => setShelves(true) })); }}
+              title="Shows every series in one list again, without the Series, One-shots and Tie-ins views. Shelves and choices are kept for when you turn them back on.">Turn Specials shelves off</button>
           </div>
         </details>
       </div>
