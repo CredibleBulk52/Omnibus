@@ -12169,7 +12169,9 @@ async function runCreateFromFiles(libraryId, userId) {
       try {
         const v = await volumeForFolder(r.id);
         if (!v.id) { filesJob.skipped.push({ id: r.id, name: r.name, reason: v.reason }); continue; }
-        const out = await createSeriesJsonFromVolume(r.id, v.id, userId);
+        // The library writer scope, as the series page's create gets from its route; one folder at a time,
+        // so scans and downloads are not held up for the whole run.
+        const out = await libraryAccess.run('write', () => createSeriesJsonFromVolume(r.id, v.id, userId));
         if (out.status) filesJob.skipped.push({ id: r.id, name: r.name, reason: out.error });
         else { filesJob.created++; logger.info('create-from-files', `${r.name} → ${out.name} (Comic Vine ${out.comicid})`); }
       } catch (e) {
