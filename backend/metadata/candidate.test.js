@@ -104,3 +104,15 @@ test('folder years without parentheses', () => {
   assert.equal(publicationHint('James Bond 006.cbz', null, 'James Bond 2017').year, '2017');
   assert.equal(publicationHint('Spider-Man 2099 005.cbz', null, 'Spider-Man 2099'), null);
 });
+test('a correction rewrites only Comic Vine ids in Notes; another database\'s id stays (2026-11-14)',()=>{
+ const currentXml=`<ComicInfo><Notes>Tagged with comicbox [Issue ID 4000-999] urn:comicvine:4000-999
+Tagged with ComicTagger using info from Grand Comics Database. [Issue ID 2186813]</Notes></ComicInfo>`;
+ const metadata=planBookMetadata({bookId:'one',filename:'Example.cbz',currentXml,explicitIssueId:'123',source:{issue,volume}});
+ assert.equal(metadata.plan.identityCorrection,true);
+ const out=applyComicInfoPlan({...metadata,currentXml});
+ assert.match(out.xml,/\[Issue ID 4000-123\] urn:comicvine:4000-123/);assert.match(out.xml,/\[Issue ID 2186813\]/);
+ assert.deepEqual(parseComicInfoEvidence(out.xml).identity.ids,['123']);
+ // The file as downloaded (Comic Vine id plus a GCD id) is one identity and is tagged normally.
+ const asIs=currentXml.replace(/999/g,'123'),plain=planBookMetadata({bookId:'one',filename:'Example.cbz',currentXml:asIs,source:{issue,volume}});
+ assert.notEqual(plain.plan.identityCorrection,true);assert.ok(applyComicInfoPlan({...plain,currentXml:asIs}).xml.includes('2186813'));
+});

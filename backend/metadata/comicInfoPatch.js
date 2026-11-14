@@ -1,6 +1,6 @@
 'use strict';
 const { createHash } = require('node:crypto');
-const { parseComicInfoEvidence, parseCvIssueId } = require('./evidence');
+const { parseComicInfoEvidence, parseCvIssueId, eachNotesId, notesIds } = require('./evidence');
 const { FIELDS, POLICY_VERSION } = require('./merge');
 const { locateElements } = require('./xmlLayout');
 
@@ -26,7 +26,10 @@ function applyComicInfoPlan({ bookId, cvIssueId, currentXml, plan, initializeIde
     || !Array.isArray(plan.review) || plan.review.length || !Array.isArray(plan.patches)
     || plan.changed !== (plan.patches.length > 0 || plan.identityCorrection === true) || (plan.status === 'ready') !== plan.changed) fail('PLAN_NOT_APPLICABLE', 'Only ready or unchanged merge plans can be applied');
   const evidence = parseComicInfoEvidence(currentXml);
-  if (evidence.status === 'invalid' || ['invalid', 'conflict'].includes(evidence.identity.status)) fail('UNSUPPORTED_XML', 'Existing metadata cannot be safely edited');
+  // Say why (2026-11-14): "cannot be safely edited" alone needed the file opened to find the cause.
+  if (evidence.status === 'invalid' || ['invalid', 'conflict'].includes(evidence.identity.status)) fail('UNSUPPORTED_XML', evidence.identity.status === 'conflict'
+    ? `Existing metadata names more than one Comic Vine issue (${evidence.identity.ids.join(', ')})`
+    : `Existing metadata cannot be safely edited (${(evidence.diagnostics || []).join(', ') || 'unreadable'})`);
   if (plan.originalXml !== evidence.rawXml || plan.originalXmlHash !== hash(evidence.rawXml)) fail('STALE_XML', 'ComicInfo changed after planning');
   const correcting = plan.identityCorrection === true;
   if (!correcting && evidence.identity.ids.some(id => id !== plan.cvIssueId)) fail('IDENTITY_CORRECTION_REQUIRED', 'Identity corrections need their own reviewed plan');
@@ -61,7 +64,8 @@ function applyComicInfoPlan({ bookId, cvIssueId, currentXml, plan, initializeIde
       const id = parseCvIssueId(token.replace(/&amp;/g, '&'));
       return id && id !== plan.cvIssueId ? link : token;
     });
-    const swapNotes = value => value.replace(/\b(CVDB\s*|Issue\s+ID\s+)(\d+)\b/gi, (m, prefix, id) => id === plan.cvIssueId ? m : prefix + plan.cvIssueId);
+    // Only Comic Vine ids: another database's id on its own tagger line stays as written.
+    const swapNotes = value => eachNotesId(value, (m, prefix, id) => (id === plan.cvIssueId ? m : prefix + plan.cvIssueId));
     correctedIdentity = { web: (evidence.fields.web || []).map(swapWeb), notes: (evidence.fields.notes || []).map(swapNotes) };
     for (const node of children) {
       const name = node.name.toLowerCase();
@@ -71,7 +75,7 @@ function applyComicInfoPlan({ bookId, cvIssueId, currentXml, plan, initializeIde
       if (next !== inner) edits.push({ start: node.openEnd, end: node.closeStart, text: next });
     }
     const has = v => parseComicInfoEvidence(`<ComicInfo><Web>${escapeText(v)}</Web></ComicInfo>`).identity.ids.includes(plan.cvIssueId)
-      || /\b(?:CVDB\s*|Issue\s+ID\s+)(\d+)\b/i.exec(v)?.[1] === plan.cvIssueId;
+      || notesIds(v).includes(plan.cvIssueId);
     if (![...correctedIdentity.web, ...correctedIdentity.notes].some(has)) {
       const web = children.find(n => n.name.toLowerCase() === 'web');
       if (!web) { additions.push(`<Web>${link}</Web>`); correctedIdentity.web = [link]; }

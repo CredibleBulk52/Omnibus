@@ -9674,7 +9674,8 @@ async function postProcess(issue, series, storageDir) {
     } else {
       // Any other failure: wait before trying again instead of every poll (Storm #10/#11 failed
       // 7 times a minute, 2026-10-22). File problems that will not heal wait 6 hours; others 15 minutes.
-      const lasting = /^(RAR_TOOL_REQUIRED|UNSUPPORTED_ARCHIVE|NO_IMAGE_PAGES|ARCHIVE_LIMIT|UNSUPPORTED_ENCODING|INVALID_COMICINFO)$/.test(e.code || '');
+      // UNSUPPORTED_XML / UNSUPPORTED_FIELD (2026-11-14): the file's own ComicInfo will not change either.
+      const lasting = /^(RAR_TOOL_REQUIRED|UNSUPPORTED_ARCHIVE|NO_IMAGE_PAGES|ARCHIVE_LIMIT|UNSUPPORTED_ENCODING|INVALID_COMICINFO|UNSUPPORTED_XML|UNSUPPORTED_FIELD)$/.test(e.code || '');
       try {
         db.prepare(`UPDATE monitored_issues SET retry_after = datetime('now', '${lasting ? '+6 hours' : '+15 minutes'}'), last_fail_reason = ? WHERE id = ? AND status = 'downloaded'`)
           .run(`${e.code || 'ERROR'}: ${e.message}`.slice(0, 500), issue.id);

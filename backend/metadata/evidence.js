@@ -97,9 +97,7 @@ function parseComicInfoEvidence(xml) {
   for (const web of result.fields.web || []) {
     for (const token of web.match(/https?:\/\/[^\s<>"']+/gi) || []) add(parseCvIssueId(token), 'comicinfo.web', token);
   }
-  for (const notes of result.fields.notes || []) {
-    for (const match of notes.matchAll(/\b(?:CVDB\s*(\d+)|Issue\s+ID\s+(\d+))\b/gi)) add(parseCvIssueId(match[1] || match[2]), 'comicinfo.notes', match[0]);
-  }
+  for (const notes of result.fields.notes || []) eachNotesId(notes, (m, prefix, id) => { add(parseCvIssueId(id), 'comicinfo.notes', m); });
   result.identity.ids = [...new Set(result.identity.evidence.map(e => e.cvIssueId))];
   const ids = result.identity.ids;
   result.identity.status = result.diagnostics.includes('structured_identity_field') ? 'invalid' : ids.length > 1 ? 'conflict' : ids.length ? 'supported' : 'none';
@@ -107,6 +105,25 @@ function parseComicInfoEvidence(xml) {
   if (result.identity.status === 'supported') result.identity.cvIssueId = ids[0];
   return result;
 }
+
+// Comic Vine issue ids in Notes (2026-11-14, The Expanse (2020) #2 held as UNSUPPORTED_XML). Notes
+// often hold several taggers' lines, and only Comic Vine's count:
+//   ComicTagger  "… using info from Comic Vine … [CVDB825420]" or "[Issue ID 825420]"
+//                "… using info from Grand Comics Database … [Issue ID 2186813]"   another database: ignored
+//   comicbox     "[Issue ID 4000-825420] urn:comicvine:4000-825420"               the 4000- prefix is Comic Vine's
+// "Issue ID 4000-825420" used to read as issue 4000, and the GCD id as a second Comic Vine id, so the
+// file looked like it named two issues. fn(match, prefix, id) may return a replacement (corrections).
+const NOTES_ID = /\b(CVDB\s*|Issue\s+ID\s+(?:4000-)?|urn:comicvine:4000-)(\d+)\b/gi;
+const OTHER_DATABASE = /\b(?:grand\s+comics\s+database|gcd|metron|league\s+of\s+comic\s+geeks|locg|marvel\.com)\b/i;
+const otherDatabaseLine = line => !/comic\s*vine/i.test(line) && (/using info from\s+\S/i.test(line) || OTHER_DATABASE.test(line));
+function eachNotesId(text, fn) {
+  return String(text || '').split(/(\r?\n)/).map(part => (/^\r?\n$/.test(part) ? part : part.replace(NOTES_ID, (m, prefix, id) => {
+    if (otherDatabaseLine(part) && !/^(?:CVDB|urn:comicvine)/i.test(prefix)) return m;
+    const next = fn(m, prefix, id);
+    return next == null ? m : next;
+  }))).join('');
+}
+const notesIds = text => { const ids = []; eachNotesId(text, (m, prefix, id) => { ids.push(id); }); return ids; };
 
 // Limited-series counts are not issue numbers: "01 (of 04)", "01 [of 04]", "01 of 04".
 function stripIssueCount(text) {
@@ -147,4 +164,4 @@ function collectMetadataEvidence({ bookId, arrival, filename, comicInfoXml, fold
   return { bookId, arrival, filename: filenameEvidence(filename), embedded, identities, folderHint, diagnostics };
 }
 
-module.exports = { MAX_XML_BYTES, parseCvIssueId, parseIssueNumberEvidence, parseComicInfoEvidence, filenameEvidence, collectMetadataEvidence, stripIssueCount };
+module.exports = { MAX_XML_BYTES, eachNotesId, notesIds, parseCvIssueId, parseIssueNumberEvidence, parseComicInfoEvidence, filenameEvidence, collectMetadataEvidence, stripIssueCount };

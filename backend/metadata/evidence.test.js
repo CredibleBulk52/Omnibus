@@ -115,3 +115,15 @@ test('invalid explicit IDs are reported, never silently promoted to another iden
   assert.throws(()=>collectMetadataEvidence({arrival:'scanner'}), /stable book ID/);
   assert.throws(()=>collectMetadataEvidence({bookId:'sb_stable',arrival:'unknown'}), /arrival/);
 });
+
+test('Notes from several taggers: only Comic Vine ids count (The Expanse #2, Dragon Tooth #5)', () => {
+  const expanse = parseComicInfoEvidence(xml(`<Notes>Tagged with comicbox 1.1.1 on 2024-03-13T22:25:22 [Issue ID 4000-825420] urn:comicvine:4000-825420
+Tagged with ComicTagger 1.6.0a13.dev122 using info from Grand Comics Database on 2024-06-17 04:23:39. [Issue ID 2186813]</Notes>`));
+  assert.deepEqual([expanse.identity.status, expanse.identity.ids], ['supported', ['825420']]);
+  const dragon = parseComicInfoEvidence(xml(`<Notes>Tagged with the ninjas.walk.alone fork of ComicTagger 1.3.5 using info from Comic Vine on 2024-06-12 17:36:17.  [CVDB1024679]
+Tagged with ComicTagger 1.6.0a13.dev122 using info from Grand Comics Database on 2024-06-17 05:32:27. [Issue ID 2570686]</Notes>`));
+  assert.deepEqual([dragon.identity.status, dragon.identity.ids], ['supported', ['1024679']]);
+  // A plain Comic Vine tag line still counts, and two Comic Vine ids still conflict.
+  assert.deepEqual(parseComicInfoEvidence(xml('<Notes>Tagged with ComicTagger using info from Comic Vine [Issue ID 123]</Notes>')).identity.ids, ['123']);
+  assert.equal(parseComicInfoEvidence(xml('<Notes>[Issue ID 4000-123] urn:comicvine:4000-456</Notes>')).identity.status, 'conflict');
+});
