@@ -281,3 +281,22 @@ test('too new to judge: a series with only #1 out and still publishing waits for
   assert.ok(fresh.plan({ kinds: ['series'] }).bTodo.some(b => b.f.id === 'bpn'));
   assert.equal(fresh.seriesSummary().waiting, 0);
 });
+
+test('Events only: minis and one-shots are left alone (no asks, no estimates, no Metron lookups)', async () => {
+  const { db, g, calls } = fixture(answer);
+  let minis = false;
+  const asked = [];
+  const types = createSeriesTypes({ db, metron: { seriesStatus: async id => { asked.push(id); return null; } } });
+  const ai = { run: (o, fn) => fn(), choose: () => 'm', complete: async opts => { calls.push(opts); return { text: JSON.stringify(answer(opts)), jobId: 'j', model: 'm' }; } };
+  const s = createShelfSorter({ db, grouping: g, ai, getSetting: () => null, setSetting: () => {}, seriesTypes: types, minisEnabled: () => minis });
+  assert.equal(s.estimate({ kinds: ['series'] }).series, 0);
+  assert.equal((await s.ask({ kinds: ['event', 'series'] })).asked, 0);
+  assert.equal(calls.length, 0);
+  assert.deepEqual(await s.lookUpTypes(), { skipped: true });
+  assert.equal(s.seriesReady(), 0);
+  assert.equal(s.status().minis, false);
+  minis = true;                                                               // Events and minis
+  assert.ok(s.estimate({ kinds: ['series'] }).series > 0);
+  const noAi = createShelfSorter({ db, grouping: g, ai, getSetting: () => null, setSetting: () => {}, aiAvailable: () => false, minisEnabled: () => false });
+  assert.deepEqual(await noAi.ask(), { asked: 0, runId: null, local: true });   // events need the AI; minis are off
+});

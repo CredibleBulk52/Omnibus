@@ -9,7 +9,7 @@ import { CharacterVerification } from './CVAdminPage';
 import { LibrariesSection, PostProcessingSection, PublisherSection, WeeklySection, SettingsStyles, InventoryDownloadBtn } from './SettingsPage';
 import { useLibrary } from '../App';
 import { AttentionList, DuplicatesPanel, SeriesLinksPanel } from '../components/LibraryHealth';
-import { SeriesGroupingPanel } from '../components/SeriesShelf';
+import { SeriesGroupingPanel } from '../components/specialsShelves';
 import GenreRetag from '../components/GenreRetag';
 
 // ─── LibraryAdminPage (/library) ──────────────────────────────────

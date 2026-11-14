@@ -1,0 +1,26 @@
+/* Series-page pieces of the Specials shelves (components/seriesShelf/, 2026-11-13). */
+.series-shelf-homes { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; font-size: 0.85rem; color: var(--text-muted);
+  padding: 8px clamp(12px, 3vw, 36px); border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.08));
+  background: color-mix(in srgb, var(--rl-theme-main) 8%, color-mix(in srgb, var(--om-base) 70%, black)); }   /* the series body's colour (comicSeriesHero.css) */
+.series-shelf-home { display: inline-flex; align-items: center; gap: 10px; }
+.series-shelf-home-link { display: inline-flex; align-items: center; gap: 8px; background: none; border: 0; padding: 0; color: var(--text-muted); cursor: pointer; font: inherit; text-align: left; }
+.series-shelf-home-link img { width: 22px; height: 33px; object-fit: cover; border-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+.series-shelf-home-link b { color: var(--td-yellow, var(--color-primary)); font-weight: 600; }
+.series-shelf-home-link:hover b { text-decoration: underline; }
+.series-shelf-off { background: none; border: 1px solid var(--border-subtle, rgba(255,255,255,0.15)); border-radius: 4px; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 0.78rem; padding: 2px 8px; }
+.series-shelf-off:hover { color: var(--text-primary, #eee); border-color: var(--text-muted); }
+.series-shelf-note { display: inline-flex; align-items: center; gap: 8px; }
+.series-shelf-error { color: var(--td-red, #e55); }
+.linked-shelf { margin: 8px 0 20px; }
+.linked-shelf-head { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+.linked-shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+.linked-shelf-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.linked-shelf-open { display: flex; flex-direction: column; gap: 4px; background: none; border: 0; padding: 0; text-align: left; color: var(--text-primary); cursor: pointer; font: inherit; min-width: 0; }
+.linked-shelf-open img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 4px; background: var(--bg-card); }
+.linked-shelf-name { font-weight: 700; font-size: 0.85rem; overflow-wrap: anywhere; }
+.linked-shelf-meta { font-size: 0.75rem; color: var(--text-muted); }
+.linked-shelf-remove { align-self: flex-start; background: none; border: 1px solid var(--border-subtle); border-radius: 4px; color: var(--text-muted); font-size: 0.72rem; padding: 2px 8px; cursor: pointer; }
+.put-shelf-results { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; max-height: 50vh; overflow: auto; }
+.put-shelf-hit { display: flex; justify-content: space-between; gap: 10px; text-align: left; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--bg-card); color: var(--text-primary); cursor: pointer; font: inherit; }
+.put-shelf-hit:hover:not(:disabled) { border-color: var(--td-yellow, var(--color-primary)); }
+.put-shelf-hit small { color: var(--text-muted); white-space: nowrap; }

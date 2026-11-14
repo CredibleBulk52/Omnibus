@@ -19,7 +19,7 @@ import { markSeriesRead } from './seriesReading.mjs';
 import '../seriesDetail.css';
 import ComicSeriesHero from '../components/ComicSeriesHero';
 import { AiInfo } from '../components/AiInfo';
-import { useSeriesGrouping, ShelfHomes, LinkedSeriesShelf, PutOnShelfDialog, SeriesShelfStyles } from '../components/SeriesShelf';
+import { useSeriesGrouping, ShelfHomes, LinkedSeriesShelf, PutOnShelfDialog } from '../components/seriesShelf';
 
 // ─── SaveOfflineBtn ───────────────────────────────────────────────
 // Per-issue download button. Shows: 📥 (not saved) → progress → ✓ (saved) → 🗑 (on hover)
@@ -901,7 +901,6 @@ export default function SeriesDetailComic() {
       {/* ── Tab bodies ── */}
       <div className="series-body">
 
-        <SeriesShelfStyles />
         {shelfOpen && <PutOnShelfDialog seriesId={id} seriesName={title} onClose={() => setShelfOpen(false)} onDone={reloadGrouping} />}
         {/* ── Issues — bookshelf layout ── */}
         {tab === 'issues' && (

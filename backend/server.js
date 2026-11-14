@@ -3679,6 +3679,12 @@ if (getSetting('shelves_enabled') == null) {
   db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('shelves_enabled', had ? '1' : '0');
 }
 const shelvesOn = () => getSetting('shelves_enabled') === '1';
+// Three settings (2026-11-14, user): Off / Events only / Events and minis. shelves_minis turns on the
+// minis-and-one-shots work (the Shelf Sorter's series suggestions, Metron series types, the Minis tab).
+// Set once: an install that already had shelves keeps everything; a new one starts at Events only.
+if (getSetting('shelves_minis') == null) db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('shelves_minis', shelvesOn() ? '1' : '0');
+const minisOn = () => shelvesOn() && getSetting('shelves_minis') === '1';
+const shelvesMode = () => (!shelvesOn() ? 'off' : minisOn() ? 'all' : 'events');
 const seriesGrouping = require('./seriesGrouping').createSeriesGrouping({ db, logger, enabled: shelvesOn,
   onChange: () => { seriesGroupCache = null; invalidateSeriesCache(); } });
 let seriesGroupCache = null;
@@ -17198,13 +17204,14 @@ const groupingRoute = fn => (req, res) => { try { res.json(fn(req) ?? { ok: true
 const seriesTypes = require('./seriesTypes').createSeriesTypes({ db, metron, logger });
 const shelfSorter = require('./shelfSorter').createShelfSorter({ db, grouping: seriesGrouping, ai, getSetting,
   setSetting: (k, v) => db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v),
-  modelFor: id => aiRouting.modelFor(id), logger, setJobOutcome: setAiJobOutcome, seriesTypes,
+  modelFor: id => aiRouting.modelFor(id), logger, setJobOutcome: setAiJobOutcome, seriesTypes, minisEnabled: () => minisOn(),
   aiAvailable: () => { try { return hasAiProvider(aiModels.providerOfModel(aiRouting.modelFor('shelf_sorter'))); } catch { return false; } },
   modelName: m => { if (m === 'metron') return 'Metron'; if (m === 'omnibus') return 'Omnibus (no AI)'; try { return modelCatalog.displayName(m) || m; } catch { return m; } } });
 app.get('/api/grouping', requireAdmin, groupingRoute(() => {
-  if (!shelvesOn()) return { enabled: false };
+  if (!shelvesOn()) return { enabled: false, mode: 'off' };
   const s = seriesGrouping.summary();
   s.enabled = true;
+  s.mode = shelvesMode();
   const ready = shelfSorter.annotate(s) + shelfSorter.seriesReady();
   // outdated: open suggestions made by another model or an older prompt (a hint to ask again; nothing runs on its own).
   let outdated = null; try { outdated = shelfSorter.estimate({ scope: 'outdated' }); } catch {}
@@ -17264,7 +17271,21 @@ app.post('/api/grouping/enabled', requireAdmin, groupingRoute(req => {
   const r = on ? seriesGrouping.run('turned on') : null;
   seriesGrouping.changed();
   logger.info('grouping', `Specials shelves turned ${on ? 'on' : 'off'}`);
-  return { enabled: on, run: r };
+  return { enabled: on, mode: shelvesMode(), run: r };
+}));
+// Off / Events only / Events and minis (2026-11-14). Switching to Events only stops new minis work;
+// what is already on a shelf stays (take it off in the panel), as with Off.
+app.post('/api/grouping/mode', requireAdmin, groupingRoute(req => {
+  const mode = ['off', 'events', 'all'].includes(req.body?.mode) ? req.body.mode : null;
+  if (!mode) throw Object.assign(new Error('mode must be off, events or all'), { status: 400 });
+  const was = shelvesOn();
+  const put = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+  put.run('shelves_enabled', mode === 'off' ? '0' : '1');
+  if (mode !== 'off') put.run('shelves_minis', mode === 'all' ? '1' : '0');
+  const r = mode !== 'off' && !was ? seriesGrouping.run('turned on') : null;
+  seriesGrouping.changed();
+  logger.info('grouping', `Specials shelves: ${mode === 'off' ? 'off' : mode === 'events' ? 'events only' : 'events and minis'}`);
+  return { mode: shelvesMode(), run: r };
 }));
 app.post('/api/grouping/events/confirm-all', requireAdmin, groupingRoute(() => seriesGrouping.confirmAll()));
 // Undo (2026-11-13): put back the event states an action returned as `previous`.
@@ -17288,7 +17309,7 @@ cron.schedule('17 * * * *', () => {
 });
 // Metron series types for the Shelf Sorter, a batch an hour (about 7 minutes of Metron's pace).
 cron.schedule('29 * * * *', () => {
-  if (!metronToken() || !shelvesOn()) return;
+  if (!metronToken() || !minisOn()) return;
   shelfSorter.lookUpTypes({ limit: 60 }).catch(e => logger.warn('series-types', 'Hourly lookup failed', e.message));
 });
 

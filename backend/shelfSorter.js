@@ -109,7 +109,8 @@ function parseReply(text) {
 
 // aiAvailable(): whether the Shelf Sorter's model has its provider key saved. Without one, "Ask"
 // gives Omnibus's own suggestions for minis and one-shots (localSuggest) and leaves events to the rules.
-function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor = () => null, logger = null, now = Date.now, setJobOutcome = () => {}, modelName = m => m, seriesTypes = null, aiAvailable = () => true }) {
+function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor = () => null, logger = null, now = Date.now, setJobOutcome = () => {}, modelName = m => m, seriesTypes = null, aiAvailable = () => true, minisEnabled = () => true }) {
+  // minisEnabled (2026-11-14): Specials shelves set to Events only leave minis and one-shots alone.
   initShelfSorter(db);
   const has = t => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t);
 
@@ -316,7 +317,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     return [...open, ...unasked];
   }
   async function lookUpTypes({ limit = 60 } = {}) {
-    if (!seriesTypes) return { skipped: true };
+    if (!seriesTypes || !minisEnabled()) return { skipped: true };
     const bctx = bContext();
     const items = typeScope(bctx).map(t => ({ comicid: t.comicid, name: t.name, year: t.year }));
     const r = await seriesTypes.run(items, { limit });
@@ -363,6 +364,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   // and never changed by an answer (remaining()). fresh: the ids with no answer before.
   function plan({ scope = 'new', kinds = ['event', 'series'], eventIds = null, seriesIds = null, limit = Infinity, seriesLimit = Infinity } = {}) {
     if (!SCOPES.includes(scope)) scope = 'new';
+    if (!minisEnabled()) kinds = kinds.filter(k => k !== 'series');
     const cur = currentModel();
     const todo = [], bTodo = [];
     const fresh = { events: new Set(), series: new Set() };
@@ -427,7 +429,8 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   function estimate(opts = {}) {
     const { todo, bTodo, scope } = plan(opts);
     const model = currentModel();
-    return { scope, events: todo.length, series: bTodo.length, calls: aiAvailable() ? callsFor(todo.length, bTodo.length) : 0,
+    // Without an AI key only minis get suggestions (Omnibus's own); events need the AI.
+    return { scope, events: aiAvailable() ? todo.length : 0, series: bTodo.length, calls: aiAvailable() ? callsFor(todo.length, bTodo.length) : 0,
       local: !aiAvailable(), model: model && aiAvailable() ? modelName(model) : null };
   }
 
@@ -437,7 +440,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
   async function ask({ eventIds = null, seriesIds = null, force = false, suggested = false, scope = null, limit = Infinity, seriesLimit = Infinity, mode = 'ask', kinds = ['event', 'series'] } = {}) {
     if (state.running) return { skipped: true, running: true };
     scope = scope || (force ? 'all' : suggested ? 'suggested' : 'new');
-    if (!aiAvailable()) return localSuggest({ force: scope === 'all' });
+    if (!aiAvailable()) return minisEnabled() && kinds.includes('series') ? localSuggest({ force: scope === 'all' }) : { asked: 0, runId: null, local: true };
     const { todo, bTodo, fresh } = plan({ scope, kinds, eventIds, seriesIds, limit, seriesLimit });
     if (!todo.length && !bTodo.length) return { asked: 0, runId: null, scope };
     const model = ai.choose ? ai.choose(TASK) : modelFor(TASK);
@@ -785,7 +788,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     for (const t of types.values()) { const w = t.type || (t.kind === 'unknown' ? 'no match' : t.kind); n.set(w, (n.get(w) || 0) + 1); }
     return [...n].sort((a, b) => b[1] - a[1]).map(([word, count]) => ({ word, count }));
   }
-  const seriesReady = () => { try { return seriesSummary().ready; } catch { return 0; } };
+  const seriesReady = () => { if (!minisEnabled()) return 0; try { return seriesSummary().ready; } catch { return 0; } };
 
   function status() {
     const last = db.prepare("SELECT * FROM shelf_sorter_runs WHERE applied > 0 AND undone_at IS NULL ORDER BY started_at DESC LIMIT 1").get() || null;
@@ -793,7 +796,7 @@ function createShelfSorter({ db, grouping, ai, getSetting, setSetting, modelFor 
     const asked = db.prepare("SELECT COUNT(*) AS n FROM shelf_sorter_answers WHERE kind = 'event'").get().n;
     const askedSeries = db.prepare("SELECT COUNT(*) AS n FROM shelf_sorter_answers WHERE kind = 'series'").get().n;
     let model = null; try { model = modelFor(TASK); } catch {}
-    return { auto: getSetting(AUTO_KEY) === '1', running: state.running ? { done: state.done, total: state.total } : null, asked, askedSeries, aiAvailable: !!aiAvailable(),
+    return { auto: getSetting(AUTO_KEY) === '1', minis: !!minisEnabled(), running: state.running ? { done: state.done, total: state.total } : null, asked, askedSeries, aiAvailable: !!aiAvailable(),
       model: model ? modelName(model) : null, lastApplied: last && { id: last.id, at: last.finished_at, applied: last.applied, mode: last.mode },
       lastAsk: lastAsk && { at: lastAsk.finished_at || lastAsk.started_at, status: lastAsk.status, asked: lastAsk.asked, error: lastAsk.error } };
   }

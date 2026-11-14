@@ -3,11 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { MemoryRouter } from 'react-router-dom';
 
-vi.mock('../App', () => {
+vi.mock('../../App', () => {
   const cache = { invalidate: () => {}, fetchSeries: async () => [{ id: 'fp', name: 'Flashpoint', displayTitle: 'Flashpoint (2011)', book_count: 5 }, { id: 'cold', name: 'Citizen Cold', book_count: 3 }] };
   return { useSeriesCache: () => cache, isAdmin: () => true };
 });
-import { LinkedSeriesShelf, PutOnShelfDialog, ShelfHomes } from './SeriesShelf';
 
 function mount(el) {
   global.IS_REACT_ACT_ENVIRONMENT = true;
@@ -17,54 +16,8 @@ function mount(el) {
   return { host, root };
 }
 
-test('a home lists the series on its shelf with their role; Remove takes one off', async () => {
-  const prev = global.fetch; global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
-  const changed = vi.fn();
-  const { host, root } = mount(<LinkedSeriesShelf homeId="fp" onChanged={changed}
-    members={[{ id: 'cold', name: 'Flashpoint: Citizen Cold', year: 2011, issues: 3, role: 'tie-in', hidden: true }, { id: 'pre', name: 'Road to Flashpoint', year: 2011, issues: 1, role: 'prelude', hidden: false }]} />);
-  try {
-    expect(host.textContent).toMatch(/Series on this shelf · 2/);
-    expect(host.textContent).toMatch(/Tie-in · 3 issues/);
-    expect(host.textContent).toMatch(/Lead-in · 1 issue · also in the browser/);
-    await act(async () => { host.querySelector('.linked-shelf-remove').click(); });
-    expect(global.fetch).toHaveBeenCalledWith('/api/series/cold/shelf/fp', expect.objectContaining({ method: 'DELETE' }));
-    expect(changed).toHaveBeenCalled();
-  } finally { act(() => root.unmount()); global.fetch = prev; }
-});
-
-test('a series names its shelf; Put on a Specials shelf searches the library and saves the pick', async () => {
-  const prev = global.fetch; global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
-  global.fetch = vi.fn(async (url, o = {}) => ({ ok: true, json: async () => (o.method === 'DELETE' ? { ok: true, source: 'ai' } : { ok: true }) }));
-  const onChanged = vi.fn();
-  const a = mount(<ShelfHomes seriesId="cold" homes={[{ id: 'fp', name: 'Flashpoint (2011)', role: 'tie-in' }]} onChanged={onChanged} />);
-  expect(a.host.textContent).toMatch(/On the Specials shelf of Flashpoint \(2011\) · Tie-inTake it off/);
-  await act(async () => { [...a.host.querySelectorAll('button')].find(b => b.textContent === 'Take it off').click(); });
-  expect(global.fetch).toHaveBeenCalledWith('/api/series/cold/shelf/fp', expect.objectContaining({ method: 'DELETE' }));
-  expect(onChanged).toHaveBeenCalled();
-  expect(a.host.textContent).toMatch(/Taken off Flashpoint \(2011\)'s shelf/);
-  await act(async () => { [...a.host.querySelectorAll('button')].find(b => b.textContent === 'Undo').click(); });
-  expect(global.fetch).toHaveBeenCalledWith('/api/grouping/restore', expect.objectContaining({ body: JSON.stringify({ items: [{ seriesId: 'cold', homeId: 'fp' }] }) }));
-  act(() => a.root.unmount());
-  global.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
-  const done = vi.fn(), close = vi.fn();
-  const { host, root } = mount(<PutOnShelfDialog seriesId="cold" seriesName="Citizen Cold" onDone={done} onClose={close} />);
-  try {
-    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
-    const input = document.querySelector('input.input');
-    await act(async () => {
-      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-      set.call(input, 'flash'); input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    const hit = [...document.querySelectorAll('.put-shelf-hit')];
-    expect(hit.map(b => b.textContent)).toEqual([expect.stringMatching(/^Flashpoint \(2011\)/)]);
-    await act(async () => { hit[0].click(); await new Promise(r => setTimeout(r, 0)); });
-    expect(global.fetch).toHaveBeenCalledWith('/api/series/cold/shelf', expect.objectContaining({ method: 'POST', body: JSON.stringify({ homeId: 'fp' }) }));
-    expect(done).toHaveBeenCalled(); expect(close).toHaveBeenCalled();
-  } finally { act(() => root.unmount()); global.fetch = prev; }
-});
-
 test('the Library panel shows each event as covers: home first, then its shelf; Looks right confirms', async () => {
-  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const { SeriesGroupingPanel } = await import('./index');
   const summary = { counts: { rule: { links: 3, hidden: 2 } }, events: [
     { id: 'e1', name: 'Beast War', year: 2024, initiative: false, confirmed: false, how: 'essential', home: 'tbw', homeName: 'Titans: Beast World (2024)', chosen: null,
       members: [{ id: 'g', name: 'Titans: Beast World Tour: Gotham (2023)', role: 'tie-in', hidden: true }, { id: 'w', name: 'Waller Rising (2024)', role: 'prelude', hidden: false }] },
@@ -86,7 +39,7 @@ test('the Library panel shows each event as covers: home first, then its shelf; 
 });
 
 test('each row says why and links to the reading order; every action offers Undo; Removed restores', async () => {
-  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const { SeriesGroupingPanel } = await import('./index');
   const summary = { counts: { rule: { links: 1, hidden: 1 } }, events: [
     { id: 'aor', name: 'Age of Revelation', year: 2025, initiative: false, confirmed: false, how: 'title', why: "Its title has the event's name and it starts the main story",
       home: 'ovt', homeName: 'X-Men: Age of Revelation Overture (2025)', chosen: null, proposed: 'ovt', members: [{ id: 'amz', name: 'Amazing X-Men (2025)', role: 'core', hidden: false }] }] };
@@ -123,7 +76,7 @@ test('each row says why and links to the reading order; every action offers Undo
 });
 
 test('the AI line: Ask (after showing its cost), its view on a row, Use the AI\'s advice, and Apply sure changes with Undo', async () => {
-  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const { SeriesGroupingPanel } = await import('./index');
   const summary = { counts: { rule: { links: 2, hidden: 1 } }, ai: { asked: 1, ready: 2, model: 'Claude Sonnet 5.5', auto: false, running: null, lastApplied: null, outdated: { events: 1, series: 0 } },
     events: [
       { id: 'ok', name: 'Siege', year: 2010, confirmed: false, how: 'name', why: 'Named like the event · 2010', home: 'siege', homeName: 'Siege (2010)', members: [{ id: 'emb', name: 'Siege: Embedded (2010)', role: 'tie-in', hidden: true }],
@@ -178,7 +131,7 @@ test('the AI line: Ask (after showing its cost), its view on a row, Use the AI\'
 });
 
 test('Minis & one-shots: suggested homes as two covers; Shelve and Not this one, each with Undo', async () => {
-  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const { SeriesGroupingPanel } = await import('./index');
   const summary = { counts: { rule: { links: 1, hidden: 1 }, ai: { links: 1, hidden: 1 } }, ai: { asked: 0, askedSeries: 3, ready: 1 }, events: [] };
   const minis = { suggested: [{ seriesId: 'wow', name: 'Black Panther: World of Wakanda (2016)', homeId: 'bp16', homeName: 'Black Panther (2016)', confidence: 'sure', why: 'Companion to that run' }],
     shelved: [{ seriesId: 'kh', name: 'Kraven Hunts (2020)', homeId: 'asm', homeName: 'The Amazing Spider-Man (2018)', why: 'A spin-off',
@@ -225,7 +178,7 @@ test('Minis & one-shots: suggested homes as two covers; Shelve and Not this one,
 });
 
 test('with shelves off, the panel explains them and offers the switch', async () => {
-  const { SeriesGroupingPanel } = await import('./SeriesShelf');
+  const { SeriesGroupingPanel } = await import('./index');
   const prev = global.fetch;
   global.fetch = vi.fn(async url => ({ ok: true, json: async () => (url === '/api/grouping' ? { enabled: false } : url === '/api/grouping/removed' ? { items: [] } : { ok: true }) }));
   const changed = vi.fn();
@@ -235,8 +188,37 @@ test('with shelves off, the panel explains them and offers the switch', async ()
     await act(async () => { await new Promise(r => setTimeout(r, 0)); });
     expect(host.textContent).toMatch(/Specials shelves are off\./);
     expect(host.textContent).toMatch(/Nothing on disk moves/);
-    await act(async () => { [...host.querySelectorAll('button')].find(b => b.textContent === 'Turn on Specials shelves').click(); });
-    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/enabled', expect.objectContaining({ body: JSON.stringify({ on: true }) }));
+    expect(host.textContent).toMatch(/Events only follows your Timeline events/);
+    await act(async () => { [...host.querySelectorAll('button')].find(b => b.textContent === 'Turn on: Events only').click(); });
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/mode', expect.objectContaining({ body: JSON.stringify({ mode: 'events' }) }));
     expect(changed).toHaveBeenCalled();
   } finally { act(() => root.unmount()); global.fetch = prev; window.removeEventListener('omnibus:settings', changed); }
+});
+
+test('Events only: no Minis tab, the AI is asked about events only, and the ⋯ menu switches the setting', async () => {
+  const { SeriesGroupingPanel } = await import('./index');
+  const summary = { enabled: true, mode: 'events', counts: { rule: { links: 2, hidden: 1 } }, ai: { asked: 0, ready: 0, aiAvailable: true, model: 'Claude Sonnet 5.5' },
+    events: [{ id: 'aoa', name: 'Age of Apocalypse', year: 1995, confirmed: false, how: 'essential', why: 'x', home: 'gen', homeName: 'Generation Next (1995)', members: [{ id: 't', name: 'Tales (1996)', role: 'tie-in', hidden: true }] }] };
+  const prev = global.fetch;
+  global.fetch = vi.fn(async (url, o = {}) => ({ ok: true, json: async () => {
+    if (url === '/api/grouping') return summary;
+    if (url === '/api/grouping/removed') return { items: [] };
+    if (url === '/api/grouping/ai/estimate') return { new: { scope: 'new', events: 1, series: 0, calls: 1, local: false } };
+    return { ok: true };
+  } }));
+  const { host, root } = mount(<SeriesGroupingPanel />);
+  const tick = () => act(async () => { await new Promise(r => setTimeout(r, 0)); });
+  const button = t => [...host.querySelectorAll('button')].find(b => b.textContent.trim() === t);
+  try {
+    await tick();
+    expect([...host.querySelectorAll('[role=tab]')].map(b => b.textContent)).toEqual(['To check 1', 'Events with a shelf 1', 'All events 1', 'Removed 0']);
+    expect(global.fetch).not.toHaveBeenCalledWith('/api/grouping/series');
+    expect(button('Review the minis again…')).toBeUndefined();
+    expect(button('✓ Events only')).toBeTruthy();
+    await act(async () => { button('✦ Ask the AI').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/ai/estimate', expect.objectContaining({ body: JSON.stringify({ kinds: ['event'], scopes: ['new'] }) }));
+    await act(async () => { button('Events and minis').click(); }); await tick();
+    expect(global.fetch).toHaveBeenCalledWith('/api/grouping/mode', expect.objectContaining({ body: JSON.stringify({ mode: 'all' }) }));
+    expect(host.querySelector('.gp-undo').textContent).toMatch(/Events and minis/);
+  } finally { act(() => root.unmount()); global.fetch = prev; }
 });

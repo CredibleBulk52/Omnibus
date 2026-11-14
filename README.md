@@ -24,7 +24,7 @@
 - Monitored series, weekly releases and a personal **Pull Box** for new issues.
 - Optional downloads through Prowlarr, SABnzbd, qBittorrent and direct links, with post-processing into your folders.
 - Requests and problem reports from readers, duplicate and damaged-file checks, and missing-annual detection.
-- **Specials shelves** (optional, off until you turn them on in Library): event tie-ins, one-shots and side minis move to the Specials tab of the series they belong to, so the series list shows the series you read. Rules follow your Timeline events; the Shelf Sorter suggests homes for other minis (with an AI key, or Omnibus's own closest matches without one). Nothing on disk moves and every change can be undone.
+- **Specials shelves** (optional, off until you turn them on in Library): event tie-ins move to the Specials tab of the series they belong to, so the series list shows the series you read. *Events only* follows your Timeline events; *Events and minis* also suggests homes for side minis and one-shots (with an AI key, or Omnibus's own closest matches without one). Nothing on disk moves and every change can be undone. [How they work](#specials-shelves-how-they-work).
 
 **Comic Book Guy** (optional, needs an AI key)
 - An in-app assistant with an opinion on everything. He answers continuity questions, recommends what you own, builds reading lists, and writes spoiler-aware "Previously on…" recaps up to the issue you're on.
@@ -90,7 +90,7 @@ docker compose up -d
 2. Go to **Library › Libraries & scanning › + Add Library**, point it at a folder under `/comics` (for example `/comics` or `/comics/DC Comics`), and choose **Add & Scan**.
 3. Optional: add a Comic Vine key in **Settings › Connections** for metadata, and an AI key in **Settings › AI & Comic Book Guy** for the assistant and generators.
 
-Essentials, Top Shelf and the Timeline start empty. Admins fill them with the **+ New** button on each page, by hand or drafted by AI and then reviewed, or with **⇧ Import**, which loads a reading order exported from another Omnibus install (Manage › ⇩ Export) as a draft to review and publish.
+Essentials, Top Shelf and the Timeline start empty. On an empty page, **★ Load the starter pack** adds the reading orders that come with Omnibus (Timeline events, Top Shelf runs and Essentials) in one go, published at once and matched to your comics; what you don't own shows as missing, and you can edit or delete any of it. Admins can also add their own with the **+ New** button on each page, by hand or drafted by AI and then reviewed, or with **⇧ Import**, which loads a reading order exported from another Omnibus install (Manage › ⇩ Export) as a draft to review and publish.
 
 **Building from source** instead of using the published image:
 
@@ -105,6 +105,33 @@ docker compose up -d --build
 On Windows, `.\deploy.ps1` builds and deploys with a health check and automatic rollback. See [Backups and recovery](docs/BACKUP.md).
 
 ---
+
+## Specials shelves: how they work
+
+A big library fills the series list with event tie-ins and one-shots. Specials shelves put that side material on the **Specials tab** of the series it belongs to. Shelved series leave the main list but stay one click away: on their home series, under **Tie-ins** in the series browser, and in search. Files never move.
+
+**Turn them on** in **Library › Specials shelves**. There are three settings (change them later in that section's **⋯** menu):
+
+| Setting | What it does | What you review |
+|---|---|---|
+| **Off** (new installs) | One flat series list, as without shelves | Nothing |
+| **Events only** (start here) | Each Timeline event's tie-ins go on one home series: the event's own series, or the series with the most main-story issues | One home per event with tie-ins |
+| **Events and minis** | Also suggests homes for side minis and one-shots (*Batman: Vengeance of Bane* under *Batman*) | One suggestion per mini; works best with an AI key and a Metron token |
+
+Event shelves need Timeline events: load the starter pack on the Timeline first if it is empty.
+
+**Reviewing**
+- **To check** lists events whose home you haven't approved. **✓ Looks right** approves a home, **Change home** picks another, and **✕** on a cover takes a series off. **✓ All look right** approves the whole list.
+- Lead-ins, aftermaths and main-story minis go on the shelf but stay in the series list (a yellow dot marks them).
+- **Minis & one-shots** (Events and minis only): **✓ Shelve** or **Not this one** for each suggestion. Sequels, new volumes, renamed series and ongoing series always stay series of their own; iconic standalones (*The Killing Joke*) are never shelved; a new series with only #1 out waits for its second issue.
+
+**The Shelf Sorter (AI, optional)**
+- **✦ Ask the AI** checks event homes (and, with Events and minis, suggests homes for minis). Before anything runs it shows what it will ask and how many AI calls that takes; it never runs on its own.
+- Its view shows on each row. **✓ Apply n sure changes** applies only the answers it is sure of; **Use the AI's advice** applies one row. **⋯ › Apply sure answers when I ask** applies sure answers right after you ask (first-time answers only).
+- **⋯ › Review the events (or minis) again** asks again about the open suggestions only (cheap, for after a model change) or about everything you haven't decided. A changed answer never overrides your own choices: it waits for you.
+- Without an AI key, Events only works fully by the rules, and Events and minis shows Omnibus's own strongest matches.
+
+**Undoing**: every action offers Undo for a few seconds; **⋯ › Undo the AI's last changes** reverses a whole AI run; series taken off a shelf wait on the **Removed** tab; on a series page, **Take it off** under the tabs puts it back in the series list. Turning shelves **Off** keeps all your shelves for when you turn them back on.
 
 ## Keys and services
 
@@ -159,7 +186,7 @@ omnibus.yourdomain.com {
 
 **Do I need an AI key?** No. Reading, the library, lists, Essentials, Top Shelf, the Timeline and downloads all work without one. AI adds Comic Book Guy, recaps and the generators. Costs depend on the provider and model; a typical question costs a fraction of a cent.
 
-**What are Specials shelves?** A way to stop one-shots and event tie-ins crowding the series list. A shelved series leaves the main list and appears on its home series' Specials tab instead (Civil War II tie-ins under Civil War II, say). It is still in search and under **Tie-ins** in the series browser. Sequels and new volumes stay series of their own. Shelves are off on a new install: turn them on in **Library › Specials shelves**, review what's suggested, and take anything back off with one click. Files never move.
+**What are Specials shelves?** A way to stop one-shots and event tie-ins crowding the series list. A shelved series leaves the main list and appears on its home series' Specials tab instead (Civil War II tie-ins under Civil War II, say). It is still in search and under **Tie-ins** in the series browser. Sequels and new volumes stay series of their own. Shelves are off on a new install: turn them on in **Library › Specials shelves** (start with *Events only*), review what's suggested, and take anything back off with one click. Files never move. See [Specials shelves: how they work](#specials-shelves-how-they-work).
 
 **Does Omnibus come with comics?** No. It organises and reads comics you already have. It ships no comics, cover art or publisher logos; admins can upload their own logos and character art for shelves and themes.
 
