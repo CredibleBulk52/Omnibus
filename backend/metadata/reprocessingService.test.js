@@ -353,8 +353,13 @@ test('actual downloader handler publishes through runtime and retains ambiguous 
  const source=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8'),code=source.slice(source.indexOf('async function postProcess('),source.indexOf('// ─── Existing-book reprocessing',source.indexOf('async function postProcess(')));
  let scans=0;const postProcess=new Function('fs','path','os','crypto','db','metadataRuntime','logger','invalidateDirectoryExistsCache','createSeriesJsonIfMissing','schedulePostProcessScan',code+';return postProcess;')(fs,path,os,crypto,f.db,f.runtime,{info(){},warn(){},error(){}},()=>{},async()=>{},()=>scans++);
  const result=await postProcess({id:'123'},{id:'10',directory:f.library},f.incoming);assert.equal(result,true);assert.equal(scans,1);assert.equal(f.db.prepare("SELECT status FROM monitored_issues WHERE id='123'").get().status,'processed');
+ // A folder holding several comics is a pack (2026-11-14): handed to pack processing, files untouched.
+ f.db.exec("CREATE TABLE IF NOT EXISTS series_packs (id INTEGER PRIMARY KEY AUTOINCREMENT, series_id TEXT, file_path TEXT, status TEXT)");
+ for(const c of ['download_id TEXT','retry_after TEXT','last_fail_reason TEXT'])try{f.db.exec(`ALTER TABLE monitored_issues ADD COLUMN ${c}`);}catch{}
  const dir=path.join(f.root,'ambiguous');fs.mkdirSync(dir);fs.writeFileSync(path.join(dir,'a.cbz'),f.input);fs.writeFileSync(path.join(dir,'b.cbz'),f.input);
- assert.equal(await postProcess({id:'123'},{id:'10',directory:f.library},dir),false);assert.equal(fs.readdirSync(dir).length,2);
+ assert.equal(await postProcess({id:'123',series_id:'10'},{id:'10',directory:f.library},dir),false);assert.equal(fs.readdirSync(dir).length,2);
+ assert.deepEqual({...f.db.prepare('SELECT series_id,file_path,status FROM series_packs').get()},{series_id:'10',file_path:dir,status:'downloaded'});
+ assert.equal(f.db.prepare("SELECT status FROM monitored_issues WHERE id='123'").get().status,'wanted');
 });
 test('unmonitored scanner queue performs initial tagging through native service while retaining basename',real,async t=>{
  const f=await runtimeFixture(t,{linked:false,sourceXml:'<ComicInfo><Series>Example</Series><Number>2</Number><Volume>2019</Volume></ComicInfo>'});

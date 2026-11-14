@@ -9559,7 +9559,7 @@ async function postProcess(issue, series, storageDir) {
       // SABnzbd gave us the containing folder — scan for the comic file
       const files = fs.readdirSync(storageDir);
       const comics = files.filter(f => /\.(cbr|cbz|rar|zip)$/i.test(f));
-      if(comics.length>1)throw Object.assign(new Error('Multiple comics in a single-issue download; choose the correct source'),{code:'IDENTITY_REVIEW_REQUIRED'});
+      if (comics.length > 1) { handToPackProcessing(issue, storageDir, comics.length); return false; }   // a folder of issues: a pack
       const comicFile = comics[0];
       if (!comicFile) {
         logger.warn('postprocess', `No comic file found in ${storageDir}`, { files });
@@ -9597,6 +9597,8 @@ async function postProcess(issue, series, storageDir) {
       }
     }
     logger.info('postprocess', `Source file resolved`, { srcPath });
+    const inside = await comicArchivesInside(srcPath);
+    if (inside > 1) { handToPackProcessing(issue, srcPath, inside); return false; }
 
     const destSeriesDir = series.parent_series_id
       ? (db.prepare('SELECT directory FROM monitored_series WHERE id = ?').get(series.parent_series_id)?.directory || series.directory)
@@ -9694,6 +9696,28 @@ async function postProcess(issue, series, storageDir) {
 // post-processing of these issues keeps the readable pages (RAR only).
 postProcess.salvage = new Set();
 postProcess.force = new Set();   // issue ids an admin chose to process anyway (Download Manager › Queue)
+
+// A single-issue download that is really a pack (2026-11-14, The Expanse Origins #1: GetComics served
+// "The Expanse Origins (001-004) (2017)", one zip holding four .cbr files; it was held as
+// NO_IMAGE_PAGES and retried every 6 hours). Counts the comic archives inside an archive.
+async function comicArchivesInside(file) {
+  if (!/\.(zip|cbz|rar|cbr)$/i.test(file)) return 0;
+  const opts = { timeout: 60000, maxBuffer: 8 * 1024 * 1024 };
+  let out = '';
+  try { ({ stdout: out } = await execFileAsync('bsdtar', ['-tf', file], opts)); }
+  catch { try { ({ stdout: out } = await execFileAsync('unrar', ['lb', file], opts)); } catch { return 0; } }   // unreadable: the normal path reports it
+  return String(out).split('\n').map(n => n.trim())
+    .filter(n => /\.(cbz|cbr|zip|rar)$/i.test(n) && !/(^|\/)(__MACOSX\/|\._)/.test(n)).length;
+}
+// Hand it to pack processing, which files every wanted issue it holds (this one included) and
+// lists the rest under Download Manager › Queue › Pack files not filed. The issue goes back to
+// wanted; the wanted scan leaves a series alone while one of its packs waits to be processed.
+function handToPackProcessing(issue, source, count) {
+  db.prepare(`UPDATE monitored_issues SET status='wanted', download_id=NULL, retry_after=NULL, last_fail_reason=? WHERE id=?`)
+    .run(`The download held ${count} issues: handed to pack processing`, issue.id);
+  const packId = db.prepare(`INSERT INTO series_packs (series_id, file_path, status) VALUES (?, ?, 'downloaded')`).run(issue.series_id, source).lastInsertRowid;
+  logger.info('postprocess', `Issue ${issue.id}: the download holds ${count} issues; handed to pack processing`, { file: path.basename(source), pack: packId });
+}
 
 // ─── Existing-book reprocessing through the shared metadata lifecycle ───
 async function retagIssue(issue, series, { skipCvRefresh = false, preserveFilename = false, signal } = {}) {
