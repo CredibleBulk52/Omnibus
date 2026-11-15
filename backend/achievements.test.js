@@ -252,3 +252,35 @@ test('sassy Easter Eggs (2026-11-11): habits the shopkeeper teases', () => {
   assert.equal(sassy.length, 13);
   assert.ok(sassy.every(d => d.hidden && d.group === 'secret'));
 });
+
+test('achievements: finishing a series by kind (limited, ended ongoing, caught up) and by pace', () => {
+  const { db, ach, clock } = setup();
+  const meta = m => JSON.stringify({ metadata: { comicid: 111, genres: ['Horror'], ...m } });
+  // Horror Tales: Comic Vine says ended with 5 issues → a limited series.
+  db.prepare("UPDATE scanned_series SET series_json = ? WHERE id = 's1'").run(meta({ status: 'Ended', total_issues: 5 }));
+  let got = [];
+  for (let i = 1; i <= 5; i++) got = got.concat(ach.recordFinish('a', `h${i}`, { tz: 0 }));
+  assert.ok(ids(got).includes('limited_1'));
+  assert.ok(!ids(got).includes('final_1') && !ids(got).includes('current_1'));
+  assert.deepEqual(ach.progressFor('a').get('long_25'), { have: 5, need: 25, note: null });
+  // Metron calls it an ongoing that was cancelled: an ended ongoing instead.
+  db.exec("CREATE TABLE series_types (comicid TEXT PRIMARY KEY, metron_id INTEGER, type TEXT, kind TEXT, checked_at INTEGER); INSERT INTO series_types VALUES ('111', 1, 'Cancelled Series', 'ongoing', 1)");
+  clock.add(60000);                                                                                        // progress is kept 30 s
+  assert.deepEqual(ach.progressFor('a').get('final_1'), { have: 1, need: 1, note: null });
+  // Still publishing with 6 out but 5 in the library: not caught up; with 5 out, caught up.
+  db.prepare("UPDATE scanned_series SET series_json = ? WHERE id = 's1'").run(meta({ status: 'Continuing', total_issues: 6 }));
+  clock.add(60000); assert.equal(ach.progressFor('a').get('current_1').have, 0);
+  db.prepare("UPDATE scanned_series SET series_json = ? WHERE id = 's1'").run(meta({ status: 'Continuing', total_issues: 5 }));
+  clock.add(60000); assert.equal(ach.progressFor('a').get('current_1').have, 1);
+  // Pace: a 12-issue series read over 7 days counts, over 8 days does not.
+  db.exec("INSERT INTO scanned_series VALUES ('p', 'm', 'Pace', '{}', NULL)");
+  for (let i = 1; i <= 12; i++) db.prepare("INSERT INTO scanned_books VALUES (?, 'p', ?, ?, 0, NULL, NULL, NULL)").run(`p${i}`, String(i), `Pace ${i}.cbz`);
+  clock.set('2026-11-12T12:00:00Z');
+  for (let i = 1; i <= 11; i++) { ach.recordFinish('b', `p${i}`, { tz: 0 }); if (i % 2) clock.add(864e5); }   // days 12–17
+  clock.set('2026-11-19T12:00:00Z');                                                                       // day 8
+  ach.recordFinish('b', 'p12', { tz: 0 });
+  assert.equal(ach.progressFor('b').get('pace_week').have, 0);
+  assert.equal(ach.progressFor('b').get('series_1').have, 1);
+  const quick = []; for (let i = 1; i <= 12; i++) quick.push(...ach.recordFinish('a', `p${i}`, { tz: 0 }));   // all on day 19
+  assert.ok(ids(quick).includes('pace_week'));
+});

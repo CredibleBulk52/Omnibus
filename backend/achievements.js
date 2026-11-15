@@ -119,7 +119,8 @@ module.exports.createAchievements = function createAchievements(deps) {
           (SELECT series_type FROM monitored_series m WHERE m.id = ss.monitored_series_id) AS series_type
         FROM scanned_series ss WHERE ss.id IN (SELECT value FROM json_each(?))`).all(JSON.stringify(sids))) {
         let m = {}; try { const j = JSON.parse(s.series_json || '{}'); m = j.metadata || j; } catch {}
-        out.set(String(s.id), { ...s, genres: Array.isArray(m.genres) ? m.genres : [], comicid: m.comicid ? String(m.comicid) : (s.monitored_series_id ? String(s.monitored_series_id) : null) });
+        out.set(String(s.id), { ...s, genres: Array.isArray(m.genres) ? m.genres : [], comicid: m.comicid ? String(m.comicid) : (s.monitored_series_id ? String(s.monitored_series_id) : null),
+          status: String(m.status || ''), total: Number.isInteger(m.total_issues) && m.total_issues > 0 ? m.total_issues : null });
       }
       return out;
     });
@@ -135,6 +136,34 @@ module.exports.createAchievements = function createAchievements(deps) {
       }
       return out;
     });
+    // What kind of series a finished one was (2026-11-14, finish-a-series badges): Metron's type when the
+    // Shelf Sorter looked it up (series_types), else Comic Vine's issue count and the series status.
+    //   limited: a planned mini (Metron "Limited Series", or ended with 12 or fewer issues)
+    //   ended:   an ongoing that has ended (Metron ongoing or cancelled, or ended with more than 12)
+    //   current: still publishing, and every issue out so far is in the library and read
+    F.seriesKind = lazy(() => {
+      const types = new Map();
+      if (hasTable('series_types')) for (const r of db.prepare('SELECT comicid, type FROM series_types WHERE type IS NOT NULL').all()) types.set(String(r.comicid), String(r.type).toLowerCase());
+      const out = new Map();
+      for (const s of F.finishedSeries()) {
+        const info = F.seriesInfo().get(s.id) || {};
+        const type = info.comicid ? types.get(info.comicid) || '' : '';
+        const ended = /^ended$/i.test(info.status), running = /^continuing$/i.test(info.status);
+        const total = info.total || s.size;
+        let kind = null;
+        if (running) kind = info.total && s.size >= info.total ? 'current' : null;
+        else if (/limited|mini/.test(type)) kind = 'limited';
+        else if (/ongoing|cancel/.test(type)) kind = ended ? 'ended' : null;
+        else if (ended) kind = total <= 12 ? 'limited' : 'ended';
+        out.set(s.id, kind);
+      }
+      return out;
+    });
+    // Days from the first issue read to the last (a series' pace), from each issue's first read.
+    F.daysToFinish = s => {
+      const days = s.days.filter(Boolean).map(d => Date.parse(`${d}T00:00:00Z`)).filter(Number.isFinite);
+      return days.length === s.size ? Math.round((Math.max(...days) - Math.min(...days)) / 864e5) + 1 : Infinity;
+    };
     // A curated path is finished when at least 3 in 4 of its issues are in the library and every one of those is read.
     const done = (matched, total) => matched.length > 0 && matched.length >= Math.ceil(0.75 * total) && matched.every(id => F.read.has(String(id)));
     F.events = lazy(() => {
@@ -279,10 +308,22 @@ module.exports.createAchievements = function createAchievements(deps) {
     F => F.count(b => /annual/i.test(b.filename || '')), n => `Read ${n} annuals.`);
   steps('firsts', 'milestones', 'one', [[25, '#1 Fan'], [50, 'First Issue Fever']],
     F => F.count(b => ['1', '1.0', '01', '001'].includes(norm(b.issue_number))), n => `Read ${n} first issues.`);
-  steps('series', 'milestones', 'check', [[1, 'The End'], [5, 'Series Finale'], [10, 'Box Set', 2], [25, 'Completist', 3]],
+  steps('series', 'milestones', 'check', [[1, 'The End'], [5, 'Series Finale'], [10, 'Box Set', 2], [25, 'Completist', 3], [50, 'Shelf Life', 3], [100, 'Collected Editions', 3]],
     F => F.finishedSeries().length, n => `Finish ${n === 1 ? 'a whole series' : `${n} whole series`} (4+ issues, specials and annuals aside).`);
-  steps('long', 'milestones', 'mountain', [[50, 'Long Haul', 2], [100, 'Triple Digits', 3]],
-    F => (F.finishedSeries().some(s => s.size >= 100) ? 100 : F.finishedSeries().some(s => s.size >= 50) ? 50 : 0), n => `Finish a series of ${n} or more issues.`);
+  steps('long', 'milestones', 'mountain', [[25, 'Full Run', 1], [50, 'Long Haul', 2], [100, 'Triple Digits', 3]],
+    F => Math.max(0, ...F.finishedSeries().map(s => s.size)), n => `Finish a series of ${n} or more issues.`);
+  // By kind of series and by pace (2026-11-14, user): see F.seriesKind and F.daysToFinish.
+  const ofKind = (F, kind) => F.finishedSeries().filter(s => F.seriesKind().get(s.id) === kind).length;
+  steps('limited', 'milestones', 'book', [[1, 'Limited Engagement'], [10, 'Miniseries Maven', 2]],
+    F => ofKind(F, 'limited'), n => `Finish ${n === 1 ? 'a limited series' : `${n} limited series`} (a planned mini, start to end).`);
+  steps('final', 'milestones', 'flag', [[1, 'Final Issue'], [5, 'Last Call', 2]],
+    F => ofKind(F, 'ended'), n => `Finish ${n === 1 ? 'an ongoing series' : `${n} ongoing series`} that has ended, from #1 to its last issue.`);
+  steps('current', 'milestones', 'calendar', [[1, 'Up to Date'], [5, 'Keeping Current', 2]],
+    F => ofKind(F, 'current'), n => `Read every issue so far of ${n === 1 ? 'a series' : `${n} series`} still being published.`);
+  add({ id: 'pace_week', group: 'milestones', icon: 'hourglass', tier: 2, label: '7d', name: 'Seven-Day Run', desc: 'Finish a series of 12 or more issues within 7 days.',
+    check: F => ({ have: F.finishedSeries().some(s => s.size >= 12 && F.daysToFinish(s) <= 7) ? 1 : 0, need: 1 }) });
+  add({ id: 'pace_month', group: 'milestones', icon: 'hourglass', tier: 3, label: '30d', name: 'Marathon Month', desc: 'Finish a series of 50 or more issues within 30 days.',
+    check: F => ({ have: F.finishedSeries().some(s => s.size >= 50 && F.daysToFinish(s) <= 30) ? 1 : 0, need: 1 }) });
   const pulledSince = userId => (hasTable('collection_series') ? db.prepare(`SELECT COUNT(*) AS n FROM collection_series cs JOIN collections c ON c.id = cs.collection_id
     WHERE c.owner_id = ? AND c.purpose = 'pull' AND cs.series_id NOT IN (SELECT ref_id FROM achievement_baseline WHERE user_id = ? AND kind = 'pull')`).get(userId, userId).n : 0);
   steps('pulls', 'milestones', 'box', [[5, 'Pull List'], [10, 'Standing Order'], [20, 'Subscription Box']],
