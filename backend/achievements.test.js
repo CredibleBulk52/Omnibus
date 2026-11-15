@@ -85,12 +85,16 @@ test('achievements: a series read through in a day, its library, its era and its
   const { ach } = setup();
   let got = [];
   for (let i = 1; i <= 5; i++) got = got.concat(ach.recordFinish('a', `h${i}`, { tz: 0 }));
+  assert.ok(!ids(got).includes('series_1'));                                                          // its two specials are not read yet
+  for (const b of ['hm1', 'hsp']) got = got.concat(ach.recordFinish('a', b, { tz: 0 }));               // 7 issues in all, every one read
   const g = ids(got);
   for (const id of ['series_1', 'one_sitting', 'age_bronze', 'genre_horror']) assert.ok(g.includes(id), id);
   assert.ok(!g.includes('issues_10') && !g.includes('genre_superhero'));
-  assert.deepEqual(ach.progressFor('a').get('genre_superhero'), { have: 5, need: 25, note: null });   // most of a library is superhero: 25
+  assert.deepEqual(ach.progressFor('a').get('genre_superhero'), { have: 7, need: 25, note: null });   // most of a library is superhero: 25
   const p = ach.progressFor('a');
-  assert.deepEqual(p.get('issues_10'), { have: 5, need: 10, note: null });
+  assert.deepEqual(p.get('issues_10'), { have: 7, need: 10, note: null });
+  assert.deepEqual(p.get('long_12'), { have: 7, need: 12, note: null });                              // series length counts the specials
+  assert.equal(got.find(a => a.id === 'series_1').name, 'Trade Paperback');                          // The End's id, now the first length step
 });
 
 test('achievements: a Crisis-level event is finished when 3 in 4 of its Essential issues are in the library and all of them read; first in the household', () => {
@@ -260,9 +264,10 @@ test('achievements: finishing a series by kind (limited, ended ongoing, caught u
   db.prepare("UPDATE scanned_series SET series_json = ? WHERE id = 's1'").run(meta({ status: 'Ended', total_issues: 5 }));
   let got = [];
   for (let i = 1; i <= 5; i++) got = got.concat(ach.recordFinish('a', `h${i}`, { tz: 0 }));
+  for (const b of ['hm1', 'hsp']) got = got.concat(ach.recordFinish('a', b, { tz: 0 }));
   assert.ok(ids(got).includes('limited_1'));
   assert.ok(!ids(got).includes('final_1') && !ids(got).includes('current_1'));
-  assert.deepEqual(ach.progressFor('a').get('long_25'), { have: 5, need: 25, note: null });
+  assert.deepEqual(ach.progressFor('a').get('long_25'), { have: 7, need: 25, note: null });
   // Metron calls it an ongoing that was cancelled: an ended ongoing instead.
   db.exec("CREATE TABLE series_types (comicid TEXT PRIMARY KEY, metron_id INTEGER, type TEXT, kind TEXT, checked_at INTEGER); INSERT INTO series_types VALUES ('111', 1, 'Cancelled Series', 'ongoing', 1)");
   clock.add(60000);                                                                                        // progress is kept 30 s
@@ -280,7 +285,8 @@ test('achievements: finishing a series by kind (limited, ended ongoing, caught u
   clock.set('2026-11-19T12:00:00Z');                                                                       // day 8
   ach.recordFinish('b', 'p12', { tz: 0 });
   assert.equal(ach.progressFor('b').get('pace_week').have, 0);
-  assert.equal(ach.progressFor('b').get('series_1').have, 1);
+  assert.equal(ach.progressFor('b').get('series_5').have, 1);
+  assert.equal(ach.progressFor('b').get('long_12').have, 12);
   const quick = []; for (let i = 1; i <= 12; i++) quick.push(...ach.recordFinish('a', `p${i}`, { tz: 0 }));   // all on day 19
   assert.ok(ids(quick).includes('pace_week'));
 });

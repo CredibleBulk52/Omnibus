@@ -125,14 +125,17 @@ module.exports.createAchievements = function createAchievements(deps) {
       return out;
     });
     F.isRegular = b => !b.is_special && !/annual/i.test(b.filename || '');
-    // Series finished: a series of 4+ regular issues (not specials or annuals), every one read.
+    // Series finished (2026-11-14, user): every issue in the series read, annuals and specials included,
+    // 4 or more in all. size = its length (every issue); regular = issues without specials and annuals
+    // (compared with Comic Vine's count by F.seriesKind and the one-day binge).
     F.finishedSeries = lazy(() => {
       const sids = [...new Set([...F.books.values()].map(b => String(b.series_id)))];
       const out = [];
       const stmt = db.prepare('SELECT id, filename, COALESCE(is_special, 0) AS is_special FROM scanned_books WHERE series_id = ?');
       for (const sid of sids) {
-        const regular = stmt.all(sid).filter(F.isRegular);
-        if (regular.length >= 4 && regular.every(b => F.read.has(String(b.id)))) out.push({ id: sid, size: regular.length, days: regular.map(b => F.firstDay.get(String(b.id))) });
+        const all = stmt.all(sid);
+        if (all.length >= 4 && all.every(b => F.read.has(String(b.id))))
+          out.push({ id: sid, size: all.length, regular: all.filter(F.isRegular).length, days: all.map(b => F.firstDay.get(String(b.id))) });
       }
       return out;
     });
@@ -149,9 +152,9 @@ module.exports.createAchievements = function createAchievements(deps) {
         const info = F.seriesInfo().get(s.id) || {};
         const type = info.comicid ? types.get(info.comicid) || '' : '';
         const ended = /^ended$/i.test(info.status), running = /^continuing$/i.test(info.status);
-        const total = info.total || s.size;
+        const total = info.total || s.regular;
         let kind = null;
-        if (running) kind = info.total && s.size >= info.total ? 'current' : null;
+        if (running) kind = info.total && s.regular >= info.total ? 'current' : null;
         else if (/limited|mini/.test(type)) kind = 'limited';
         else if (/ongoing|cancel/.test(type)) kind = ended ? 'ended' : null;
         else if (ended) kind = total <= 12 ? 'limited' : 'ended';
@@ -308,10 +311,16 @@ module.exports.createAchievements = function createAchievements(deps) {
     F => F.count(b => /annual/i.test(b.filename || '')), n => `Read ${n} annuals.`);
   steps('firsts', 'milestones', 'one', [[25, '#1 Fan'], [50, 'First Issue Fever']],
     F => F.count(b => ['1', '1.0', '01', '001'].includes(norm(b.issue_number))), n => `Read ${n} first issues.`);
-  steps('series', 'milestones', 'check', [[1, 'The End'], [5, 'Series Finale'], [10, 'Box Set', 2], [25, 'Completist', 3], [50, 'Shelf Life', 3], [100, 'Collected Editions', 3]],
-    F => F.finishedSeries().length, n => `Finish ${n === 1 ? 'a whole series' : `${n} whole series`} (4+ issues, specials and annuals aside).`);
-  steps('long', 'milestones', 'mountain', [[25, 'Full Run', 1], [50, 'Long Haul', 2], [100, 'Triple Digits', 3]],
-    F => Math.max(0, ...F.finishedSeries().map(s => s.size)), n => `Finish a series of ${n} or more issues.`);
+  steps('series', 'milestones', 'check', [[5, 'Series Finale', 2], [10, 'Box Set', 2], [25, 'Completist', 3], [50, 'Shelf Life', 3], [100, 'Collected Editions', 3]],
+    F => F.finishedSeries().length, n => `Finish ${n} whole series (4+ issues, every annual and special read too).`);
+  // Series length (2026-11-14, user): every issue counts, annuals and specials too, and all must be read.
+  // The first step keeps The End's id (series_1), so readers who earned it keep it under its new name.
+  const longest = F => Math.max(0, ...F.finishedSeries().map(s => s.size));
+  const lengthDesc = n => `Finish a series of ${n} or more issues, annuals and specials included (read every one).`;
+  add({ id: 'series_1', group: 'milestones', icon: 'mountain', tier: 1, label: '6+', name: 'Trade Paperback', desc: lengthDesc(6),
+    check: F => ({ have: longest(F), need: 6 }) });
+  steps('long', 'milestones', 'mountain', [[12, 'Maxi-Series', 1], [25, 'Full Run', 2], [50, 'Long Haul', 2], [100, 'Triple Digits', 3], [200, 'Legacy Numbering', 3]],
+    longest, lengthDesc);
   // By kind of series and by pace (2026-11-14, user): see F.seriesKind and F.daysToFinish.
   const ofKind = (F, kind) => F.finishedSeries().filter(s => F.seriesKind().get(s.id) === kind).length;
   steps('limited', 'milestones', 'book', [[1, 'Limited Engagement'], [10, 'Miniseries Maven', 2]],
@@ -459,7 +468,7 @@ module.exports.createAchievements = function createAchievements(deps) {
   steps('streak_days', 'habits', 'flame', [[3, 'On a Roll'], [7, 'Week of Wonders', 3]], F => longestRun(F.days().map(dayNum)), n => `Read on ${n} days in a row.`);
   steps('streak_weeks', 'habits', 'flame', [[4, 'Ongoing Series'], [12, 'Season Pass', 3]], F => longestRun(F.days().map(weekNum)), n => `Read in ${n} weeks in a row.`);
   add({ id: 'one_sitting', group: 'habits', icon: 'clock', tier: 2, label: '1 DAY', name: 'One Sitting', desc: 'Read a whole mini-series (4 to 12 issues) in one day.',
-    check: F => ({ have: F.finishedSeries().some(s => s.size <= 12 && new Set(s.days).size === 1) ? 1 : 0, need: 1 }) });
+    check: F => ({ have: F.finishedSeries().some(s => s.regular <= 12 && new Set(s.days).size === 1) ? 1 : 0, need: 1 }) });
   add({ id: 'weekend_binge', group: 'habits', icon: 'couch', tier: 2, label: '20', name: 'Weekend Binge', desc: 'Read 20 issues over one weekend.',
     check: F => {
       const per = new Map();
