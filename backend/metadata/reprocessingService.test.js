@@ -247,7 +247,7 @@ test('queued cancelled retag never fetches a provider or reserves a book',real,a
 test('server controls are wired to runtime, fresh issue includes volume, and legacy rotation uses the shared queue',()=>{
  const source=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
  assert.ok(source.includes("app.post('/api/books/:id/tag', requireAdmin, retagHandlers.single)"));assert.ok(source.includes("app.post('/api/books/batch/retag', requireAdmin, retagHandlers.batch)"));
- assert.ok(source.includes('metadataRuntime.retag({issue, freshIssue, preserveFilename, signal})'));assert.ok(!source.includes('async function runRetagRotation('));assert.ok(source.includes('metadataMaintenance.run(25,{force:true})'));
+ assert.ok(fs.readFileSync(path.join(__dirname,'../retagIssueRoutes.js'),'utf8').includes('metadataRuntime.retag({issue, freshIssue, preserveFilename, signal})'));   // retagIssueRoutes.js since step 7Aassert.ok(!source.includes('async function runRetagRotation('));assert.ok(source.includes('metadataMaintenance.run(25,{force:true})'));
  assert.ok(source.includes("location_credits,volume';"));assert.ok(source.includes("canonMatch.reconcile(true, { strict: true })"));assert.ok(source.includes("events: async () => scheduleLinkReconcile(),"));   // links re-checked once per batch (2026-10-22)
  assert.ok(!source.includes("SELECT path FROM scanned_books WHERE monitored_issue_id = ? ORDER BY last_scanned DESC LIMIT 1"));
 });

@@ -2,6 +2,8 @@
 const test=require('node:test'),assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),vm=require('node:vm');
 const {resolveExistingWithinRoot}=require('./pathSecurity');
 const source=fs.readFileSync(require.resolve('./server'),'utf8');
+// Monitored-series routes: monitorRoutes.js (server.js split step 7A, 2026-11-19), read without the module's indent.
+const monitorSource=fs.readFileSync(require.resolve('./monitorRoutes'),'utf8').replace(/^  /gm,'');
 const response=()=>({code:200,status(n){this.code=n;return this},json(body){this.body=body;return this}});
 function fixture(mapping={}) {
   let listings=0;
@@ -57,10 +59,10 @@ test('creatable paths stay inside the root through symlinks and dangling links',
   assert.throws(()=>f.resolve('/comics',['/comics/x']),e=>e.status===400);
   assert.throws(()=>creatable([]).resolve('/comics','/comics/x'),e=>e.status===404);
 });
-function postRoute(marker,f,extra={}) {
-  const start=source.indexOf(marker),end=source.indexOf('\n});',start);assert.ok(start>=0&&end>start);
+function postRoute(marker,f,extra={},from=source) {
+  const start=from.indexOf(marker),end=from.indexOf('\n});',start);assert.ok(start>=0&&end>start);
   let route;
-  vm.runInNewContext(source.slice(start,end+4),{app:{post:(...args)=>{route=args.at(-1)}},
+  vm.runInNewContext(from.slice(start,end+4),{app:{post:(...args)=>{route=args.at(-1)}},
     require:name=>{if(name==='./pathSecurity')return {resolveExistingWithinRoot:(r,t)=>resolveExistingWithinRoot(r,t,{fileSystem:f.fileSystem,paths:path.posix}),resolveCreatableWithinRoot:f.resolve};if(name==='fs')return f.fileSystem;throw Error('unexpected require '+name)},
     fs:f.fileSystem,path:path.posix,COMICS_PATH:'/comics',setTimeout:(fn)=>fn(),
     getCVKey(){throw Error('Must not reach Comic Vine for a denied path')},
@@ -82,7 +84,7 @@ test('import scan, rescan and execute refuse folders outside the comics root',as
 
 test('adding monitored series refuses unsafe destinations before mkdir or DB writes',async()=>{
   const f=creatable(['/comics','/private'],{links:{'/comics/link':'/private'},dangling:['/comics/broken']});
-  const add=postRoute("app.post('/api/monitor/series',",f,{requireDownloadAccess(){},process:{env:{COMICS_PATH:'/comics'}}});
+  const add=postRoute("app.post('/api/monitor/series',",f,{requireDownloadAccess(){},process:{env:{COMICS_PATH:'/comics'}}},monitorSource);
   for(const body of [
     {parentDir:'/private'}, {parentDir:'/comics-backup'}, {parentDir:'/comics/link'},
     {parentDir:'/comics/broken'}, {parentDir:'/comics',publisher:'..'}
@@ -91,7 +93,7 @@ test('adding monitored series refuses unsafe destinations before mkdir or DB wri
 });
 test('adding monitored series still permits a new publisher folder inside comics',async()=>{
   const f=creatable(['/comics']);const created=[];f.fileSystem.mkdirSync=p=>created.push(p);
-  const add=postRoute("app.post('/api/monitor/series',",f,{requireDownloadAccess(){},process:{env:{COMICS_PATH:'/comics'}},detectSeriesType:()=>'comic',db:{prepare(){throw Error('test-stop-before-insert')}}});
+  const add=postRoute("app.post('/api/monitor/series',",f,{requireDownloadAccess(){},process:{env:{COMICS_PATH:'/comics'}},detectSeriesType:()=>'comic',db:{prepare(){throw Error('test-stop-before-insert')}}},monitorSource);
   const res=response();await add({body:{id:'1',name:'Test',year:2026,parentDir:'/comics',publisher:'DC'}},res);
   assert.deepEqual(created,['/comics/DC/Test (2026)']);assert.equal(res.body.error,'test-stop-before-insert');
 });
