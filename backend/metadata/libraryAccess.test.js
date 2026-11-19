@@ -147,14 +147,17 @@ test('actual thumbnail limiter keeps each queued callback in its own reader scop
   }finally{fs.rmSync(dbDir,{recursive:true,force:true});}
 });
 test('actual ZIP ComicInfo reader waits for descriptor close before releasing access',async()=>{
-  const fs=require('node:fs'),path=require('node:path'),{EventEmitter}=require('node:events');
-  const source=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8'),code=source.slice(source.indexOf('function readZipComicInfo('),source.indexOf('\nasync function readRarComicInfo('));
+  // comicInfoFiles.js since the server.js split (2026-11-19); yauzl replaced by a stand-in for this test.
+  const path=require('node:path'),{EventEmitter}=require('node:events');
   const zip=new EventEmitter();let closeRequested=false,finished=false;
   zip.readEntry=()=>queueMicrotask(()=>zip.emit('end'));zip.close=()=>{closeRequested=true;};
-  const requireFake=()=>({open:(_file,_options,callback)=>callback(null,zip)});
-  const read=new Function('require',code+';return readZipComicInfo;')(requireFake),a=createLibraryAccess();
-  const reading=a.run('read',()=>read('fixture').then(result=>{assert.equal(result,'');finished=true;}));await tick();
-  assert.equal(closeRequested,true);assert.equal(finished,false);
-  let wrote=false;const writer=a.run('write',()=>{wrote=true;});await tick();assert.equal(wrote,false);
-  zip.emit('close');await Promise.all([reading,writer]);assert.equal(finished,true);
+  const yauzlPath=require.resolve('yauzl',{paths:[path.join(__dirname,'..')]});require(yauzlPath);
+  const realYauzl=require.cache[yauzlPath].exports;require.cache[yauzlPath].exports={open:(_file,_options,callback)=>callback(null,zip)};
+  try{
+    const read=require('../comicInfoFiles').createComicInfoFiles({execFileAsync:async()=>{},listArchiveFiles:async()=>[]}).readZipComicInfo,a=createLibraryAccess();
+    const reading=a.run('read',()=>read('fixture').then(result=>{assert.equal(result,'');finished=true;}));await tick();
+    assert.equal(closeRequested,true);assert.equal(finished,false);
+    let wrote=false;const writer=a.run('write',()=>{wrote=true;});await tick();assert.equal(wrote,false);
+    zip.emit('close');await Promise.all([reading,writer]);assert.equal(finished,true);
+  }finally{require.cache[yauzlPath].exports=realYauzl;}
 });

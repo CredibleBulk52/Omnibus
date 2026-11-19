@@ -52,9 +52,8 @@ test('real reprocessing waits for admitted readers and excludes later archive ac
  release();const [,result]=await Promise.all([reading,processing,nextRead]);assert.equal(result.status,'completed');assert.equal(seen,path.join(f.library,'Renamed.cbz'));
 });
 test('application ZIP reader closes real nested, untagged and invalid archive inputs',{timeout:3000},async t=>{
- const f=await fixture(t),source=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
- const code=source.slice(source.indexOf('function readZipComicInfo('),source.indexOf('\nasync function readRarComicInfo('));
- const read=new Function('require','COMICINFO_RE','COMICINFO_MAX',code+';return readZipComicInfo;')(require,/(^|[\\/])comicinfo\.xml$/i,4*1024*1024);
+ // comicInfoFiles.js since the server.js split (2026-11-19).
+ const f=await fixture(t),read=require('../comicInfoFiles').createComicInfoFiles({execFileAsync:async()=>{throw new Error('not used');},listArchiveFiles:async()=>[]}).readZipComicInfo;
  assert.equal(await f.access.run('read',()=>read(f.source)),xml);
  const untagged=path.join(f.library,'Untagged.cbz');fs.writeFileSync(untagged,await zip([['notes.txt','no XML']]));assert.equal(await read(untagged),'');
  const invalid=path.join(f.library,'Invalid.cbz');fs.writeFileSync(invalid,'not a zip');assert.equal(await read(invalid),null);
