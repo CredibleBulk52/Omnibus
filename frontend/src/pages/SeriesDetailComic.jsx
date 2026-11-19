@@ -133,7 +133,10 @@ export default function SeriesDetailComic() {
   const [seriesReadNotice, setSeriesReadNotice] = useState('');
   const [listTarget, setListTarget] = useState(null);  // Add-to-reading-list dialog
 
-  useEffect(() => { setManageOpen(false); setSeriesReadNotice(''); setAnnualGaps(null); setAnnualNote(null); }, [id]);
+  // Another series opened on the same page (a linked series on a Specials shelf, Back, a search
+  // result): drop the last series' Annuals and Specials so their tabs load again (2026-11-19: the
+  // linked series showed its home's annuals and specials, and the home then showed none).
+  useEffect(() => { setManageOpen(false); setSeriesReadNotice(''); setAnnualGaps(null); setAnnualNote(null); setAnnuals(null); setSpecials(null); }, [id]);
 
   // Annuals
   const [annuals, setAnnuals] = useState(null);       // null = not loaded yet, {} = loaded but empty
@@ -294,13 +297,15 @@ export default function SeriesDetailComic() {
 
   // Load annuals on first visit to annuals tab
   useEffect(() => {
-    if (tab !== 'annuals' || annuals !== null) return;
+    if (tab !== 'annuals' || annuals !== null) return undefined;
+    let current = true;   // an answer for a series no longer shown is dropped
     setAnnualsLoading(true);
     fetch(`/api/series/${id}/annuals`)
       .then(r => r.json())
-      .then(data => setAnnuals(data || {}))
-      .catch(() => setAnnuals({}))
-      .finally(() => setAnnualsLoading(false));
+      .then(data => { if (current) setAnnuals(data || {}); })
+      .catch(() => { if (current) setAnnuals({}); })
+      .finally(() => { if (current) setAnnualsLoading(false); });
+    return () => { current = false; };
   }, [tab, id, annuals]);
   const loadAnnualGaps = useCallback(() => fetch(`/api/series/${id}/annual-gaps`).then(r => r.json())
     .then(d => setAnnualGaps(d && Array.isArray(d.rows) ? d : { rows: [], volumes: [] }))
@@ -338,13 +343,15 @@ export default function SeriesDetailComic() {
 
   // Load specials on first visit to specials tab
   useEffect(() => {
-    if (tab !== 'specials' || specials !== null) return;
+    if (tab !== 'specials' || specials !== null) return undefined;
+    let current = true;   // an answer for a series no longer shown is dropped
     setSpecialsLoading(true);
     fetch(`/api/series/${id}/specials`)
       .then(r => r.json())
-      .then(data => setSpecials(data || {}))
-      .catch(() => setSpecials({}))
-      .finally(() => setSpecialsLoading(false));
+      .then(data => { if (current) setSpecials(data || {}); })
+      .catch(() => { if (current) setSpecials({}); })
+      .finally(() => { if (current) setSpecialsLoading(false); });
+    return () => { current = false; };
   }, [tab, id, specials]);
 
   // ─── Komga tag helpers ──────────────────────────────────────────

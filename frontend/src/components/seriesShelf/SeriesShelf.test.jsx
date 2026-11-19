@@ -8,6 +8,7 @@ vi.mock('../../App', () => {
   return { useSeriesCache: () => cache, isAdmin: () => true };
 });
 import { LinkedSeriesShelf, PutOnShelfDialog, ShelfHomes } from './index';
+import { useSeriesGrouping } from './api';
 
 function mount(el) {
   global.IS_REACT_ACT_ENVIRONMENT = true;
@@ -63,3 +64,23 @@ test('a series names its shelf; Put on a Specials shelf searches the library and
   } finally { act(() => root.unmount()); global.fetch = prev; }
 });
 
+
+test('opening another series drops the last one\'s shelf at once and ignores its late answer (2026-11-19)', async () => {
+  const prev = global.fetch;
+  const answers = {};
+  global.fetch = vi.fn(url => new Promise(res => { answers[url] = d => res({ ok: true, json: async () => d }); }));
+  let seen = null;
+  const Probe = ({ id }) => { const [g] = useSeriesGrouping(id); seen = g; return null; };
+  const { root } = mount(<Probe id="home" />);
+  try {
+    await act(async () => { answers['/api/series/home/grouping']({ homes: [], members: [{ id: 'tie', name: 'Tie-in' }], keepVisible: false }); });
+    expect(seen.members.map(m => m.id)).toEqual(['tie']);
+    act(() => root.render(<MemoryRouter><Probe id="tie" /></MemoryRouter>));
+    expect(seen.members).toEqual([]);   // not the home's members while the linked series loads
+    await act(async () => { answers['/api/series/tie/grouping']({ homes: [{ id: 'home', name: 'Home' }], members: [], keepVisible: false }); });
+    expect(seen.homes.map(h => h.id)).toEqual(['home']);
+    act(() => root.render(<MemoryRouter><Probe id="home" /></MemoryRouter>));
+    await act(async () => { answers['/api/series/home/grouping']({ homes: [], members: [{ id: 'tie', name: 'Tie-in' }], keepVisible: false }); });
+    expect(seen.members.map(m => m.id)).toEqual(['tie']);   // back on the home: its shelf again
+  } finally { act(() => root.unmount()); global.fetch = prev; }
+});

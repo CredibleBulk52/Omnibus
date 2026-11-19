@@ -4,18 +4,24 @@
 // Admins put a series on a shelf by hand, or take it off (a rule's link then stays off).
 // Split out of components/SeriesShelf.jsx (2026-11-14): this folder holds the series-page pieces;
 // the Library › Specials shelves panel is in components/specialsShelves/.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const ROLE_LABEL = { 'tie-in': 'Tie-in', core: 'Main story', prelude: 'Lead-in', epilogue: 'Aftermath', initiative: 'Initiative', special: 'Special' };
 
 export const enc = encodeURIComponent;
 
+const NO_GROUPING = { homes: [], members: [], keepVisible: false };
+
+// The series' shelf homes and members. Another series opened on the same page starts empty, and an
+// answer for a series no longer shown is dropped (2026-11-19).
 export function useSeriesGrouping(id) {
-  const [data, setData] = useState({ homes: [], members: [], keepVisible: false });
+  const [state, setState] = useState({ id, data: NO_GROUPING });
+  const current = useRef(id);
+  current.current = id;
   const load = useCallback(() => fetch(`/api/series/${encodeURIComponent(id)}/grouping`).then(r => r.ok ? r.json() : null)
-    .then(d => { if (d) setData(d); }).catch(() => {}), [id]);
+    .then(d => { if (d && current.current === id) setState({ id, data: d }); }).catch(() => {}), [id]);
   useEffect(() => { load(); }, [load]);
-  return [data, load];
+  return [state.id === id ? state.data : NO_GROUPING, load];
 }
 
 export async function call(method, url, body) {
