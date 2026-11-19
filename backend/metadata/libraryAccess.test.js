@@ -42,37 +42,32 @@ test('HTTP route resolves current series after queued book movement before readi
   stop.release();await Promise.all([writing,reading]);assert.deepEqual(events,['series:b']);
 });
 test('actual book image and series thumbnail handlers serve unrelated images through nested archive wrappers',async()=>{
-  const fs=require('node:fs'),path=require('node:path'),{AsyncResource}=require('node:async_hooks');
-  const source=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8'),a=createLibraryAccess(),routes=new Map();
+  // covers.js and archiveFiles.js since the server.js split (2026-11-19): the real modules, wrapped
+  // for library reads as server.js does once it has loaded.
+  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+  const a=createLibraryAccess(),routes=new Map();
   const app={get(route,...handlers){routes.set(route,handlers.at(-1));},post(){},delete(){}};
   const db={prepare(){return {get:id=>({id,path:'/library/'+id+'.cbz',series_id:id,filename:id+'.cbz'}),all:id=>[{id,path:'/library/'+id+'.cbz',series_id:id,filename:id+'.cbz',issue_number:'1',is_special:0}]};}};
-  const wiring=source.slice(source.indexOf('coordinateLibraryRoutes(app, libraryAccess,'),source.indexOf("app.set('trust proxy'"));
-  new Function('app','libraryAccess','coordinateLibraryRoutes','db',wiring)(app,a,coordinateLibraryRoutes,db);
-  const slotCode=source.slice(source.indexOf('function withThumbSlot('),source.indexOf('\nfunction findThumbCache('));
-  const slot=new Function('AsyncResource','let _thumbActive=0;const _thumbQueue=[],THUMB_CONCURRENCY=1;'+slotCode+';return withThumbSlot;')(AsyncResource);
-  // Use exact function boundaries; filterImages is shared with the real reader.
-  const listOnly=source.slice(source.indexOf('async function listArchiveFiles('),source.indexOf('// Filter an archive file list'));
-  const filterOnly=source.slice(source.indexOf('function filterImages('),source.indexOf('\n}',source.indexOf('function filterImages('))+2);
-  const streamOnly=source.slice(source.indexOf('async function streamArchivePage('),source.indexOf('// ─── Read progress'));
+  coordinateLibraryRoutes(app,a,{readScope:require('../covers').readScope(()=>db)});
   const execFileAsync=(file,args)=>a.run('read',()=>({stdout:args[0]==='l'?'Path = 001.jpg\n':Buffer.from('fixture-image')}));
-  const helperCode=listOnly+filterOnly+streamOnly+";listArchiveFiles=access.wrap('read',listArchiveFiles);streamArchivePage=access.wrap('read',streamArchivePage);return {listArchiveFiles,streamArchivePage,filterImages};";
+  const quiet={error(){},debug(){},warn(){},info(){}};
+  const archive=require('../archiveFiles').createArchiveFiles({execFileAsync,logger:quiet});
+  const listArchiveFiles=a.wrap('read',archive.listArchiveFiles);
   const {coverThumb}=require('../coverThumb');   // resizes cached covers; the fixture is not an image, so it passes through
-  const helpers=new Function('path','fs','execFileAsync','withThumbSlot','findThumbCache','logger','access','coverThumb',helperCode)(path,fs,execFileAsync,a.wrap('read',slot),()=>null,{error(){},debug(){}},a,coverThumb);
-  const bookRoutes=source.slice(source.indexOf("app.get('/api/books/:id/pages',"),source.indexOf('// Helper: stream a specific page'));
-  const thumbnails=source.slice(source.indexOf("app.get('/api/books/:id/thumbnail',"),source.indexOf('// ─── Thumbnail cache eviction'));
-  const series=source.slice(source.indexOf("app.get('/api/series/:id/thumbnail',"),source.indexOf('// ─── Single book lookup'));
-  // Thumbnail writes go to an in-memory stub, not the live cache.
-  const thumbHelper=new Function('path','fs','execFileAsync','withThumbSlot','findThumbCache','logger','access','THUMB_CACHE_DIR','thumbCacheGen','coverThumb',helperCode)(path,{promises:{writeFile:async()=>{}}},execFileAsync,a.wrap('read',slot),()=>null,{error(){},debug(){}},a,'/fixture-cache',1,coverThumb);
-  new Function('app','db','streamArchivePage','listArchiveFiles','filterImages','logger',bookRoutes+thumbnails+series)(app,db,thumbHelper.streamArchivePage,helpers.listArchiveFiles,helpers.filterImages,{error(){}});
-  const response=()=>({headersSent:false,code:200,set(){},status(code){this.code=code;return this;},send(value){this.body=value;},json(value){this.body=value;}});
-  const stop=latch(),writer=a.run('write',()=>stop.promise,{scope:'series:a'});await tick();
+  const dbDir=fs.mkdtempSync(path.join(os.tmpdir(),'omnibus-covers-'));
   try{
-    for(const route of ['/api/books/:id/pages','/api/books/:id/pages/:page','/api/books/:id/thumbnail','/api/series/:id/thumbnail']){
-      const res=response();await routes.get(route)({params:{id:'b',page:'0'}},res);
-      assert.equal(res.code,200,route);
-      if(route.endsWith('/pages'))assert.deepEqual(res.body,{count:1});else assert.equal(res.body.toString(),'fixture-image');
-    }
-  }finally{stop.release();await writer;}
+    const covers=require('../covers').createCovers({app,coverThumb,db,dbDir,filterImages:archive.filterImages,listArchiveFiles,logger:quiet,readArchiveMember:archive.readArchiveMember,requireAdmin:()=>{}});
+    covers.wrapReads(a.wrap);
+    const response=()=>({headersSent:false,code:200,set(){},status(code){this.code=code;return this;},send(value){this.body=value;},json(value){this.body=value;},sendFile(file){this.body=fs.readFileSync(file);}});
+    const stop=latch(),writer=a.run('write',()=>stop.promise,{scope:'series:a'});await tick();
+    try{
+      for(const route of ['/api/books/:id/pages','/api/books/:id/pages/:page','/api/books/:id/thumbnail','/api/series/:id/thumbnail']){
+        const res=response();await routes.get(route)({params:{id:'b',page:'0'}},res);
+        assert.equal(res.code,200,route);
+        if(route.endsWith('/pages'))assert.deepEqual(res.body,{count:1});else assert.equal(res.body.toString(),'fixture-image');
+      }
+    }finally{stop.release();await writer;}
+  }finally{fs.rmSync(dbDir,{recursive:true,force:true});}
 });
 test('readers overlap; a queued writer drains them and blocks later readers',async()=>{
   const a=createLibraryAccess(),stop=latch(),events=[];
@@ -139,13 +134,17 @@ test('route barrier errors return a reviewable response before the handler write
   await a.route('write',()=>assert.fail())({},res,()=>{});assert.equal(res.code,409);assert.equal(res.body.code,'LIBRARY_RECOVERY_REQUIRED');
 });
 test('actual thumbnail limiter keeps each queued callback in its own reader scope',{timeout:2000},async()=>{
-  const fs=require('node:fs'),path=require('node:path'),{AsyncResource}=require('node:async_hooks');
-  const source=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8'),code=source.slice(source.indexOf('function withThumbSlot('),source.indexOf('\nfunction findThumbCache('));
-  const a=createLibraryAccess(),fn=new Function('AsyncResource','let _thumbActive=0;const _thumbQueue=[],THUMB_CONCURRENCY=1;'+code+';return withThumbSlot;')(AsyncResource);
-  const slot=a.wrap('read',fn),stop=latch(),events=[];
-  const one=slot(async()=>{events.push('one');await stop.promise;});await tick();
-  const two=slot(()=>a.run('read',()=>events.push('two')));await tick();
-  const writer=a.run('write',()=>events.push('writer'));stop.release();await Promise.all([one,two,writer]);assert.deepEqual(events,['one','two','writer']);
+  // covers.js since the server.js split (2026-11-19), with one extraction at a time.
+  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+  const dbDir=fs.mkdtempSync(path.join(os.tmpdir(),'omnibus-slot-'));
+  try{
+    const none=()=>{};
+    const covers=require('../covers').createCovers({app:{get:none,post:none,delete:none},coverThumb:none,db:{},dbDir,filterImages:none,listArchiveFiles:none,logger:{},readArchiveMember:none,requireAdmin:none,thumbConcurrency:1});
+    const a=createLibraryAccess(),slot=a.wrap('read',covers.withThumbSlot),stop=latch(),events=[];
+    const one=slot(async()=>{events.push('one');await stop.promise;});await tick();
+    const two=slot(()=>a.run('read',()=>events.push('two')));await tick();
+    const writer=a.run('write',()=>events.push('writer'));stop.release();await Promise.all([one,two,writer]);assert.deepEqual(events,['one','two','writer']);
+  }finally{fs.rmSync(dbDir,{recursive:true,force:true});}
 });
 test('actual ZIP ComicInfo reader waits for descriptor close before releasing access',async()=>{
   const fs=require('node:fs'),path=require('node:path'),{EventEmitter}=require('node:events');

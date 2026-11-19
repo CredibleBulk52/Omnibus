@@ -106,16 +106,8 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
-coordinateLibraryRoutes(app, libraryAccess, {readScope: (route,req) => {
-  // Resolve before admission, then the coordinator rechecks after any wait.
-  // Retagging preserves series membership and edits only within that folder.
-  if(route==='/api/series/:id/thumbnail')return 'series:'+req.params.id;
-  if(route.startsWith('/api/books/:id/')){
-    const book=db.prepare('SELECT series_id FROM scanned_books WHERE id=?').get(req.params.id);
-    return book?.series_id ? 'series:'+book.series_id : null;
-  }
-  return null; // Disk covers and unknown archive consumers stay conservative.
-}});
+// Each reader route's library scope (covers.js, 2026-11-19); db is opened further down, so it is read per request.
+coordinateLibraryRoutes(app, libraryAccess, { readScope: require('./covers').readScope(() => db) });
 app.set('trust proxy', 1); // Trust reverse proxy headers (X-Forwarded-For, X-Forwarded-Proto)
 // Security review 2026-11-12: no cross-origin API access (the app and API share one origin;
 // the dev server proxies /api), and basic browser protections on every response.
@@ -349,56 +341,9 @@ const restoreResult = require('./backups').applyPendingRestore({ dbPath: DB_PATH
   log: { warn: m => logger.warn('db-backup', m), error: m => logger.error('db-backup', m) } });
 const db = new Database(DB_PATH);
 
-// ─── Thumbnail disk cache ─────────────────────────────────────────
-// Caches first-page extractions so bsdtar only runs once per book.
-// Files stored as /appdata/thumbcache/{cacheKey}.{ext}
-const THUMB_CACHE_DIR = path.join(dbDir, 'thumbcache');
 // Cached covers are resized, not the full first page (coverThumb.js, 2026-11-05).
 const { coverThumb } = require('./coverThumb');
-fs.mkdirSync(THUMB_CACHE_DIR, { recursive: true });
-
-// Incremented whenever all thumbnails are cleared — invalidates browser ETags
-let thumbCacheGen = Date.now();
-
-// ─── Thumbnail extraction concurrency limiter ─────────────────────
-// Caps simultaneous archive extractions so a page with 30+ thumbnails
-// doesn't spawn 30 unrar/7z processes at once and stall the server.
-const THUMB_CONCURRENCY = 4;
-let _thumbActive = 0;
-const _thumbQueue = [];
-function withThumbSlot(fn) {
-  return new Promise((resolve, reject) => {
-    const run = AsyncResource.bind(() => {
-      _thumbActive++;
-      Promise.resolve().then(fn).then(resolve, reject).finally(() => {
-        _thumbActive--;
-        if (_thumbQueue.length) _thumbQueue.shift()();
-      });
-    });
-    if (_thumbActive < THUMB_CONCURRENCY) run();
-    else _thumbQueue.push(run);
-  });
-}
-
-function findThumbCache(cacheKey) {
-  for (const ext of ['.jpg', '.jpeg', '.png', '.webp', '.gif']) {
-    const p = path.join(THUMB_CACHE_DIR, `${cacheKey}${ext}`);
-    if (fs.existsSync(p)) {
-      try { if (fs.statSync(p).size === 0) { fs.unlinkSync(p); continue; } } catch {}
-      return { filePath: p, ext };
-    }
-  }
-  return null;
-}
-
-function evictThumbCache(cacheKey) {
-  // A key is a plain file name (a book id or series_<id>); anything else could reach outside the cache.
-  if (!/^[A-Za-z0-9_.-]+$/.test(String(cacheKey || '')) || /^\.+$/.test(String(cacheKey))) return;
-  for (const ext of ['.jpg', '.jpeg', '.png', '.webp', '.gif']) {
-    const p = path.join(THUMB_CACHE_DIR, `${cacheKey}${ext}`);
-    try { fs.unlinkSync(p); } catch {}
-  }
-}
+// Thumbnail disk cache, covers and reader pages: covers.js (2026-11-19), created with the reader routes further down.
 
 // ─── Collection cover image store ────────────────────────────────
 const COLLECTION_COVERS_DIR = path.join(dbDir, 'collection-covers');
@@ -2444,97 +2389,10 @@ async function extractComicInfo(filePath) {
   } catch (e) { return e.stdout || null; }
 }
 
-// List all files inside an archive
-async function listArchiveFiles(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  try {
-    if (ext === '.cbz' || ext === '.zip') {
-      // Use 7z l for CBZ — outputs literal filenames, handles brackets/special chars
-      const { stdout } = await execFileAsync('7z', ['l', '-ba', '-slt', filePath]);
-      // 7z -slt outputs "Path = filename" lines
-      const files = [];
-      for (const line of stdout.split('\n')) {
-        const m = line.match(/^Path = (.+)$/);
-        if (m) files.push(m[1].trim());
-      }
-      return files;
-    } else {
-      // CBR/RAR — use unrar (RARLab binary) which handles all RAR variants
-      // including older files with non-UTF8 filenames that bsdtar cannot parse
-      // unrar lb = list bare filenames only
-      // unrar exits 3 on some old Mac-made RARs (unsupported sub-blocks) after
-      // listing every member (Fantastic Four #107, 2026-10-16): keep that list.
-      let listed = '';
-      try { ({ stdout: listed } = await execFileAsync('unrar', ['lb', filePath], { maxBuffer: 16 * 1024 * 1024 })); }
-      catch (e) { listed = e.stdout ? String(e.stdout) : ''; }
-      const rarFiles = String(listed).split('\n').map(s => s.trim()).filter(Boolean);
-      if (rarFiles.length > 0) return rarFiles;
-      // unrar returned empty — may be a ZIP misnamed as CBR, fall through
-      // Fallback: try as ZIP (some CBRs are actually ZIP archives)
-      try {
-        const { stdout } = await execFileAsync('7z', ['l', '-ba', '-slt', filePath]);
-        const files = [];
-        for (const line of stdout.split('\n')) {
-          const m = line.match(/^Path = (.+)$/);
-          if (m) files.push(m[1].trim());
-        }
-        if (files.length > 0) {
-          logger.debug('thumb', `CBR is actually a ZIP: ${path.basename(filePath)}`);
-          return files;
-        }
-      } catch {}
-      try {
-        const { stdout } = await execFileAsync('bsdtar', ['-tf', filePath], { maxBuffer: 16 * 1024 * 1024 });
-        return stdout.split('\n').map(s => s.replace(/\r$/, '')).filter(Boolean);
-      } catch {}
-      return [];
-    }
-  } catch { return []; }
-}
-
-// ─── One archive member as a Buffer ───────────────────────────────
-// Reader pages, page thumbnails, cover thumbnails and Comic Book Guy's page view.
-// - Member names go after "--": "-= cover =-.jpg" was read as a command switch
-//   (Fantastic Four #104, 2026-10-16).
-// - unrar exits 3 on some old Mac-made RARs (unsupported sub-blocks) after writing
-//   the page correctly (Fantastic Four #107): output that is a complete image is kept.
-function completeImage(buf) {
-  if (!buf || buf.length < 64) return false;
-  const b = Buffer.from(buf);
-  if (b[0] === 0xFF && b[1] === 0xD8) return b.subarray(Math.max(0, b.length - 2048)).includes(Buffer.from([0xFF, 0xD9]));
-  if (b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))) return b.subarray(-16).includes(Buffer.from('IEND'));
-  if (b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP') return b.readUInt32LE(4) + 8 <= b.length;
-  if (b.subarray(0, 3).toString('latin1') === 'GIF') return b[b.length - 1] === 0x3B;
-  return false;
-}
-async function readArchiveMember(filePath, member, maxBuffer = 30 * 1024 * 1024) {
-  const zip = /\.(cbz|zip)$/i.test(filePath);
-  const C = { ...process.env, LANG: 'C', LC_ALL: 'C' };
-  const unrar = ['unrar', ['p', '-inul', '-y', filePath, '--', member]];
-  const sevenZip = ['7z', ['e', '-so', filePath, '--', member]];
-  const tar = ['bsdtar', ['-p', '-O', '-xf', filePath, '--', member.replace(/[\\*?[\]]/g, '\\$&')], C];   // bsdtar names are patterns
-  let last = null;
-  for (const [tool, args, env] of zip ? [sevenZip, tar, unrar] : [unrar, sevenZip, tar]) {
-    try {
-      const { stdout } = await execFileAsync(tool, args, { maxBuffer, encoding: 'buffer', ...(env ? { env } : {}) });
-      if (stdout && stdout.length) return stdout;
-    } catch (e) {
-      if (e.stdout && completeImage(e.stdout)) return Buffer.from(e.stdout);
-      last = e;
-    }
-  }
-  throw last || new Error(`Archive member not found: ${member}`);
-}
-
-// Filter an archive file list to real image files only.
-// Excludes Apple double files (__MACOSX, ._prefix) and non-image entries.
-function filterImages(files) {
-  return files.filter(f =>
-    /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(f) &&
-    !f.includes('__MACOSX') &&
-    !path.basename(f).startsWith('._')
-  ).sort();
-}
+// Archive listing, member reads and the image filter: archiveFiles.js (2026-11-19).
+const archiveFiles = require('./archiveFiles').createArchiveFiles({ execFileAsync, logger });
+let { listArchiveFiles } = archiveFiles;   // wrapped for library reads at the end of the file
+const { readArchiveMember, filterImages } = archiveFiles;
 
 // Returns true if the archive at filePath contains a ComicInfo.xml entry at the
 // root or anywhere inside. Returns null if the archive can't be read — callers
@@ -3952,59 +3810,7 @@ app.get('/api/series/:id/annuals', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ─── Series thumbnail: extract first page of first book ───────────
-app.get('/api/series/:id/thumbnail', async (req, res) => {
-  try {
-    const book = pickSeriesCoverBook(req.params.id);
-    if (!book) return res.status(404).send();
-    // Serve the chosen book's own thumbnail, so the series cover follows the
-    // pick (and its ETag changes) instead of a separately cached series image.
-    await streamArchivePage(book.path, 0, res, book.id);
-  } catch (e) { res.status(404).send(); }
-});
-
-// Cover = the series' actual issue #1. Reading order (sort_order) is not used
-// first because folders often lead with a #0, a prequel mini or an event
-// tie-in (e.g. "Green Lantern Corps - Futures End 001"). Ranking:
-//   1. books whose ComicInfo <Series> is a different title are pushed back
-//   2. issue number exactly 1, then the lowest number above 1, then the rest
-//   3. a ComicInfo match, no " - Subtitle" in the filename, reading order
-// Annuals and specials are skipped unless nothing else exists. Previews, ashcans and samplers
-// (X-Men Ashcan #1 filed as X-Men #1) go last (2026-11-13).
-const PROMO_BOOK = /\b(preview|previews|ashcan|sampler)\b/i;
-function pickSeriesCoverBook(seriesId) {
-  const books = db.prepare('SELECT id, path, filename, issue_number, sort_order, is_special, comicinfo FROM scanned_books WHERE series_id = ?').all(seriesId);
-  if (!books.length) return null;
-  const ss = db.prepare('SELECT name FROM scanned_series WHERE id = ?').get(seriesId);
-  const norm = t => String(t || '').toLowerCase().replace(/^the\s+/, '').replace(/[^a-z0-9]+/g, '');
-  const want = norm(ss?.name);
-  const wantShort = norm(String(ss?.name || '').split(':')[0]); // "Luke Cage: Marvel Digital Original" -> "Luke Cage"
-  const regular = books.filter(b => !b.is_special && !/annual/i.test(b.filename));
-  const pool = regular.length ? regular : books;
-  const ranked = pool.map(b => {
-    const ciSeries = ((b.comicinfo || '').match(/<Series>([^<]*)<\/Series>/i) || [])[1];
-    // Title from the filename: drop "1. " prefixes, (tags), [tags], the issue
-    // number and anything after it, and a "v2"/"Vol. 2" volume marker.
-    const bare = String(b.filename).replace(/\.[^.]+$/, '').replace(/^\d+\.\s*/, '')
-      .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ').trim();
-    const fm = bare.match(/^(.*?)\s*#?(\d+(?:\.\d+)?)(?:\s+-\s+.*)?\s*$/);
-    const fileTitle = (fm ? fm[1] : bare).replace(/\b(v\d*|vol\.?|volume)\s*$/i, '');
-    const ciOk = ciSeries && norm(ciSeries) === want;
-    const fileOk = !!norm(fileTitle) && (norm(fileTitle) === want || norm(fileTitle) === wantShort);
-    const match = (ciOk || fileOk) ? 0 : (!ciSeries ? 1 : 2);
-    let n = parseFloat(String(b.issue_number ?? '').replace(/^#/, ''));
-    if (!Number.isFinite(n) && fm && b.issue_number) n = parseFloat(fm[2]); // e.g. issue_number "HC"
-    const tier = n === 1 ? 0 : (Number.isFinite(n) && n > 1 ? 1 : 2);
-    const dash = /\s-\s/.test(b.filename) ? 1 : 0;
-    const promo = PROMO_BOOK.test(b.filename) || PROMO_BOOK.test(((b.comicinfo || '').match(/<Title>([^<]*)<\/Title>/i) || [])[1] || '') ? 1 : 0;
-    return { b, key: [promo, match === 2 ? 1 : 0, tier, Number.isFinite(n) ? n : 1e9, match, dash, b.sort_order ?? 1e9] };
-  });
-  ranked.sort((x, y) => {
-    for (let i = 0; i < x.key.length; i++) if (x.key[i] !== y.key[i]) return x.key[i] - y.key[i];
-    return String(x.b.filename).localeCompare(String(y.b.filename));
-  });
-  return ranked[0].b;
-}
+// Series thumbnail and the series cover pick (pickSeriesCoverBook): covers.js (2026-11-19).
 
 // ─── Single book lookup ───────────────────────────────────────────
 // GET /api/books/:id
@@ -4200,43 +4006,7 @@ app.post('/api/admin/untagged-sweep/run', requireAdmin, async(req,res)=>{
   try{const work=cvCtx.run({lane:'background',caller:'library-metadata'},()=>metadataMaintenance.run());await require('./metadata/respondToCheck').respondToCheck({work,res,logger});}catch(e){retagHandlers.errorResponse(res,e);}
 });
 
-app.get('/api/books/:id/thumbnail', async (req, res) => {
-  try {
-    const book = db.prepare('SELECT * FROM scanned_books WHERE id = ?').get(req.params.id);
-    if (!book) return res.status(404).send();
-    await streamArchivePage(book.path, 0, res, book.id);
-  } catch (e) { res.status(404).send(); }
-});
-
-// ─── Thumbnail cache eviction ─────────────────────────────────────
-// DELETE /api/books/:id/thumbnail/cache — bust a single book's cached thumb
-// DELETE /api/series/:id/thumbnail/cache — bust a series thumb cache
-// Called automatically by the library scanner when a book's path changes.
-app.delete('/api/books/:id/thumbnail/cache', requireAdmin, (req, res) => {
-  evictThumbCache(req.params.id);
-  res.json({ ok: true });
-});
-app.delete('/api/series/:id/thumbnail/cache', requireAdmin, (req, res) => {
-  evictThumbCache(`series_${req.params.id}`);
-  res.json({ ok: true });
-});
-
-// DELETE /api/thumbnails/all — clear entire thumb cache
-app.delete('/api/thumbnails/all', requireAdmin, (req, res) => {
-  try {
-    const files = fs.readdirSync(THUMB_CACHE_DIR);
-    let count = 0;
-    for (const f of files) {
-      try { fs.unlinkSync(path.join(THUMB_CACHE_DIR, f)); count++; } catch {}
-    }
-    try { fs.rmSync(path.join(THUMB_CACHE_DIR, 'pages'), { recursive: true, force: true }); } catch {}   // reader page thumbs
-    thumbCacheGen = Date.now(); // invalidate all browser ETags
-    logger.info('thumbcache', `Cleared all thumbnails`, { count });
-    res.json({ ok: true, cleared: count });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+// Book thumbnail and thumbnail cache eviction routes: covers.js (2026-11-19).
 
 // ─── Right-to-left covers (2026-11-10) ─────────────────────────────
 // A manga's wraparound cover has its front on the LEFT; western comics' on the right, which is
@@ -4591,136 +4361,12 @@ app.delete('/api/books/batch', requireAdmin, (req, res) => {
 app.post('/api/books/batch/retag', requireAdmin, retagHandlers.batch);
 
 
-// GET /api/books/:id/pages
-// Returns { count } — number of image pages in the archive.
-// Used by the reader on load to know total pages without fetching images.
-app.get('/api/books/:id/pages', async (req, res) => {
-  try {
-    const book = db.prepare('SELECT * FROM scanned_books WHERE id = ?').get(req.params.id);
-    if (!book) return res.status(404).json({ error: 'Book not found' });
-    const files = await listArchiveFiles(book.path);
-    const images = filterImages(files);
-    res.json({ count: images.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// ─── Reader: stream a specific page (0-indexed) ───────────────────
-// GET /api/books/:id/pages/:page
-// Streams the image for page N (0-indexed) from the archive.
-// Full pages require a reader session and must not enter shared/browser caches.
-// The reader preloads page N+1 by creating an <img> with this URL.
-app.get('/api/books/:id/pages/:page', async (req, res) => {
-  try {
-    const book = db.prepare('SELECT * FROM scanned_books WHERE id = ?').get(req.params.id);
-    if (!book) return res.status(404).send();
-    const pageIndex = Math.max(0, parseInt(req.params.page, 10) || 0);
-    await streamArchivePage(book.path, pageIndex, res);
-  } catch (e) {
-    logger.error('reader', `Page ${req.params.page} failed for book ${req.params.id}`, e.message);
-    res.status(404).send();
-  }
-});
-
-// ─── Reader: small page thumbnail for the page overview ──────────
-// GET /api/books/:id/page-thumbs/:page — 240px-wide JPEG, cached on disk under
-// thumbcache/pages/<bookId>_<mtime>/ (a changed file gets fresh thumbs).
-const _pageListCache = new Map();   // path|mtime -> sorted image names (overview asks for every page)
-async function pageImagesCached(book) {
-  const key = `${book.path}|${book.file_mtime || 0}`;
-  const hit = _pageListCache.get(key);
-  if (hit) return hit;
-  const images = filterImages(await listArchiveFiles(book.path));
-  _pageListCache.set(key, images);
-  if (_pageListCache.size > 50) _pageListCache.delete(_pageListCache.keys().next().value);
-  return images;
-}
-app.get('/api/books/:id/page-thumbs/:page', async (req, res) => {
-  try {
-    const book = db.prepare('SELECT * FROM scanned_books WHERE id = ?').get(req.params.id);
-    if (!book) return res.status(404).send();
-    const n = Math.max(0, parseInt(req.params.page, 10) || 0);
-    const dir = path.join(THUMB_CACHE_DIR, 'pages', `${book.id}_${book.file_mtime || 0}`);
-    const file = path.join(dir, `${n}.jpg`);
-    res.set('Cache-Control', 'private, no-store');
-    if (fs.existsSync(file)) return res.type('image/jpeg').sendFile(file);
-    await withThumbSlot(async () => {
-      const images = await pageImagesCached(book);
-      if (!images.length || n >= images.length) return res.status(404).send();
-      const target = images[n];
-      let stdout;
-      try { stdout = await readArchiveMember(book.path, target); }
-      catch (e) { return res.status(404).send(); }
-      const out = await require('sharp')(stdout).resize({ width: 240, withoutEnlargement: true }).jpeg({ quality: 72 }).toBuffer();
-      try { await fs.promises.mkdir(dir, { recursive: true }); await fs.promises.writeFile(file, out); } catch {}
-      res.type('image/jpeg').send(out);
-    });
-  } catch (e) {
-    logger.error('reader', `Page thumb ${req.params.page} failed for book ${req.params.id}`, e.message);
-    if (!res.headersSent) res.status(404).send();
-  }
-});
-
-// Helper: stream a specific page (0-indexed) from a comic archive
-// Pass cacheKey (e.g. book ID) to enable disk caching for thumbnails.
-async function streamArchivePage(filePath, pageIndex, res, cacheKey = null) {
-  // ── Serve from disk cache if available ──────────────────────────
-  if (cacheKey) {
-    const hit = findThumbCache(cacheKey);
-    if (hit) {
-      const mime = hit.ext === '.png' ? 'image/png' : hit.ext === '.gif' ? 'image/gif' : hit.ext === '.webp' ? 'image/webp' : 'image/jpeg';
-      // The cached file's time is part of the ETag: a thumbnail made again from a replaced file
-      // (same book id) is fetched anew instead of the browser's old copy (2026-10-17).
-      let fileTime = 0; try { fileTime = Math.floor(fs.statSync(hit.filePath).mtimeMs); } catch {}
-      const etag = `"${cacheKey}-${thumbCacheGen}-${fileTime}"`;
-      if (res.req && res.req.headers['if-none-match'] === etag) {
-        return res.status(304).end();
-      }
-      res.set('Content-Type', mime);
-      res.set('Cache-Control', cacheKey ? 'public, max-age=0, must-revalidate' : 'private, no-store');
-      res.set('ETag', etag);
-      return res.sendFile(hit.filePath);
-    }
-  }
-  // ── Extract from archive (rate-limited) ─────────────────────────
-  await withThumbSlot(async () => {
-    try {
-      const files = await listArchiveFiles(filePath);
-      const images = filterImages(files);
-      if (!images.length) return res.status(404).send();
-      const target = images[Math.min(pageIndex, images.length - 1)];
-      const archExt = path.extname(filePath).toLowerCase();
-      let stdout;
-      try {
-        stdout = await readArchiveMember(filePath, target);
-      } catch (extractErr) {
-        logger.error('thumb', `extraction failed`, { filePath, target, error: extractErr.message, stderr: extractErr.stderr?.slice(0,200) });
-        return res.status(404).send();
-      }
-      let ext = path.extname(target).toLowerCase() || '.jpg';
-      let mime = ext === '.png' ? 'image/png' : ext === '.gif' ? 'image/gif' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
-      let fileTime = 0;
-      if (cacheKey) {
-        // A cover for a shelf: cached and sent resized (coverThumb.js). Reader pages (no cacheKey) stay full size.
-        const t = await coverThumb(stdout, ext);
-        stdout = t.buf; ext = t.ext; mime = t.mime;
-        const cachePath = path.join(THUMB_CACHE_DIR, `${cacheKey}${ext}`);
-        await fs.promises.writeFile(cachePath, stdout);
-        try { fileTime = Math.floor(fs.statSync(cachePath).mtimeMs); } catch {}
-      }
-      const etag = cacheKey ? `"${cacheKey}-${thumbCacheGen}-${fileTime}"` : null;
-      if (etag && res.req && res.req.headers['if-none-match'] === etag) {
-        return res.status(304).end();
-      }
-      res.set('Content-Type', mime);
-      res.set('Cache-Control', cacheKey ? 'public, max-age=0, must-revalidate' : 'private, no-store');
-      if (etag) res.set('ETag', etag);
-      res.send(stdout);
-    } catch (e) {
-      logger.error('thumb', `streamArchivePage failed`, { filePath, error: e.message });
-      if (!res.headersSent) res.status(404).send();
-    }
-  });
-}
+// ─── Covers and reader pages: covers.js (2026-11-19) ──────────────
+// The thumbnail cache, series and book thumbnails, cache eviction, the reader's page count, pages
+// and page thumbnails. listArchiveFiles is wrapped further down, so it is passed as a call.
+const covers = require('./covers').createCovers({ app, coverThumb, db, dbDir, filterImages, listArchiveFiles: (...a) => listArchiveFiles(...a), logger, readArchiveMember, requireAdmin });
+const { THUMB_CACHE_DIR, findThumbCache, evictThumbCache, pickSeriesCoverBook } = covers;
+let { streamArchivePage, withThumbSlot } = covers;   // wrapped for library reads at the end of the file
 
 // ─── Read progress ────────────────────────────────────────────────
 // GET /api/read-progress/:bookId — fetch current page + completed flag
@@ -6187,7 +5833,7 @@ app.post('/api/series/:id/force-rescan', requireAdmin, async (req, res) => {
       thumbsCleared++;
     }
     // Bump the gen counter so any browser that has the old ETag fetches fresh.
-    thumbCacheGen = Date.now();
+    covers.bumpThumbCacheGen();
     logger.info('thumbcache', `Evicted thumbnails for series rescan`, { seriesId: scanned.id, books: thumbsCleared });
   }
 
@@ -16143,8 +15789,8 @@ runLibraryScan = libraryAccess.wrap('read', runLibraryScan);
 scanSeriesDir = libraryAccess.wrap('read', scanSeriesDir);
 extractComicInfo = libraryAccess.wrap('read', extractComicInfo);
 listArchiveFiles = libraryAccess.wrap('read', listArchiveFiles);
-streamArchivePage = libraryAccess.wrap('read', streamArchivePage);
-withThumbSlot = libraryAccess.wrap('read', withThumbSlot);
+covers.wrapReads(libraryAccess.wrap);   // covers.js: its routes use the wrapped streamArchivePage and withThumbSlot
+({ streamArchivePage, withThumbSlot } = covers);
 extractArchiveImage = libraryAccess.wrap('read', extractArchiveImage);
 getPageImageForAssistant = libraryAccess.wrap('read', getPageImageForAssistant);
 runRefreshDirectory = libraryAccess.wrap('read', runRefreshDirectory);

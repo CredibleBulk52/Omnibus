@@ -10,7 +10,8 @@ const fs = require('fs'), path = require('path');
 const MODULES = { 'cbr.js': 'createCbr', 'eventGenerator.js': 'registerEventGenerator', 'canonGenerator.js': 'registerCanonGenerator',
   'home.js': 'registerHome', 'seriesList.js': 'registerSeriesList', 'seriesCaches.js': 'createSeriesCaches',
   'topShelf.js': 'registerTopShelf',   // step 2, 2026-11-19
-  'shelfRoutes.js': 'registerShelfRoutes' };   // step 3
+  'shelfRoutes.js': 'registerShelfRoutes',   // step 3
+  'covers.js': 'createCovers', 'archiveFiles.js': 'createArchiveFiles' };   // step 4
 const needs = file => /const missing = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(__dirname, file), 'utf8'))[1]
   .split(',').map(s => s.trim().replace(/'/g, '')).filter(Boolean);
 
