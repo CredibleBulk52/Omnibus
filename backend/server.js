@@ -6641,6 +6641,10 @@ app.get('/api/books/in-progress', requireAuth, (req, res) => {
 });
 
 // ─── Updated home endpoint ────────────────────────────────────────
+// An issue's release date for Home's Recently Released and My Pulls (pullBox.js): Comic Vine's store
+// date, else its cover date, else (2026-11-18) the day it was listed, for a downloaded issue Comic Vine
+// has not dated yet. New issues often appear on Comic Vine on release day with no dates at all.
+const RELEASE_DATE_SQL = require('./pullBox').RELEASE_DATE_SQL;
 app.get('/api/home/v2', requireAuth, (req, res) => {
   try {
     const { libraryId } = req.query;
@@ -6797,17 +6801,18 @@ app.get('/api/home/v2', requireAuth, (req, res) => {
 
     // Recently released — 30 most recent monitored issues by effective date.
     // No per-series dedupe so the shelf shows variety, not the same N series.
+    // An issue Comic Vine has not dated yet goes by the day it was listed (RELEASE_DATE_SQL).
     const recentlyReleased = db.prepare(`
       SELECT sb.*, ss.name as seriesName, ss.id as seriesId,
-             COALESCE(mi.store_date, mi.release_date) as effective_date,
+             ${RELEASE_DATE_SQL} as effective_date,
              mi.issue_number as mi_issue_number
       FROM scanned_books sb
       JOIN scanned_series ss ON ss.id = sb.series_id
       LEFT JOIN monitored_issues mi ON mi.id = sb.monitored_issue_id
       WHERE 1=1 ${libFilter}
-        AND COALESCE(mi.store_date, mi.release_date) IS NOT NULL
-        AND COALESCE(mi.store_date, mi.release_date) <= date('now')
-      ORDER BY COALESCE(mi.store_date, mi.release_date) DESC
+        AND ${RELEASE_DATE_SQL} IS NOT NULL
+        AND ${RELEASE_DATE_SQL} <= date('now')
+      ORDER BY ${RELEASE_DATE_SQL} DESC
       LIMIT 30
     `).all(...libParams);
     const recentlyReleasedDeduped = recentlyReleased
@@ -14386,11 +14391,24 @@ async function refreshCurrentWeekMonitoredSeries() {
 
   logger.info('week-refresh', `${toRefresh.length} monitored series shipping this week`, { ids: toRefresh.map(s => s.id) });
 
-  let refreshed = 0, skipped = 0;
+  // Comic Vine often lists a new issue on its release day with no dates at all (2026-11-18: that
+  // week's issues arrived with neither store nor cover date, so Home's Recently Released and My
+  // Pulls, which go by date, never showed them once downloaded). The weekly list knows the ship
+  // date: use it until Comic Vine has its own (the series sync replaces it when CV dates appear).
+  const nameKey = n => String(n || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const numKey = n => String(n || '').trim().replace(/^0+/, '');   // same as SQLite's ltrim(…, '0'): #0 and #0.5 match too
+  const shipDate = db.prepare(`UPDATE monitored_issues SET store_date = ?
+    WHERE series_id = ? AND store_date IS NULL AND release_date IS NULL AND ltrim(issue_number, '0') = ?`);
+  let refreshed = 0, skipped = 0, shipDated = 0;
   for (const series of toRefresh) {
     try {
       const { inserted, total } = await refreshSeriesIssuesFromCV(series.id);
       if (inserted > 0) logger.info('week-refresh', `${series.name}: +${inserted} new issues (${total} total on CV)`);
+      for (const c of weekData) {
+        if (!c.issue || !/^\d{4}-\d{2}-\d{2}$/.test(c.shipdate || '')) continue;
+        if (String(c.comicid) !== String(series.id) && nameKey(c.series) !== nameKey(series.name)) continue;
+        shipDated += shipDate.run(c.shipdate, series.id, numKey(c.issue)).changes;
+      }
       refreshed++;
       await new Promise(r => setTimeout(r, 700)); // respect CV rate limit
     } catch (e) {
@@ -14399,7 +14417,7 @@ async function refreshCurrentWeekMonitoredSeries() {
     }
   }
 
-  logger.info('week-refresh', `Done — ${refreshed} refreshed, ${skipped} failed`);
+  logger.info('week-refresh', `Done — ${refreshed} refreshed, ${skipped} failed${shipDated ? `, ${shipDated} undated issue(s) given the weekly list's ship date` : ''}`);
   return { refreshed, skipped, series: toRefresh.map(s => s.name) };
 }
 

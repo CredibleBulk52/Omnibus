@@ -1,5 +1,9 @@
 'use strict';
 const {randomUUID}=require('node:crypto');
+// An issue's release date for My Pulls and Home's Recently Released (2026-11-18): Comic Vine's store date,
+// else its cover date, else, for a downloaded issue Comic Vine has not dated yet, the day it was listed
+// (new issues often appear on Comic Vine on release day with no dates; they never showed before).
+const RELEASE_DATE_SQL="COALESCE(mi.store_date, mi.release_date, CASE WHEN mi.date_processed IS NOT NULL THEN date(mi.date_added) END)";
 function initializePullSchema(db){
  const columns=db.prepare('PRAGMA table_info(collections)').all();
  for(const [name,type] of [['purpose','TEXT'],['card_description','TEXT']])if(!columns.some(c=>c.name===name))db.exec(`ALTER TABLE collections ADD COLUMN ${name} ${type}`);
@@ -18,13 +22,13 @@ function createPullService(db){
  if(id){const s=series(id);if(!s){const e=new Error('Series not found');e.status=404;throw e;}const m=db.prepare('SELECT status FROM monitored_series WHERE directory=?').all(s.path);collecting=m.some(r=>r.status==='active');}
  return {box,seriesIds:ids,pulled:id?ids.includes(id):false,collecting,favoritesCount:handled?0:favorites(user).length};};
  const migrate=(user,skip=false)=>transaction(()=>{if(!skip){const ids=favorites(user);if(ids.length){const b=ensure(user);const stmt=db.prepare('INSERT OR IGNORE INTO collection_series(collection_id,series_id,manually_added) VALUES (?,?,1)');ids.forEach(id=>stmt.run(b.id,id));}}db.prepare('INSERT INTO pull_preferences(user_id,favorites_handled) VALUES (?,1) ON CONFLICT(user_id) DO UPDATE SET favorites_handled=1').run(user);return state(user);});
- const releases=user=>db.prepare(`SELECT sb.*, ss.name AS seriesName, ss.id AS seriesId, COALESCE(mi.store_date,mi.release_date) AS effective_date, mi.issue_number AS mi_issue_number,
+ const releases=user=>db.prepare(`SELECT sb.*, ss.name AS seriesName, ss.id AS seriesId, ${RELEASE_DATE_SQL} AS effective_date, mi.issue_number AS mi_issue_number,
  COALESCE(rp.completed,0) AS completed
  FROM scanned_books sb JOIN scanned_series ss ON ss.id=sb.series_id
  JOIN monitored_issues mi ON mi.id=sb.monitored_issue_id
  LEFT JOIN read_progress rp ON rp.book_id=sb.id AND rp.user_id=?
  WHERE EXISTS(SELECT 1 FROM collection_series cs JOIN collections c ON c.id=cs.collection_id WHERE cs.series_id=ss.id AND c.owner_id=? AND c.purpose='pull')
- AND COALESCE(mi.store_date,mi.release_date) IS NOT NULL AND COALESCE(mi.store_date,mi.release_date)<=date('now')
+ AND ${RELEASE_DATE_SQL} IS NOT NULL AND ${RELEASE_DATE_SQL}<=date('now')
  ORDER BY effective_date DESC, sb.id LIMIT 30`).all(user,user);
  return {boxFor,add,remove,state,migrate,releases};
 }
@@ -40,4 +44,4 @@ function registerPullRoutes(app,{db,requireAuth,getSeriesRating}){
  app.post('/api/users/me/pull-box/skip-favorites',requireAuth,route(req=>service.migrate(req.user.sub,true)));
  return service;
 }
-module.exports={initializePullSchema,createPullService,registerPullRoutes};
+module.exports={initializePullSchema,createPullService,registerPullRoutes,RELEASE_DATE_SQL};
