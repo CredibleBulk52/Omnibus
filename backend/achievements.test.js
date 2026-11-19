@@ -17,7 +17,7 @@ function setup() {
     CREATE TABLE scanned_books (id TEXT PRIMARY KEY, series_id TEXT, issue_number TEXT, filename TEXT, is_special INTEGER, comicinfo TEXT, monitored_issue_id TEXT, cv_issue_id TEXT);
     CREATE TABLE book_ci_index (book_id TEXT, volume_year INTEGER, cv_issue_id TEXT);
     CREATE TABLE monitored_series (id TEXT PRIMARY KEY, series_type TEXT);
-    CREATE TABLE monitored_issues (id TEXT PRIMARY KEY, store_date TEXT, release_date TEXT);
+    CREATE TABLE monitored_issues (id TEXT PRIMARY KEY, store_date TEXT, release_date TEXT, date_added TEXT, date_processed TEXT);
     CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT, event_tier INTEGER);
     CREATE TABLE event_issues (id INTEGER PRIMARY KEY, event_id TEXT, tier TEXT, scanned_book_id TEXT);
     CREATE TABLE canon_runs (id INTEGER PRIMARY KEY, title TEXT, status TEXT);
@@ -171,7 +171,7 @@ test('achievements: near-duplicates separated (acclaimed from 5 runs, Modern Age
   const ids2 = ach.allDefs().map(d => d.id);
   assert.ok(ids2.includes('acclaimed_5') && !ids2.includes('acclaimed_1') && ids2.includes('acclaimed_25'));
   assert.ok(!ids2.includes('golden_oldie') && ids2.includes('happy_birthday'));
-  db.exec("UPDATE scanned_books SET comicinfo = '<ComicInfo><Year>2020</Year></ComicInfo>', monitored_issue_id = 'mi1' WHERE id = 'h1'; INSERT INTO monitored_issues VALUES ('mi1', '2021-11-10', NULL)");
+  db.exec("UPDATE scanned_books SET comicinfo = '<ComicInfo><Year>2020</Year></ComicInfo>', monitored_issue_id = 'mi1' WHERE id = 'h1'; INSERT INTO monitored_issues (id, store_date, release_date) VALUES ('mi1', '2021-11-10', NULL)");
   clock.set('2026-11-10T12:00:00Z');
   const got = ids(ach.recordFinish('a', 'h1'));
   assert.ok(got.includes('happy_birthday') && !got.includes('age_modern'), got.join());
@@ -289,4 +289,13 @@ test('achievements: finishing a series by kind (limited, ended ongoing, caught u
   assert.equal(ach.progressFor('b').get('long_12').have, 12);
   const quick = []; for (let i = 1; i <= 12; i++) quick.push(...ach.recordFinish('a', `p${i}`, { tz: 0 }));   // all on day 19
   assert.ok(ids(quick).includes('pace_week'));
+});
+
+test('achievements: an issue Comic Vine has not dated yet counts as a new release by the day it was listed (2026-11-19)', () => {
+  const { db, ach, clock } = setup();
+  db.exec(`UPDATE scanned_books SET monitored_issue_id = 'new9' WHERE id = 'h1';
+    INSERT INTO monitored_issues (id, store_date, release_date, date_added, date_processed) VALUES ('new9', NULL, NULL, '2026-11-10 08:00:20', '2026-11-10 09:12:00')`);
+  clock.set('2026-11-10T20:00:00Z');
+  assert.ok(ids(ach.recordFinish('a', 'h1')).includes('day_one'));   // Day One: read on its release day
+  assert.equal(ach.progressFor('a').get('new_releases_5').have, 1);
 });

@@ -16,6 +16,7 @@
 
 const { GENRES } = require('./genres');
 const { STORIES } = require('./achievementStories');
+const { RELEASE_DATE_SQL } = require('./pullBox');   // the shared release-date rule (2026-11-19)
 
 const NEEDS = ['app', 'db', 'requireAuth', 'logger', 'orderedBooks'];
 const DAY_MS = 864e5;
@@ -345,7 +346,7 @@ module.exports.createAchievements = function createAchievements(deps) {
       const rel = db.prepare(`SELECT sb.id, COALESCE(rp.completed, 0) AS done FROM scanned_books sb JOIN monitored_issues mi ON mi.id = sb.monitored_issue_id
         LEFT JOIN read_progress rp ON rp.book_id = sb.id AND rp.user_id = ?
         WHERE EXISTS (SELECT 1 FROM collection_series cs JOIN collections c ON c.id = cs.collection_id WHERE cs.series_id = sb.series_id AND c.owner_id = ? AND c.purpose = 'pull')
-          AND COALESCE(mi.store_date, mi.release_date) <= date('now') ORDER BY COALESCE(mi.store_date, mi.release_date) DESC LIMIT 30`).all(F.userId, F.userId);
+          AND ${RELEASE_DATE_SQL} <= date('now') ORDER BY ${RELEASE_DATE_SQL} DESC LIMIT 30`).all(F.userId, F.userId);
       return { have: rel.length && rel.every(r => r.done) && rel.some(r => F.read.has(String(r.id))) ? 1 : 0, need: 1 };
     } });
   const since = (table, where, ...args) => (hasTable(table) ? db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get(...args).n : 0);
@@ -451,10 +452,12 @@ module.exports.createAchievements = function createAchievements(deps) {
     name: GENRE_NAMES[g] || `${g} Fan`, desc: `Read ${genreNeed(g)} issues of ${g} series.`, check: F => ({ have: genreCount(F, g), need: genreNeed(g) }) }));
 
   // Habits
+  // Release dates use the shared rule (pullBox.RELEASE_DATE_SQL, 2026-11-19): a downloaded issue
+  // Comic Vine has not dated yet goes by the day it was listed, as on Home and My Pulls.
   const releaseDays = F => {
     if (!hasTable('monitored_issues')) return [];
     const out = [];
-    const stmt = db.prepare('SELECT COALESCE(store_date, release_date) AS d FROM monitored_issues WHERE id = ?');
+    const stmt = db.prepare(`SELECT ${RELEASE_DATE_SQL} AS d FROM monitored_issues mi WHERE mi.id = ?`);
     for (const b of F.books.values()) {
       if (!b.monitored_issue_id) continue;
       const d = String(stmt.get(b.monitored_issue_id)?.d || '').slice(0, 10);

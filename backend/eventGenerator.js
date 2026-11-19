@@ -1,4 +1,5 @@
 'use strict';
+const { nameKey } = require('./names');   // the shared name rule (2026-11-19)
 // ─── Timeline event generation (Events: + New event › Generate) ─────────────
 // Moved out of server.js unchanged (2026-11-10, server.js split): the generator's prompt
 // rules and reply schema, Comic Vine id enrichment of generated issues (enrichWithCVIds),
@@ -69,7 +70,7 @@ async function enrichWithCVIds(issues, _cvApiKey, arcIssues = [], known = new Ma
   const arcMap = new Map();
   for (const ai of arcIssues) {
     if (!ai.id || !ai.issue_number) continue;
-    const volName = (ai.volume?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const volName = nameKey(ai.volume?.name);
     // Canonical form preserves Marvel suffixes (8AU vs 8) so the lookup
     // distinguishes tie-in issues from their numeric base.
     const normNum = IN.normIssueNumber(ai.issue_number) || '0';
@@ -100,7 +101,7 @@ async function enrichWithCVIds(issues, _cvApiKey, arcIssues = [], known = new Ma
       }
       // Step 0: try arc lookup table first — exact match, no API call needed
       if (arcMap.size > 0) {
-        const normSeries = issue.series_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normSeries = nameKey(issue.series_name);
         // Match the canonical form used to populate arcMap above.
         const normNum = IN.normIssueNumber(issue.issue_number) || '0';
         const arcHit = arcMap.get(`${normSeries}||${normNum}`)

@@ -3,14 +3,10 @@
 // names, and the import folder parser whose patterns had lost their backslashes.
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const { publicationHint } = require('./metadata/candidate');
 const { yearlyTag, annualNameFits } = require('./annualNames');
 
-const source = fs.readFileSync(path.join(__dirname, 'server.js'), 'utf8');
-const start = source.indexOf('function folderTitleYear'), end = source.indexOf('/** String similarity', start);
-const { folderTitleYear, parseFolderName } = new Function(source.slice(start, end) + '\nreturn { folderTitleYear, parseFolderName };')();
+const { folderTitleYear, parseFolderName } = require('./names');   // moved out of server.js 2026-11-19
 const quick = (fn, ms = 200) => { const t = Date.now(); fn(); assert.ok(Date.now() - t < ms, `took ${Date.now() - t} ms`); };
 
 test('import folder names give their year again', () => {

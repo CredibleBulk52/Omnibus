@@ -37,6 +37,7 @@ function fixture(t, { existing = true, reclaim = false, filename = 'Example 002.
     execFileAsync: async () => { calls.push('thumbnail'); await thumbnail({db,file}); return {stdout:Buffer.from('image')}; }, THUMB_CACHE_DIR: root,
     readArchiveMember: async () => { calls.push('thumbnail'); await thumbnail({db,file}); return Buffer.from('image'); },
     coverThumb: require('../coverThumb').coverThumb,   // not an image here: kept as it was
+    nameKey: require('../names').nameKey,   // the shared name rule (names.js, 2026-11-19)
   };
   const api = new Function(...Object.keys(deps), scannerCode + '\nreturn {makeScanStmts,scanSeriesDir,warmScannedThumbnail};')(...Object.values(deps));
   const scan = () => { const stmts=api.makeScanStmts(); return api.scanSeriesDir(dir,'library',stmts.upsertSeries,stmts.upsertBook); };

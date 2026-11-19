@@ -1,5 +1,7 @@
 require('dotenv').config();
 const authSecurity = require('./authSecurity');
+// Name and folder helpers (names.js, 2026-11-19): nameKey is the shared name rule.
+const { nameKey, folderTitleYear, parseFolderName, nameSimilarity } = require('./names');
 const readerSecurity = require('./readerSecurity');
 const JWT_SECRET = authSecurity.validateSecret(process.env.JWT_SECRET);
 const express = require('express');
@@ -1631,8 +1633,8 @@ db.exec(`
   const series = db.prepare('SELECT id, name, publisher, year, series_status FROM monitored_series').all();
   const groups = new Map(); // `normName||normPub` → series[]
   for (const s of series) {
-    const normName = (s.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const normPub  = (s.publisher || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normName = nameKey(s.name);
+    const normPub  = nameKey(s.publisher);
     const k = `${normName}||${normPub}`;
     if (!groups.has(k)) groups.set(k, []);
     groups.get(k).push(s);
@@ -2915,7 +2917,7 @@ async function runEventReconcile(scanChanged = true, { strict = false } = {}) {
       // When multiple candidates pass the name+year filter, pick the one CLOSEST to volume_year
       // rather than just the first — prevents GL (1990) beating GL (2004) for an IC event issue.
       if (!book) {
-        const normName = ei.series_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normName = nameKey(ei.series_name);
         const eiYear = ei.volume_year ? parseInt(ei.volume_year) : null;
         const candidates = db.prepare(`
           SELECT sb.id, sb.issue_number, sb.comicinfo, ss.name as sname, ss.year as syear FROM scanned_books sb
@@ -2928,7 +2930,7 @@ async function runEventReconcile(scanChanged = true, { strict = false } = {}) {
         // Score each candidate: null = fails filter, otherwise distance from eiYear (lower = better)
         const scoreCand = (cand) => {
           if (!eiIsAnnual && /annual/i.test(cand.sname || '')) return null;
-          const cNorm = (cand.sname || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          const cNorm = nameKey(cand.sname);
           // Name match — word-set equality after stripping filler words.
           //
           // The strategy: split each name into its set of significant words
@@ -2978,7 +2980,7 @@ async function runEventReconcile(scanChanged = true, { strict = false } = {}) {
       // Year guard applied here too when volume_year is known.
       if (!book) {
         const words = ei.series_name.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-        const eiNorm = ei.series_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const eiNorm = nameKey(ei.series_name);
         // Preserve dot-decimals (648.1) and suffixes — parseInt would truncate
         // these to the base integer and cause the LIKE search to match the
         // wrong issue (#648 instead of #648.1, which are different stories).
@@ -3217,7 +3219,7 @@ async function scanSeriesDir(seriesDir, libraryId, upsertSeries, upsertBook, arr
   const specialSeriesAtDir  = monitoredAtDir.filter(isSpecialRow);
   // Pre-normalise sibling-special prefixes once per directory.
   const specialPrefixes = specialSeriesAtDir
-    .map(s => ({ id: s.id, prefix: s.name.toLowerCase().replace(/[^a-z0-9]/g, '') }))
+    .map(s => ({ id: s.id, prefix: nameKey(s.name) }))
     .filter(s => s.prefix.length > 0);
   // Series-level link: prefer parent; fall back to first row when a dir has
   // only specials and no monitored parent (rare but legal).
@@ -3292,7 +3294,7 @@ async function scanSeriesDir(seriesDir, libraryId, upsertSeries, upsertBook, arr
       // file ("Guardians of the Galaxy 001.cbz") would get matched against the
       // special's monitored_issues just because the special row happened to
       // come first from the directory query above.
-      const fileNormForRouting = filename.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const fileNormForRouting = nameKey(filename);
       let chosenMonitoredId = parentSeries ? parentSeries.id : null;
       let longestSpecialMatch = 0;
       let matchedSpecialId = null;
@@ -5524,13 +5526,13 @@ app.get('/api/comicvine/search', async (req, res) => {
     // Sort results so the most relevant volumes surface first.
     // When called from the weekly tab we have publisher + approximate year context,
     // which cuts through the noise of 50+ "Amazing Spider-Man" volumes.
-    const normPub = (publisher || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const normPub = nameKey(publisher);
     const targetYear = year ? parseInt(year, 10) : null;
     const currentYear = new Date().getFullYear();
 
     results = results.sort((a, b) => {
-      const pubA = (a.publisher?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const pubB = (b.publisher?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const pubA = nameKey(a.publisher?.name);
+      const pubB = nameKey(b.publisher?.name);
       const aYr  = parseInt(a.start_year, 10) || 0;
       const bYr  = parseInt(b.start_year, 10) || 0;
 
@@ -8085,8 +8087,8 @@ app.post('/api/monitor/series', requireDownloadAccess, async (req, res) => {
     // find it immediately by name+publisher without waiting for next startup.
     // User-confirmed entries (source='user') are not overwritten by auto seeds.
     try {
-      const normName = (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const normPub  = (publisher || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normName = nameKey(name);
+      const normPub  = nameKey(publisher);
       db.prepare(`
         INSERT INTO release_cv_map (norm_name, norm_publisher, cv_volume_id, source, updated_at)
         VALUES (?, ?, ?, 'auto', datetime('now'))
@@ -8686,10 +8688,10 @@ async function processMangaTorrents() {
       if (!volNum) { logger.info('manga-pp', `Could not extract volume number from: ${filename}`); continue; }
 
       // Find matching series by name similarity
-      const fileNorm = filename.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const fileNorm = nameKey(filename);
       let bestSeries = null, bestScore = 0, tied = false;
       for (const s of mangaSeries) {
-        const sNorm = s.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const sNorm = nameKey(s.name);
         if (fileNorm.includes(sNorm) || sNorm.split('').every((c, i) => fileNorm[i] === c)) {
           const score = sNorm.length;
           if (score > bestScore) { bestScore = score; bestSeries = s; tied = false; }
@@ -12573,14 +12575,14 @@ async function runRefreshDirectory(seriesId) {
   // backwards compat (older specials backfilled to is_special=1 at startup,
   // but the OR keeps us safe if the migration ever lags).
   if (series.is_special || series.parent_series_id) {
-    specialNamePrefix = series.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    specialNamePrefix = nameKey(series.name);
     logger.info('refresh-dir', `Special series — filtering files by name prefix`, { series: series.name, prefix: specialNamePrefix });
   }
 
   // The reverse, for a parent: files that belong to a special sharing this
   // folder ("Knight Terrors Catwoman 001" in Catwoman (2018)) are never matched
   // to the parent's issues by number. Same name-prefix rule the special uses.
-  const normFile = f => String(f || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normFile = f => nameKey(f);
   const ownNorm = normFile(series.name);
   const specialPrefixes = specialNamePrefix ? [] : db.prepare(
     `SELECT name FROM monitored_series WHERE directory = ? AND id != ? AND (is_special = 1 OR parent_series_id IS NOT NULL)`
@@ -12672,7 +12674,7 @@ async function runRefreshDirectory(seriesId) {
     if (specialPrefixes.length && belongsToSpecial(filename)) continue;  // a special's file, not ours
     // For special series, only match files whose normalised name starts with the series name
     if (specialNamePrefix) {
-      const fileNorm = filename.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const fileNorm = nameKey(filename);
       if (!fileNorm.startsWith(specialNamePrefix)) continue;
     }
     const extracted = extractIssueNumber(filename);
@@ -13158,54 +13160,7 @@ app.get('/api/monitor/series/:id/file-paths', requireAdmin, (req, res) => {   //
 
 // ─── Library Import ──────────────────────────────────────────────
 
-/** Parse "Series Name (2023)", "Series Name 2023", or "Series Name" from a folder name.
- *  Returns { name, year } */
-// "Action Comics (2016)" → { title: 'Action Comics', year: 2016 }; no "(YYYY)" at the end → the
-// whole name and null. Anchored at the end only, so it cannot backtrack on long names.
-function folderTitleYear(folderName) {
-  const s = String(folderName || '').trim();
-  const m = /\((\d{4})\)$/.exec(s);
-  return m ? { title: s.slice(0, m.index).trim(), year: parseInt(m[1]) } : { title: String(folderName || ''), year: null };
-}
-function parseFolderName(folderName) {
-  // Parenthesised year: "Action Comics (2016)". (The old patterns had lost their backslashes,
-  // so they never matched; found by CodeQL code scanning, 2026-11-12.)
-  const s = String(folderName || '').trim();
-  const { title, year } = folderTitleYear(s);
-  if (year) return { name: title, year };
-  // Bare trailing year: "Action Comics 2016" — only strip when a letter word precedes it
-  // so "2000 AD" is not incorrectly parsed as name="2000", year=NaN.
-  const mb = /\s(\d{4})$/.exec(s);
-  if (mb && /[a-zA-Z]/.test(s.slice(0, mb.index))) return { name: s.slice(0, mb.index).trim(), year: parseInt(mb[1]) };
-  return { name: s, year: null };
-}
-
-/** String similarity score 0-1.
- *  Uses word overlap with typo tolerance:
- *  exact word match = 1.0 credit, prefix match (≥4 chars) = 0.85 credit.
- *  This handles common folder-name typos like "Evile" matching "Evil". */
-function nameSimilarity(a, b) {
-  const tokenise = s => s.replace(/\b(?:[a-z]\.){2,}/gi, m => m.replace(/\./g, '')).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w.length > 1);
-  const wordsA = tokenise(a);
-  const wordsB = tokenise(b);
-  if (!wordsA.length || !wordsB.length) return 0;
-  const setBLen = new Set(wordsB);
-  let score = 0;
-  for (const wa of wordsA) {
-    if (setBLen.has(wa)) {
-      score += 1.0; // exact match
-    } else {
-      // Prefix/typo match: one word starts with the other (min 4 chars overlap)
-      const minLen = Math.min(wa.length, 4);
-      const fuzzy = wordsB.some(wb => {
-        const ol = Math.min(wa.length, wb.length);
-        return ol >= minLen && (wa.startsWith(wb.slice(0, ol)) || wb.startsWith(wa.slice(0, ol)));
-      });
-      if (fuzzy) score += 0.85;
-    }
-  }
-  return score / Math.max(wordsA.length, wordsB.length);
-}
+// folderTitleYear, parseFolderName and nameSimilarity: names.js (2026-11-19).
 
 // Known English-language publishers. Anything NOT on this list is treated as a
 // potential foreign / republisher and heavily demoted during import scoring.
@@ -13908,13 +13863,13 @@ async function refreshCurrentWeekMonitoredSeries() {
 
   // Match monitored series by CV volume ID (Walksoftly) OR by normalised series name (FreshComics)
   const weekCvIds = new Set(weekData.map(c => String(c.comicid)).filter(id => id && id !== 'undefined' && id !== 'null'));
-  const weekNames = new Set(weekData.map(c => (c.series || '').toLowerCase().replace(/[^a-z0-9]/g, '')).filter(Boolean));
+  const weekNames = new Set(weekData.map(c => nameKey(c.series)).filter(Boolean));
 
   // Find active monitored series whose CV ID or name is in this week's list
   const monitored = db.prepare(`SELECT id, name FROM monitored_series WHERE status = 'active'`).all();
   const toRefresh = monitored.filter(s => {
     if (weekCvIds.has(String(s.id))) return true;
-    const key = s.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const key = nameKey(s.name);
     return weekNames.has(key);
   });
 
@@ -13924,7 +13879,6 @@ async function refreshCurrentWeekMonitoredSeries() {
   // week's issues arrived with neither store nor cover date, so Home's Recently Released and My
   // Pulls, which go by date, never showed them once downloaded). The weekly list knows the ship
   // date: use it until Comic Vine has its own (the series sync replaces it when CV dates appear).
-  const nameKey = n => String(n || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const numKey = n => String(n || '').trim().replace(/^0+/, '');   // same as SQLite's ltrim(…, '0'): #0 and #0.5 match too
   const shipDate = db.prepare(`UPDATE monitored_issues SET store_date = ?
     WHERE series_id = ? AND store_date IS NULL AND release_date IS NULL AND ltrim(issue_number, '0') = ?`);
@@ -14666,7 +14620,7 @@ app.get('/api/weekly', async (req, res) => {
     const sourceNameMap = new Map(); // normalisedSourceName → series
     for (const s of monSeries) {
       if (s.source_name) {
-        const key = s.source_name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const key = nameKey(s.source_name);
         // Last write wins if two series somehow share a source name —
         // prefer the one with higher (more recent) start year.
         const existing = sourceNameMap.get(key);
@@ -14689,7 +14643,7 @@ app.get('/api/weekly', async (req, res) => {
     // The old single-value map silently dropped all but the last insert.
     const nameMap = new Map(); // normalisedName → series[]
     for (const s of monSeries) {
-      const key = s.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      const key = nameKey(s.name);
       if (!nameMap.has(key)) nameMap.set(key, []);
       nameMap.get(key).push(s);
     }
@@ -14711,7 +14665,7 @@ app.get('/api/weekly', async (req, res) => {
 
     // ── Annotate singles ──────────────────────────────────────────
     const annotated = singles.map(item => {
-      const key = (item.series || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const key = nameKey(item.series);
 
       // 1. CV volume ID match (Walksoftly provides comicid; FreshComics leaves it null)
       let mon = (item.comicid ? idMap[String(item.comicid)] : null) || null;
@@ -14720,7 +14674,7 @@ app.get('/api/weekly', async (req, res) => {
       //     seeded from all monitored_series at startup. This is the primary matching
       //     path for FreshComics data: unambiguous, no fuzzy matching required.
       if (!mon) {
-        const normPub = (item.publisher || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normPub = nameKey(item.publisher);
         const cvId = releaseCvMap.get(`${key}||${normPub}`);
         if (cvId) mon = idMap[cvId] || null;
       }
@@ -15124,26 +15078,26 @@ app.get('/api/debug/weekly-match', async (req, res) => {
   const { name, publisher, issue } = req.query;
   if (!name) return res.status(400).json({ error: 'name required' });
 
-  const key     = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const key     = nameKey(name);
   const issNum  = String(issue || '').replace(/^0+/, '') || '0';
 
   const monSeries = db.prepare('SELECT id, name, publisher, year, series_status, source_name FROM monitored_series').all();
 
   // Exact match candidates
   const exactCandidates = monSeries.filter(s =>
-    s.name.toLowerCase().replace(/[^a-z0-9]/g, '') === key
+    nameKey(s.name) === key
   );
 
   // Prefix match candidates
   const prefixCandidates = monSeries.filter(s => {
-    const sk = s.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const sk = nameKey(s.name);
     if (sk.length <= 5 || key.length <= 5) return false;
     return key.startsWith(sk) || sk.startsWith(key);
   });
 
   // Source name match
   const sourceMatch = monSeries.find(s =>
-    s.source_name && s.source_name.toLowerCase().replace(/[^a-z0-9]/g, '') === key
+    s.source_name && nameKey(s.source_name) === key
   );
 
   // Issue counts per candidate
@@ -16491,11 +16445,11 @@ app.post('/api/canon/eisner-import', requireAdmin, async (req, res) => {
 
           // Fall back to series name match
           if (!matchedRun) {
-            const normName = seriesName.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const normName = nameKey(seriesName);
             const runs = db.prepare('SELECT id, title, parent_series FROM canon_runs').all();
             for (const run of runs) {
-              const normTitle  = (run.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-              const normParent = (run.parent_series || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+              const normTitle  = nameKey(run.title);
+              const normParent = nameKey(run.parent_series);
               if (normTitle === normName || normParent === normName ||
                   normTitle.includes(normName) || normName.includes(normTitle)) {
                 matchedRun = run;
