@@ -13,7 +13,8 @@ const MODULES = { 'cbr.js': 'createCbr', 'eventGenerator.js': 'registerEventGene
   'shelfRoutes.js': 'registerShelfRoutes',   // step 3
   'covers.js': 'createCovers', 'archiveFiles.js': 'createArchiveFiles',   // step 4
   'libraryScanner.js': 'createLibraryScanner',   // step 5
-  'comicInfoFiles.js': 'createComicInfoFiles' };   // step 6a
+  'comicInfoFiles.js': 'createComicInfoFiles',   // step 6a
+  'postProcessing.js': 'createPostProcessing', 'postProcessScan.js': 'createPostProcessScan', 'arrivalRegistration.js': 'createRegisterArrival' };   // step 6b
 const needs = file => /const (?:missing|NEEDS) = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(__dirname, file), 'utf8'))[1]
   .split(',').map(s => s.trim().replace(/'/g, '')).filter(Boolean);
 

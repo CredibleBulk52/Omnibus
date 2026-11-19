@@ -3,7 +3,7 @@
 // 'downloaded' with retry_after) instead of failing every remaining file, and
 // a later pass counts files already processed as done, not unmatched.
 // Runs the real postProcessPack (downloads/packs.js since 2026-11-05) against node:sqlite,
-// with server.js's filenameYear / issueYearsOf.
+// with filenameYear / issueYearsOf (fileNaming.js).
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs'), os = require('os'), path = require('path');
@@ -11,9 +11,7 @@ const { DatabaseSync } = require('node:sqlite');
 const IN = require('../issueNumber');
 const { createPacks } = require('../downloads/packs');
 
-const src = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
-const slice = (start, end) => { const a = src.indexOf(start); assert.ok(a >= 0, start); return src.slice(a, src.indexOf(end, a)); };
-const { filenameYear, issueYearsOf } = new Function(`${slice('function filenameYear(', 'function buildDestFilename(')}\nreturn { filenameYear, issueYearsOf };`)();
+const { filenameYear, issueYearsOf } = require('../fileNaming');   // fileNaming.js since the server.js split (2026-11-19)
 
 function setup(t, files, rateLimitAt, seriesName = 'Showcase', { archive = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'packpause-'));

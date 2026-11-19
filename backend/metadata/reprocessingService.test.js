@@ -135,15 +135,13 @@ const {createRetagHandlers}=require('./retagRoutes');
 const {EventEmitter}=require('node:events');
 async function runtimeFixture(t,settings={}) {
  const f=await fixture(t,settings);let failTask=null;const providerCalls=[],tasks=[];
- const source=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
- const namingCode=source.slice(source.indexOf('function buildDestFilename('),source.indexOf('// Extract volume number from manga filenames.'));
- const naming=new Function('padIssueNumStr',namingCode+';return buildDestFilename;')(require('../issueNumber').padIssueNumStr);
+ const naming=require('../fileNaming').buildDestFilename;   // fileNaming.js since the server.js split (2026-11-19)
  const issue={id:'123',issue_number:'2',cover_date:'2020-04-01',volume:{id:'10',name:'Example'},person_credits:[{name:'Runtime writer',role:'writer'}]};
  const volume={id:'10',name:'Example',start_year:'2019',publisher:{name:'Publisher'}};
  const opts={pathPolicy:{style:process.platform==='win32'?'win32':'posix',caseSensitive:process.platform!=='win32'},db:f.db,access:f.access,stableIds:f.options.stableIds,bookIndex:f.options.bookIndex,getLibraryRoots:()=>[f.library],scratchParent:f.scratch,
   executables:f.options.executables,fetchIssue:async id=>{providerCalls.push(['issue',id]);return issue;},fetchVolume:async id=>{providerCalls.push(['volume',id]);return volume;},
   saveIssue:(id,value)=>providerCalls.push(['save',id]),buildDestFilename:naming,
-  buildMangaDestFilename:new Function(source.slice(source.indexOf('function buildMangaDestFilename('),source.indexOf('/** Patch locg_series_id'))+';return buildMangaDestFilename;')(),
+  buildMangaDestFilename:require('../fileNaming').buildMangaDestFilename,
   followups:Object.fromEntries(['cache_invalidation','events','canon','reading_lists'].map(name=>[name,async()=>{tasks.push(name);if(failTask===name)throw Error('runtime follow-up failed');}]))};
  const runtime=createRetagRuntime(opts),handlers=createRetagHandlers({getRuntime:()=>runtime,logger:{warn(){}}});
  return {...f,runtime,handlers,opts,issue,volume,providerCalls,tasks,setFailure:value=>failTask=value};
@@ -279,15 +277,14 @@ async function downloadFixture(t,settings={}){
  f.db.exec(`ALTER TABLE monitored_issues ADD COLUMN status TEXT;ALTER TABLE monitored_issues ADD COLUMN cv_data TEXT;ALTER TABLE monitored_issues ADD COLUMN date_processed TEXT;ALTER TABLE monitored_issues ADD COLUMN has_comicinfo INTEGER;ALTER TABLE monitored_issues ADD COLUMN last_retag_cv_hash TEXT;`);
  f.db.prepare('INSERT INTO libraries VALUES(?,?)').run('lib',f.library);
  f.db.transaction=fn=>(...args)=>{f.db.exec('SAVEPOINT fixture_reclaim');try{const result=fn(...args);f.db.exec('RELEASE fixture_reclaim');return result;}catch(e){f.db.exec('ROLLBACK TO fixture_reclaim; RELEASE fixture_reclaim');throw e;}};
- const server=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
  // The scanner's upsert statements (libraryScanner.js since the server.js split, 2026-11-19).
  const scanner=require('../libraryScanner'),scanDeps={db:f.db,BOOK_UPSERT:require('./scannerState').BOOK_UPSERT,app:new Proxy({},{get:()=>()=>{}}),metadataMaintenance:{enqueue(){}}};
  for(const k of scanner.NEEDS)if(scanDeps[k]===undefined)scanDeps[k]=()=>{};
  const {makeScanStmts}=scanner.createLibraryScanner(scanDeps);
- const register=server.slice(server.indexOf('  registerArrival: ({connection'),server.indexOf('  fetchVolume: async id =>',server.indexOf('const metadataRuntime =')));
  const parseComicInfo=xml=>{const ci=require('./evidence').parseComicInfoEvidence(xml);return {number:ci.fields.number?.[0],title:ci.fields.title?.[0]};};
  const maintenance=require('./maintenance').createMetadataMaintenance({db:f.db,runtime:{},now:()=>Date.UTC(2020,3,2),logger:{warn(){}}});
- const registerArrival=new Function('path','stableIds','readSeriesJson','parseComicInfo','makeScanStmts','metadataMaintenance','return ({'+register+'}).registerArrival;')(path,f.options.stableIds,()=>null,parseComicInfo,makeScanStmts,maintenance);
+ // arrivalRegistration.js since the server.js split (2026-11-19).
+ const registerArrival=require('../arrivalRegistration').createRegisterArrival({makeScanStmts,metadataMaintenance:maintenance,parseComicInfo,readSeriesJson:()=>null,stableIds:f.options.stableIds});
  const runtime=createRetagRuntime({...f.opts,registerArrival});return {...f,runtime,incoming,registerArrival,maintenance};
 }
 for(const rar of [false,true])test(`download arrival shares preservation, atomic stable registration and conversion (${rar?'RAR':'ZIP'})`,real,async t=>{
@@ -351,8 +348,10 @@ test('unmonitored scanner candidate can initialize identity, but ambiguous candi
 test('actual downloader handler publishes through runtime and retains ambiguous sources',real,async t=>{
  const f=await downloadFixture(t,{rar:true,sourceXml:''});
 
- const source=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8'),code=source.slice(source.indexOf('async function postProcess('),source.indexOf('// ─── Existing-book reprocessing',source.indexOf('async function postProcess(')));
- let scans=0;const postProcess=new Function('fs','path','os','crypto','db','metadataRuntime','logger','invalidateDirectoryExistsCache','createSeriesJsonIfMissing','schedulePostProcessScan',code+';return postProcess;')(fs,path,os,crypto,f.db,f.runtime,{info(){},warn(){},error(){}},()=>{},async()=>{},()=>scans++);
+ // postProcessing.js since the server.js split (2026-11-19); what this test does not use is a no-op.
+ let scans=0;const pp=require('../postProcessing'),ppDeps={db:f.db,metadataRuntime:f.runtime,logger:{info(){},warn(){},error(){},debug(){}},invalidateDirectoryExistsCache:()=>{},createSeriesJsonIfMissing:async()=>{},schedulePostProcessScan:()=>scans++,app:new Proxy({},{get:()=>()=>{}}),activeDownloads:new Map(),CV_WAIT_REASON:'Comic Vine hourly limit'};
+ for(const k of pp.NEEDS)if(ppDeps[k]===undefined)ppDeps[k]=()=>{};
+ const postProcess=pp.createPostProcessing(ppDeps).postProcess;
  const result=await postProcess({id:'123'},{id:'10',directory:f.library},f.incoming);assert.equal(result,true);assert.equal(scans,1);assert.equal(f.db.prepare("SELECT status FROM monitored_issues WHERE id='123'").get().status,'processed');
  // A folder holding several comics is a pack (2026-11-14): handed to pack processing, files untouched.
  f.db.exec("CREATE TABLE IF NOT EXISTS series_packs (id INTEGER PRIMARY KEY AUTOINCREMENT, series_id TEXT, file_path TEXT, status TEXT)");
@@ -384,9 +383,11 @@ test('actual manga poller delegates publication and retains unmatched or ambiguo
  for(const name of ['Example v002 (2020).cbz','Other v002 (2020).cbz','Example v099 (2020).cbz'])fs.writeFileSync(path.join(root,name),'fixture');
  const calls=[],state={running:false},series={id:'10',name:'Example',directory:path.join(root,'library')};let scans=0,duplicates=false;
  const db={prepare:sql=>({all:()=>sql.includes('monitored_series')?[series]:duplicates?[{id:'123',issue_number:'2'},{id:'124',issue_number:'2'}]:[{id:'123',issue_number:'2'}]})};
- const code=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');const start=code.indexOf('async function processMangaTorrents()'),end=code.indexOf('// Manual trigger endpoint',start);
  const runtime={status:()=>[],arrive:async request=>{calls.push(request);return {path:path.join(series.directory,'Example v002 (2020).cbz')};}};
- const run=new Function('fs','path','getSetting','logger','activeDownloads','db','IN','extractVolumeNumber','metadataRuntime','mangaTorrentState','schedulePostProcessScan','nameKey',code.slice(start,end)+';return processMangaTorrents;')(fs,path,key=>key==='torrent_completed_path'?root:root+'-ddl',{info(){},debug(){},warn(){},error(){}},new Map(),db,{normIssueNumber:n=>String(Number(n))},name=>name.match(/v0*(\d+)/)?.[1],runtime,state,()=>scans++,require('../names').nameKey);
+ // postProcessing.js since the server.js split (2026-11-19): the real poller, its own state.
+ const pp=require('../postProcessing'),ppDeps={getSetting:key=>key==='torrent_completed_path'?root:root+'-ddl',logger:{info(){},debug(){},warn(){},error(){}},activeDownloads:new Map(),db,metadataRuntime:runtime,schedulePostProcessScan:()=>scans++,app:new Proxy({},{get:()=>()=>{}}),CV_WAIT_REASON:'x'};
+ for(const k of pp.NEEDS)if(ppDeps[k]===undefined)ppDeps[k]=()=>{};
+ const run=pp.createPostProcessing(ppDeps).processMangaTorrents;void state;
  await run();assert.equal(calls.length,1);assert.equal(calls[0].profile,'manga');assert.equal(calls[0].matchedByFilename,true);assert.equal(scans,1);assert.equal(fs.readdirSync(root).length,3);
  duplicates=true;await run();assert.equal(calls.length,1);assert.equal(fs.readdirSync(root).length,3);
 });
@@ -496,8 +497,7 @@ test('arrival provider waits leave readers free and initial success persists thr
 // Phase 6.5: annual identification through the shared runtime.
 test('annual file identified as a year-named one-shot keeps its filename; Claude picks are labelled; duplicates are held',real,async t=>{
  const f=await fixture(t,{linked:false,sourceXml:'<ComicInfo><Notes>keep</Notes></ComicInfo>'});
- const serverSource=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
- const naming=new Function('padIssueNumStr',serverSource.slice(serverSource.indexOf('function buildDestFilename('),serverSource.indexOf('// Extract volume number from manga filenames.'))+';return buildDestFilename;')(require('../issueNumber').padIssueNumStr);
+ const naming=require('../fileNaming').buildDestFilename;
  f.opts={db:f.db,access:f.access,stableIds:f.options.stableIds,bookIndex:f.options.bookIndex,getLibraryRoots:()=>[f.library],scratchParent:f.scratch,executables:f.options.executables,
   saveIssue:()=>{},buildDestFilename:naming,followups:Object.fromEntries(['cache_invalidation','events','canon','reading_lists'].map(name=>[name,async()=>{}]))};
  f.issue={id:'123',volume:{id:'11'}};f.volume={publisher:{name:'Publisher'}};
