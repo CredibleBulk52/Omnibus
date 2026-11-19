@@ -295,9 +295,10 @@ export default function SeriesDetailComic() {
     }
   }, [tab, autoSearchPending]); // intentional: searchCV reads cvQuery from state
 
-  // Load annuals on first visit to annuals tab
+  // Load annuals when the series opens (2026-11-19; was on the first visit to the tab), so the tab
+  // header shows how many there are. One small query.
   useEffect(() => {
-    if (tab !== 'annuals' || annuals !== null) return undefined;
+    if (annuals !== null) return undefined;
     let current = true;   // an answer for a series no longer shown is dropped
     setAnnualsLoading(true);
     fetch(`/api/series/${id}/annuals`)
@@ -306,7 +307,7 @@ export default function SeriesDetailComic() {
       .catch(() => { if (current) setAnnuals({}); })
       .finally(() => { if (current) setAnnualsLoading(false); });
     return () => { current = false; };
-  }, [tab, id, annuals]);
+  }, [id, annuals]);
   const loadAnnualGaps = useCallback(() => fetch(`/api/series/${id}/annual-gaps`).then(r => r.json())
     .then(d => setAnnualGaps(d && Array.isArray(d.rows) ? d : { rows: [], volumes: [] }))
     .catch(() => setAnnualGaps({ rows: [], volumes: [] })), [id]);
@@ -341,9 +342,10 @@ export default function SeriesDetailComic() {
     setFindingAnnuals(false);
   };
 
-  // Load specials on first visit to specials tab
+  // Load specials when the series opens (2026-11-19; was on the first visit to the tab), so the
+  // tab header counts the special issues as well as the series on the shelf. One small query.
   useEffect(() => {
-    if (tab !== 'specials' || specials !== null) return undefined;
+    if (specials !== null) return undefined;
     let current = true;   // an answer for a series no longer shown is dropped
     setSpecialsLoading(true);
     fetch(`/api/series/${id}/specials`)
@@ -352,7 +354,7 @@ export default function SeriesDetailComic() {
       .catch(() => { if (current) setSpecials({}); })
       .finally(() => { if (current) setSpecialsLoading(false); });
     return () => { current = false; };
-  }, [tab, id, specials]);
+  }, [id, specials]);
 
   // ─── Komga tag helpers ──────────────────────────────────────────
   const saveTags = async () => {
