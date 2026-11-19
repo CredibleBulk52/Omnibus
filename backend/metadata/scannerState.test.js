@@ -4,10 +4,9 @@ const fs = require('node:fs'), path = require('node:path'), os = require('node:o
 const { DatabaseSync } = require('node:sqlite');
 const { createScannerState, BOOK_UPSERT } = require('./scannerState');
 const { initializeWorkJournal, createWorkJournal } = require('./workJournal');
-const source = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
-// Execute the actual scanner functions without booting the server, opening its
-// database, contacting providers or reading a user's comics.
-const scannerCode = source.slice(source.indexOf('function makeScanStmts()'), source.indexOf('\nasync function runLibraryScan('));
+// Run the actual scanner (libraryScanner.js since the server.js split, 2026-11-19) without booting
+// the server, opening its database, contacting providers or reading a user's comics.
+const { createLibraryScanner, NEEDS } = require('../libraryScanner');
 function fixture(t, { existing = true, reclaim = false, filename = 'Example 002.cbz', thumbs = true, extract = async () => '<ComicInfo><Web>https://comicvine.gamespot.com/issue/4000-123/</Web></ComicInfo>', thumbnail = async () => {} } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'omnibus-scanner-test-'));
   const dir = path.join(root, 'Series'), file = path.join(dir, filename);
@@ -39,7 +38,10 @@ function fixture(t, { existing = true, reclaim = false, filename = 'Example 002.
     coverThumb: require('../coverThumb').coverThumb,   // not an image here: kept as it was
     nameKey: require('../names').nameKey,   // the shared name rule (names.js, 2026-11-19)
   };
-  const api = new Function(...Object.keys(deps), scannerCode + '\nreturn {makeScanStmts,scanSeriesDir,warmScannedThumbnail};')(...Object.values(deps));
+  // What the scanner needs and these tests do not use: no-ops (routes, schedulers, caches).
+  const unused = { app: new Proxy({}, { get: () => () => {} }), metadataMaintenance: { enqueue() {} } };
+  for (const k of NEEDS) if (deps[k] === undefined) deps[k] = unused[k] || (() => {});
+  const api = createLibraryScanner(deps);
   const scan = () => { const stmts=api.makeScanStmts(); return api.scanSeriesDir(dir,'library',stmts.upsertSeries,stmts.upsertBook); };
   const book = () => db.prepare('SELECT * FROM scanned_books WHERE id=?').get('one');
   function journal() {

@@ -281,8 +281,10 @@ async function downloadFixture(t,settings={}){
  f.db.prepare('INSERT INTO libraries VALUES(?,?)').run('lib',f.library);
  f.db.transaction=fn=>(...args)=>{f.db.exec('SAVEPOINT fixture_reclaim');try{const result=fn(...args);f.db.exec('RELEASE fixture_reclaim');return result;}catch(e){f.db.exec('ROLLBACK TO fixture_reclaim; RELEASE fixture_reclaim');throw e;}};
  const server=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
- const scanStmts=server.slice(server.indexOf('function makeScanStmts()'),server.indexOf('// Keep archive readers'));
- const makeScanStmts=new Function('db','BOOK_UPSERT',scanStmts+';return makeScanStmts;')(f.db,require('./scannerState').BOOK_UPSERT);
+ // The scanner's upsert statements (libraryScanner.js since the server.js split, 2026-11-19).
+ const scanner=require('../libraryScanner'),scanDeps={db:f.db,BOOK_UPSERT:require('./scannerState').BOOK_UPSERT,app:new Proxy({},{get:()=>()=>{}}),metadataMaintenance:{enqueue(){}}};
+ for(const k of scanner.NEEDS)if(scanDeps[k]===undefined)scanDeps[k]=()=>{};
+ const {makeScanStmts}=scanner.createLibraryScanner(scanDeps);
  const register=server.slice(server.indexOf('  registerArrival: ({connection'),server.indexOf('  fetchVolume: async id =>',server.indexOf('const metadataRuntime =')));
  const parseComicInfo=xml=>{const ci=require('./evidence').parseComicInfoEvidence(xml);return {number:ci.fields.number?.[0],title:ci.fields.title?.[0]};};
  const maintenance=require('./maintenance').createMetadataMaintenance({db:f.db,runtime:{},now:()=>Date.UTC(2020,3,2),logger:{warn(){}}});
