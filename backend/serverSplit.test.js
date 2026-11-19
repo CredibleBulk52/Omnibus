@@ -8,7 +8,8 @@ const fs = require('fs'), path = require('path');
 
 // 2026-11-19: Home (home.js), the Series list (seriesList.js) and the series caches (seriesCaches.js).
 const MODULES = { 'cbr.js': 'createCbr', 'eventGenerator.js': 'registerEventGenerator', 'canonGenerator.js': 'registerCanonGenerator',
-  'home.js': 'registerHome', 'seriesList.js': 'registerSeriesList', 'seriesCaches.js': 'createSeriesCaches' };
+  'home.js': 'registerHome', 'seriesList.js': 'registerSeriesList', 'seriesCaches.js': 'createSeriesCaches',
+  'topShelf.js': 'registerTopShelf' };   // step 2, 2026-11-19
 const needs = file => /const missing = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(__dirname, file), 'utf8'))[1]
   .split(',').map(s => s.trim().replace(/'/g, '')).filter(Boolean);
 
