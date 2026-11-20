@@ -684,6 +684,7 @@ def cmd_write(args):
     rw = sqlite3.connect(DB_PATH, timeout=15, isolation_level=None)
     if not rows:
         if not args.dry_run:
+            sync_db(rw, st)
             mark_for_rescan(rw, st)
         return
     paused_before = None
@@ -718,7 +719,54 @@ def cmd_write(args):
             log(f"Metadata routine {'left paused (it was paused before)' if paused_before else 'resumed'}")
     log("Result: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     if not args.dry_run:
+        sync_db(rw, st)
         mark_for_rescan(rw, st)
+
+
+def sync_db(rw, st):
+    """Save in Omnibus's database what a library scan would save for each written book, so the scan
+    finds it unchanged and keeps its cover thumbnail (2026-11-20: the scan treated the 31k edited files
+    as replaced and rebuilt every thumbnail). Same fields the scanner's upsert replaces for a changed
+    file (scannerState.js BOOK_UPSERT): comicinfo, file_mtime (floor of mtimeMs), file_size,
+    last_scanned; issue number, title, Comic Vine ID and sort order stay as they are. Only for a book
+    whose file still holds the date we wrote and whose path is unchanged; the root ComicInfo.xml is read
+    from the file itself, the same member Omnibus's reader picks."""
+    rows = st.execute("SELECT book_id, path, store_date FROM written WHERE result = 'written'").fetchall()
+    synced = already = skipped = 0
+    for r in rows:
+        cur = rw.execute("SELECT path, comicinfo FROM scanned_books WHERE id = ?", (r["book_id"],)).fetchone()
+        if not cur or cur[0] != r["path"]:
+            skipped += 1
+            continue
+        if comicinfo_store_date(cur[1]):
+            already += 1
+            continue
+        try:
+            st_before = os.stat(r["path"])
+            with zipfile.ZipFile(r["path"]) as z:
+                ci = root_comicinfo(z)
+                xml = z.read(ci).decode("utf-8") if ci else None
+            st_after = os.stat(r["path"])
+        except Exception:
+            skipped += 1
+            continue
+        if not xml or comicinfo_store_date(xml) != r["store_date"] \
+                or (st_before.st_mtime_ns, st_before.st_size) != (st_after.st_mtime_ns, st_after.st_size):
+            skipped += 1
+            continue
+        rw.execute("UPDATE scanned_books SET comicinfo = ?, file_mtime = ?, file_size = ?, last_scanned = CURRENT_TIMESTAMP "
+                   "WHERE id = ? AND path = ?", (xml, st_after.st_mtime_ns // 1_000_000, st_after.st_size, r["book_id"], r["path"]))
+        synced += 1
+        if synced % 2000 == 0:
+            log(f"  saved {synced} books in Omnibus's database…")
+    log(f"Omnibus's database: {synced} books saved now, {already} already had the date, {skipped} left for a library scan")
+    return synced
+
+
+def cmd_sync_db(args):
+    rw = sqlite3.connect(DB_PATH, timeout=30, isolation_level=None)
+    sync_db(rw, state_db())
+    mark_for_rescan(rw, state_db())
 
 
 def mark_for_rescan(rw, st):
@@ -735,7 +783,7 @@ def mark_for_rescan(rw, st):
             "AND (comicinfo IS NULL OR instr(comicinfo, '<StoreDate>') = 0)", part))
     series.discard(None)
     if not series:
-        log("Omnibus has read every written file.")
+        log("Omnibus has every written book's new tags; no library scan needed for them.")
         return
     for sid in series:
         rw.execute("UPDATE scanned_series SET dir_mtime = -1 WHERE id = ?", (sid,))
@@ -814,6 +862,441 @@ def cmd_probe(args):
     print(f"\nMetron calls: {c.calls['metron']}")
 
 
+# ─── wiki-probe (2026-11-20) ─────────────────────────────────────────
+# Trial of the DC Database / Marvel Database wikis (Fandom, MediaWiki API) as a third date source for
+# older books: print the start of each page's wikitext so the date fields can be read.
+WIKIS = {"dc": "https://dc.fandom.com/api.php", "marvel": "https://marvel.fandom.com/api.php"}
+WIKI_UA = "Omnibus/1.0 (personal comic library app; one-time store-date trial)"
+
+
+def wiki_pages(wiki, titles):
+    """Wikitext of up to 50 pages in one request: {title: text or None}. Redirects followed."""
+    import requests
+    r = requests.get(WIKIS[wiki], timeout=30, headers={"User-Agent": WIKI_UA}, params={
+        "action": "query", "prop": "revisions", "rvprop": "content", "rvslots": "main", "redirects": 1,
+        "titles": "|".join(titles[:50]), "format": "json", "formatversion": 2, "maxlag": 5})
+    r.raise_for_status()
+    q = r.json().get("query", {})
+    out = {}
+    for p in q.get("pages", []):
+        revs = p.get("revisions") or []
+        out[p.get("title")] = revs[0]["slots"]["main"]["content"] if revs else None
+    return out, q.get("redirects", []), q.get("normalized", [])
+
+
+MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "may", "june", "july", "august",
+                                         "september", "october", "november", "december"], 1)}
+
+
+def wiki_field(text, name):
+    m = re.search(r"^\|\s*" + re.escape(name) + r"\s*=\s*(.*?)\s*$", text or "", re.M)
+    return m.group(1).strip() if m else ""
+
+
+def month_num(v):
+    v = str(v or "").strip().lower()
+    return int(v) if v.isdigit() and 1 <= int(v) <= 12 else MONTHS.get(v)
+
+
+def parse_long_date(v):
+    """'February 4, 1964' / '4 February 1964' / '1964-02-04' -> '1964-02-04' or None."""
+    v = re.sub(r"<[^>]*>|\[\[|\]\]|\{\{[^}]*\}\}", "", str(v or "")).strip()
+    m = re.fullmatch(r"([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})", v) or None
+    if m and month_num(m.group(1)):
+        return valid_date(f"{m.group(3)}-{month_num(m.group(1)):02d}-{int(m.group(2)):02d}")
+    m = re.fullmatch(r"(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})", v)
+    if m and month_num(m.group(2)):
+        return valid_date(f"{m.group(3)}-{month_num(m.group(2)):02d}-{int(m.group(1)):02d}")
+    return valid_date(v)
+
+
+def wiki_cover(text):
+    y, mo = wiki_field(text, "Year"), month_num(wiki_field(text, "Month"))
+    return (int(y), mo) if y.isdigit() and mo else None
+
+
+def book_cover(xml):
+    y = re.search(r"<Year>\s*(\d{4})\s*</Year>", xml or "")
+    mo = re.search(r"<Month>\s*(\d{1,2})\s*</Month>", xml or "")
+    return (int(y.group(1)), int(mo.group(1))) if y and mo else None
+
+
+def wiki_rendered_date(wiki, title):
+    """The page's own 'published on <date>' sentence (one request)."""
+    import requests
+    r = requests.get(WIKIS[wiki], timeout=30, headers={"User-Agent": WIKI_UA}, params={
+        "action": "parse", "page": title, "prop": "text", "format": "json", "formatversion": 2, "maxlag": 5})
+    if not r.ok:
+        return None
+    html = (r.json().get("parse") or {}).get("text") or ""
+    text = re.sub(r"<[^>]+>", "", html)
+    m = re.search(r"(?:published|released) on ([A-Z][a-z]+ \d{1,2}, \d{4})", text)
+    return parse_long_date(m.group(1)) if m else None
+
+
+def cmd_wiki_trial(args):
+    """Report only: how the wiki's dates compare with what collect found. Nothing is stored."""
+    db, st = app_db(), state_db()
+    found = {r["book_id"]: (r["store_date"], r["source"]) for r in st.execute("SELECT book_id, store_date, source FROM dates")}
+    pace = lambda: time.sleep(1.0)
+    requests_made = 0
+    for s in select_series(db, args.series, None):
+        books = [b for b in books_of(db, s["id"]) if b["comicinfo"] and not b["is_special"]
+                 and "annual" not in b["filename"].lower() and book_cover(b["comicinfo"])]
+        number = lambda b: norm_number(re.search(r"<Number>\s*([^<]*)</Number>", b["comicinfo"]).group(1)
+                                       if re.search(r"<Number>", b["comicinfo"]) else b["issue_number"])
+        print(f"\n### {s['name']} ({s['year']}): {len(books)} regular issues with a cover date")
+        if not books:
+            continue
+        # Find the volume with plain-numbered issues (not 87.1, 1/2 or lettered ones): up to 3 books, Vol 1-10 each.
+        plain = sorted((b for b in books if re.fullmatch(r"\d+", number(b))), key=lambda b: int(number(b)))
+        name = args.wiki_name or s["name"]
+        vol = None
+        for probe in (plain[len(plain) // 2:len(plain) // 2 + 1] + plain[:1] + plain[-1:])[:3] or books[:1]:
+            cands = [f"{name} Vol {n} {number(probe)}" for n in range(1, 11)]
+            pages, _, _ = wiki_pages(args.wiki, cands); requests_made += 1; pace()
+            for n in range(1, 11):
+                text = next((t for title, t in pages.items() if title and title.lower() == cands[n - 1].lower()), None)
+                if text and wiki_cover(text) == book_cover(probe["comicinfo"]):
+                    vol = n
+                    break
+            if vol:
+                break
+        if not vol:
+            print(f"  no wiki volume of '{name}' matched by issue number and cover month; tried Vol 1-10")
+            continue
+        print(f"  wiki volume: {name} Vol {vol}")
+        rows = []
+        for i in range(0, len(books), 50):
+            part = books[i:i + 50]
+            titles = {f"{name} Vol {vol} {number(b)}": b for b in part}
+            pages, redirects, normalized = wiki_pages(args.wiki, list(titles)); requests_made += 1; pace()
+            alias = {x["to"].lower(): x["from"] for x in normalized + redirects}
+            for title, text in pages.items():
+                key = next((t for t in titles if t.lower() == (title or "").lower()), None) or alias.get((title or "").lower())
+                key = alias.get(key.lower(), key) if key else None
+                b = titles.get(key) if key else None
+                if not b or not text:
+                    continue
+                cover_ok = wiki_cover(text) == book_cover(b["comicinfo"])
+                release = parse_long_date(wiki_field(text, "ReleaseDate"))
+                day = wiki_field(text, "Day")
+                rows.append({"b": b, "title": title, "cover_ok": cover_ok, "release": release,
+                             "day": int(day) if day.isdigit() else None, "cover": wiki_cover(text)})
+        matched = [r for r in rows if r["cover_ok"]]
+        print(f"  pages found {len(rows)}; cover month matches the book {len(matched)}; with ReleaseDate {sum(1 for r in matched if r['release'])}; with Day {sum(1 for r in matched if r['day'])}")
+        if args.wiki == "dc":
+            sample = [r for r in matched if r["day"]][:args.rendered]
+            for r in sample:
+                r["release"] = wiki_rendered_date(args.wiki, r["title"]); requests_made += 1; pace()
+            offs = [(r["cover"][0] * 12 + r["cover"][1]) - (int(r["release"][:4]) * 12 + int(r["release"][5:7]))
+                    for r in sample if r["release"]]
+            print(f"  DC 'published on' read for {len(sample)} pages; months before the cover month: "
+                  + ", ".join(f"{k}: {offs.count(k)}" for k in sorted(set(offs))))
+        diffs, fill = [], 0
+        for r in matched:
+            if not r["release"]:
+                continue
+            have = found.get(r["b"]["id"])
+            if have and have[0]:
+                d = (date.fromisoformat(r["release"]) - date.fromisoformat(have[0])).days
+                diffs.append((d, r, have))
+            else:
+                fill += 1
+        if diffs:
+            ds = sorted(d for d, _, _ in diffs)
+            same_week = sum(1 for d in ds if abs(d) <= 3)
+            print(f"  compared with collect's dates: {len(ds)} books; wiki minus ours in days: min {ds[0]}, median {ds[len(ds)//2]}, max {ds[-1]}; within 3 days {same_week}")
+            for d, r, have in sorted(diffs, key=lambda x: -abs(x[0]))[:5]:
+                print(f"    {os.path.basename(r['b']['path'])}: wiki {r['release']} vs {have[1]} {have[0]} ({d:+d} days)")
+        print(f"  books without a date that the wiki would date: {fill}")
+        for r in [r for r in matched if r["release"] and not (found.get(r["b"]["id"]) or (None,))[0]][:3]:
+            print(f"    e.g. {os.path.basename(r['b']['path'])}: {r['release']} ({r['title']})")
+    print(f"\nWiki requests: {requests_made}")
+
+
+# ─── collect-wiki (2026-11-20) ───────────────────────────────────────
+# Third source for books neither Comic Vine nor Metron could date: the Marvel Database and DC Database
+# wikis (Fandom). Trial 2026-11-20: Marvel's ReleaseDate matched Comic Vine's store date exactly for
+# 13 of 16 books; DC's "published on" date was 0-2 days after Comic Vine's for 5 of 5 (a shipping
+# date, same week). User: wiki dates go into StoreDate like the others; their source stays recorded
+# here. Only books without a date; a book's wiki page is found from its own ComicInfo series name,
+# number and cover month (the page's cover month and year must equal the book's).
+WIKI_PUBLISHERS = [("marvel", re.compile(r"\bmarvel\b|\bepic\b|\bicon\b|\bmax comics\b|\bmalibu\b", re.I)),
+                   ("dc", re.compile(r"\bdc\b|\bvertigo\b|\bwildstorm\b|\bdc comics\b|\bmilestone\b|\bzuda\b", re.I))]
+
+
+def ci_value(xml, tag):
+    m = re.search(rf"<{tag}>\s*([^<]*?)\s*</{tag}>", xml or "")
+    return m.group(1).replace("&amp;", "&").strip() if m else ""
+
+
+def book_wiki(b):
+    pub = ci_value(b["comicinfo"], "Publisher") + " " + ci_value(b["comicinfo"], "Imprint")
+    for wiki, rx in WIKI_PUBLISHERS:
+        if rx.search(pub):
+            return wiki
+    path = b["path"].replace("\\", "/")
+    if "/Marvel Comics/" in path:
+        return "marvel"
+    if "/DC Comics/" in path or "/Vertigo/" in path:
+        return "dc"
+    return None
+
+
+class WikiClient:
+    """One request a second; a refusal or server error waits (Retry-After or a minute) and stops the run
+    after three in a row."""
+    def __init__(self):
+        self.last, self.fails, self.requests = 0.0, 0, 0
+
+    def _wait(self):
+        gap = self.last + 1.0 - time.time()
+        if gap > 0:
+            time.sleep(gap)
+        self.last = time.time()
+
+    def get(self, wiki, params):
+        import requests
+        while True:
+            self._wait()
+            self.requests += 1
+            try:
+                r = requests.get(WIKIS[wiki], timeout=30, headers={"User-Agent": WIKI_UA},
+                                 params={**params, "format": "json", "formatversion": 2, "maxlag": 5})
+            except Exception as e:
+                r, err = None, str(e)
+            if r is not None and r.ok and "error" not in (r.json() if r.headers.get("content-type", "").startswith("application/json") else {}):
+                self.fails = 0
+                return r.json()
+            self.fails += 1
+            wait = 60
+            if r is not None:
+                try:
+                    wait = max(5, min(int(r.headers.get("Retry-After", 60)), 600))
+                except ValueError:
+                    pass
+            log(f"  wiki: {'HTTP ' + str(r.status_code) if r is not None else err}; waiting {wait} s")
+            if self.fails >= 3:
+                raise RuntimeError("the wiki refused or failed three times in a row; run collect-wiki again later (progress is kept)")
+            time.sleep(wait)
+
+    def pages(self, wiki, titles):
+        d = self.get(wiki, {"action": "query", "prop": "revisions", "rvprop": "content", "rvslots": "main",
+                            "redirects": 1, "titles": "|".join(titles)})
+        q = d.get("query", {})
+        back = {}
+        for x in q.get("normalized", []) + q.get("redirects", []):
+            back[x["to"]] = back.get(x["from"], x["from"])
+        out = {}
+        for p in q.get("pages", []):
+            revs = p.get("revisions") or []
+            asked = back.get(p.get("title"), p.get("title"))
+            out[asked] = revs[0]["slots"]["main"]["content"] if revs else None
+        return out
+
+    def published_on(self, wiki, title):
+        d = self.get(wiki, {"action": "parse", "page": title, "prop": "text"})
+        text = re.sub(r"<[^>]+>", "", (d.get("parse") or {}).get("text") or "")
+        m = re.search(r"(?:published|released) on ([A-Z][a-z]+ \d{1,2}, \d{4})", text)
+        return parse_long_date(m.group(1)) if m else None
+
+
+def cmd_collect_wiki(args):
+    db, st = app_db(), state_db()
+    st.executescript("""CREATE TABLE IF NOT EXISTS wiki_tried (book_id TEXT PRIMARY KEY, wiki TEXT, result TEXT, at TEXT);
+                        CREATE TABLE IF NOT EXISTS wiki_volumes (wiki TEXT, name TEXT, cover_year INTEGER, vol INTEGER, PRIMARY KEY (wiki, name, cover_year)); -- cover_year: the ComicInfo Volume (start year)""")
+    tried = {r[0] for r in st.execute("SELECT book_id FROM wiki_tried")}
+    rows = st.execute("SELECT book_id FROM dates WHERE store_date IS NULL").fetchall()
+    ids = [r[0] for r in rows if r[0] not in tried]
+    books = []
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        books += db.execute(f"""SELECT b.id, b.series_id, b.path, b.filename, b.issue_number, b.comicinfo, b.is_special
+            FROM scanned_books b WHERE b.id IN ({','.join('?' * len(part))})""", part).fetchall()
+    groups = {}
+    for b in books:
+        wiki = book_wiki(b)
+        if not wiki or (args.wiki and wiki != args.wiki) or not book_cover(b["comicinfo"]):
+            continue
+        name = ci_value(b["comicinfo"], "Series")
+        number = norm_number(ci_value(b["comicinfo"], "Number") or b["issue_number"])
+        if not name or not number:
+            continue
+        vy = ci_value(b["comicinfo"], "Volume")
+        # Without a Volume year, keep runs of the same name apart by their Omnibus series folder.
+        groups.setdefault((wiki, name, vy if vy.isdigit() else "", "" if vy.isdigit() else b["series_id"]), []).append((number, b))
+    keys = sorted(groups, key=lambda k: (k[0], k[1].lower(), k[2]))
+    if args.max_series:
+        keys = keys[:args.max_series]
+    log(f"{sum(len(groups[k]) for k in keys)} undated books in {len(keys)} series on the wikis "
+        f"({sum(1 for k in keys if k[0] == 'marvel')} Marvel, {sum(1 for k in keys if k[0] == 'dc')} DC)")
+    w = WikiClient()
+    dated = {"marvel": 0, "dc": 0}
+    now = lambda: datetime.now().isoformat(timespec="seconds")
+    try:
+        for n, key in enumerate(keys, 1):
+            wiki, name, volume_year, folder = key
+            items = groups[key]
+            vol = wiki_volume(w, st, wiki, name, volume_year or f"folder:{folder}", items)
+            found = 0
+            if vol:
+                for i in range(0, len(items), 50):
+                    part = items[i:i + 50]
+                    titles = {f"{name} Vol {vol} {num}": b for num, b in part}
+                    pages = w.pages(wiki, list(titles))
+                    for title, b in titles.items():
+                        text = next((t for k, t in pages.items() if k and k.lower() == title.lower()), None)
+                        d, why = None, "no page"
+                        if text:
+                            if wiki_cover(text) != book_cover(b["comicinfo"]):
+                                why = "cover month differs"
+                            elif wiki == "marvel":
+                                d = parse_long_date(wiki_field(text, "ReleaseDate"))
+                                why = "dated" if d else "no ReleaseDate"
+                            elif wiki_field(text, "Day").isdigit():
+                                d = w.published_on(wiki, title)
+                                why = "dated" if d else "no published-on date"
+                            else:
+                                why = "no Day"
+                        if d:
+                            st.execute("UPDATE dates SET store_date = ?, source = ?, checked_at = ? WHERE book_id = ?",
+                                       (d, f"{wiki}_wiki", now(), b["id"]))
+                            found += 1
+                        st.execute("INSERT OR REPLACE INTO wiki_tried VALUES (?,?,?,?)", (b["id"], wiki, why, now()))
+                    st.commit()
+            else:
+                for _, b in items:
+                    st.execute("INSERT OR REPLACE INTO wiki_tried VALUES (?,?,?,?)", (b["id"], wiki, "no volume", now()))
+                st.commit()
+            dated[wiki] += found
+            log(f"[{n}/{len(keys)}] {wiki}: {name} ({volume_year or '?'}): {len(items)} undated, "
+                f"{found} dated{'' if vol else ' (no wiki volume matched)'} | wiki requests {w.requests}")
+    except (RuntimeError, KeyboardInterrupt) as e:
+        log(f"Stopped: {e or 'interrupted'}; progress kept")
+    log(f"Dated from the wikis: Marvel {dated['marvel']}, DC {dated['dc']}. Wiki requests: {w.requests}")
+    log("Next: write (adds StoreDate to these books and saves them in Omnibus's database).")
+
+
+def wiki_volume(w, st, wiki, name, volume_year, items):
+    """The wiki volume number holding these books (one ComicInfo Series + Volume): tries Vol 1-10 for up to
+    three plain-numbered books; remembered per series name and start year."""
+    # Remembered per name and start year, or per name and Omnibus series folder when the year is unknown.
+    key_year = int(volume_year) if str(volume_year).isdigit() else 0
+    key_name = name if key_year else f"{name}|{volume_year}"
+    row = st.execute("SELECT vol FROM wiki_volumes WHERE wiki = ? AND name = ? AND cover_year = ?", (wiki, key_name, key_year)).fetchone()
+    if row:
+        return row[0]
+    plain = sorted((x for x in items if re.fullmatch(r"\d+", x[0])), key=lambda x: int(x[0]))
+    probes = (plain[len(plain) // 2:len(plain) // 2 + 1] + plain[:1] + plain[-1:])[:3] or items[:1]
+    vol = None
+    for num, b in probes:
+        cands = [f"{name} Vol {v} {num}" for v in range(1, 11)]
+        pages = w.pages(wiki, cands)
+        for v, title in enumerate(cands, 1):
+            text = next((t for k, t in pages.items() if k and k.lower() == title.lower()), None)
+            if text and wiki_cover(text) == book_cover(b["comicinfo"]):
+                vol = v
+                break
+        if vol:
+            break
+    st.execute("INSERT OR REPLACE INTO wiki_volumes VALUES (?,?,?,?)", (wiki, key_name, key_year, vol))
+    st.commit()
+    return vol
+
+
+def cmd_scan_check(args):
+    """Why a library scan is slow on written books: for a sample, whether the scanner (Node) would see the
+    file as unchanged, and whether its cover thumbnail exists (the scanner rebuilds a missing one)."""
+    st = state_db()
+    rows = st.execute("SELECT book_id FROM written WHERE result = 'written' ORDER BY random() LIMIT ?", (args.sample,)).fetchall()
+    ids = [r[0] for r in rows]
+    js = r"""
+const b = process.argv[1], ids = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const D = require(b + '/node_modules/better-sqlite3'), fs = require('fs'), path = require('path');
+const db = new D(process.env.DB_PATH, { readonly: true });
+const thumbs = path.join(path.dirname(process.env.DB_PATH), 'thumbcache');
+const has = id => ['.jpg', '.jpeg', '.png', '.webp', '.gif'].some(e => { try { return fs.statSync(path.join(thumbs, id + e)).size > 0; } catch { return false; } });
+const out = { unchanged: 0, changed: 0, missing_file: 0, thumb_present: 0, thumb_missing: 0, examples: [] };
+for (const id of ids) {
+  const r = db.prepare('SELECT path, file_mtime, file_size FROM scanned_books WHERE id = ?').get(id);
+  if (!r) continue;
+  let s; try { s = fs.statSync(r.path); } catch { out.missing_file++; continue; }
+  const same = Math.floor(s.mtimeMs) === r.file_mtime && s.size === r.file_size;
+  same ? out.unchanged++ : out.changed++;
+  if (!same && out.examples.length < 3) out.examples.push({ path: r.path, db: [r.file_mtime, r.file_size], file: [Math.floor(s.mtimeMs), s.size, s.mtimeMs] });
+  has(id) ? out.thumb_present++ : out.thumb_missing++;
+}
+console.log(JSON.stringify(out, null, 1));
+"""
+    backend = os.path.join(HERE, "..", "backend")
+    res = subprocess.run(["node", "-e", js, backend], input=json.dumps(ids), capture_output=True, text=True, timeout=300,
+                         env={**os.environ, "DB_PATH": DB_PATH})
+    print(res.stdout or res.stderr)
+
+
+def cmd_unmark_scan(args):
+    """Undo mark_for_rescan where it is no longer needed: for series folders holding written books that
+    Omnibus's database already has (sync-db), set scanned_series.dir_mtime back to the folder's real
+    modified time (Node's Math.floor(mtimeMs), as libraryScanner.js compares it) so a scan skips the
+    folder again, as before the write. Only while the folder's comic-file count still matches the
+    stored one; only folders marked -1 that hold written books, and only when none of their written
+    books still lacks the date in the database. 2026-11-20: the marks made the scan enter 2,293
+    folders and build every missing cover thumbnail (about half were missing)."""
+    st = state_db()
+    rw = sqlite3.connect(DB_PATH, timeout=30, isolation_level=None)
+    ids = [r[0] for r in st.execute("SELECT book_id FROM written WHERE result = 'written'")]
+    series, pending = set(), set()
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        for sid, has in rw.execute(f"SELECT series_id, instr(comicinfo, '<StoreDate>') > 0 FROM scanned_books "
+                                   f"WHERE id IN ({','.join('?' * len(part))})", part):
+            (series if has else pending).add(sid)
+    marked = {r[0]: r[1] for r in rw.execute("SELECT id, path FROM scanned_series WHERE dir_mtime = -1")}
+    todo = [(sid, marked[sid]) for sid in series - pending if sid in marked]
+    js = r"""
+const b = process.argv[1], items = JSON.parse(require('fs').readFileSync(0, 'utf8'));   // list on stdin (too long for arguments)
+const D = require(b + '/node_modules/better-sqlite3'), fs = require('fs');
+const db = new D(process.env.DB_PATH);
+const EXT = /\.(cbz|cbr|zip|rar|pdf)$/i;   // libraryScanner.js COMIC_EXTS (server.js)
+let reset = 0, skipped = 0;
+const upd = db.prepare('UPDATE scanned_series SET dir_mtime = ? WHERE id = ? AND dir_mtime = -1 AND dir_file_count = ?');
+for (const [id, dir] of items) {
+  try {
+    const st = fs.statSync(dir);
+    const count = fs.readdirSync(dir, { withFileTypes: true }).filter(e => e.isFile() && EXT.test(e.name)).length;
+    if (upd.run(Math.floor(st.mtimeMs), id, count).changes) reset++; else skipped++;
+  } catch { skipped++; }
+}
+console.log(JSON.stringify({ reset, skipped }));
+"""
+    backend = os.path.join(HERE, "..", "backend")
+    res = subprocess.run(["node", "-e", js, backend], input=json.dumps(todo), capture_output=True, text=True, timeout=600,
+                         env={**os.environ, "DB_PATH": DB_PATH})
+    out = (res.stdout or "").strip() or res.stderr.strip()
+    log(f"Series folders marked -1: {len(marked)}; holding written books, all saved: {len(todo)}; "
+        f"still waiting for a save: {len(pending & set(marked))}. Reset: {out}")
+
+
+def cmd_wiki_probe(args):
+    pages, redirects, normalized = wiki_pages(args.wiki, args.titles)
+    for n in normalized:
+        print(f"(normalized {n.get('from')} -> {n.get('to')})")
+    for rd in redirects:
+        print(f"(redirect {rd.get('from')} -> {rd.get('to')})")
+    for title, text in pages.items():
+        print(f"\n===== {title} =====")
+        if text is None:
+            print("(no such page)")
+            continue
+        lines = text.splitlines()
+        shown = [l for l in lines[:args.lines]]
+        print("\n".join(shown))
+        dates = [l for l in lines if re.search(r"(?i)date|day|month|year|publish|release|sale", l)][:30]
+        print("--- lines mentioning dates ---")
+        print("\n".join(dates))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -832,10 +1315,26 @@ def main():
     w.add_argument("--max-series", type=int)
     w.add_argument("--limit", type=int)
     w.add_argument("--dry-run", action="store_true")
+    sub.add_parser("sync-db")
+    sub.add_parser("unmark-scan")
+    sc = sub.add_parser("scan-check")
+    sc.add_argument("--sample", type=int, default=500)
     pr = sub.add_parser("probe")
     pr.add_argument("--series", action="append", required=True)
+    wp = sub.add_parser("wiki-probe")
+    wp.add_argument("titles", nargs="+")
+    wp.add_argument("--wiki", choices=sorted(WIKIS), default="dc")
+    wp.add_argument("--lines", type=int, default=40)
+    cw = sub.add_parser("collect-wiki")
+    cw.add_argument("--wiki", choices=sorted(WIKIS))
+    cw.add_argument("--max-series", type=int)
+    wt = sub.add_parser("wiki-trial")
+    wt.add_argument("--series", action="append", required=True)
+    wt.add_argument("--wiki", choices=sorted(WIKIS), required=True)
+    wt.add_argument("--wiki-name", help="the series name on the wiki when it differs from Omnibus's")
+    wt.add_argument("--rendered", type=int, default=30, help="DC: pages whose 'published on' sentence is read (one request each)")
     args = p.parse_args()
-    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe}[args.cmd](args)
+    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe, "sync-db": cmd_sync_db, "unmark-scan": cmd_unmark_scan, "scan-check": cmd_scan_check, "wiki-probe": cmd_wiki_probe, "wiki-trial": cmd_wiki_trial, "collect-wiki": cmd_collect_wiki}[args.cmd](args)
 
 
 if __name__ == "__main__":
