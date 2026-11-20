@@ -334,6 +334,10 @@ class MetronClient:
         self.last = 0.0
         self.off = False
         self.conn = conn   # the app database: one pace shared with the server (metron_pace)
+        # 2026-11-19: these two lines sat after the return in _slot (since 2026-11-13), so every Metron
+        # request failed with "no attribute 'session'" and the enricher used Comic Vine only.
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": self.USER_AGENT, "Accept": "application/json"})
 
     def _slot(self) -> float:
         """Seconds to wait before the next request, reserving the slot in metron_pace."""
@@ -355,8 +359,6 @@ class MetronClient:
                     pass
         self.last = at
         return at - now
-        self.session = requests.Session()
-        self.session.headers.update({"User-Agent": self.USER_AGENT, "Accept": "application/json"})
 
     def _get(self, url: str, params: Optional[Dict] = None) -> Optional[Any]:
         if self.off:
