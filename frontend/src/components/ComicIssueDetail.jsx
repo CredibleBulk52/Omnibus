@@ -5,6 +5,13 @@ import { issueText, uniqueCredits, issueSummary } from './issuePresentation';
 import '../comicIssueDetail.css';
 import { reportProblem } from './ReportProblem';
 
+// The on-sale day from ComicInfo <StoreDate> (YYYY-MM-DD), e.g. "May 23, 2023" (2026-11-19).
+function releasedOn(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return null;
+  const d = new Date(value + 'T00:00:00Z');
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
 function DiskLocation({ seriesId, bookId }) {
   const [loc, setLoc] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -160,7 +167,7 @@ export default function ComicIssueDetail({ book, seriesTitle, onClose, onRead, o
         <div className="cid-info">
           <div className="cid-kicker">{storyTitle === identity ? 'Issue details' : identity}{isSpecial && <span>Special</span>}</div>
           <h2 id="cid-title">{storyTitle}</h2>
-          <dl className="cid-facts">{[['Publisher',ci.publisher],['Year',ci.year],['Pages',ci.pageCount]].filter(([,v]) => v).map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{issueText(value)}</dd></div>)}</dl>
+          <dl className="cid-facts">{[['Released',releasedOn(ci.storeDate)],['Publisher',ci.publisher],['Year',ci.year],['Pages',ci.pageCount]].filter(([,v]) => v).map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{issueText(value)}</dd></div>)}</dl>
           {summary.story && <section className="cid-story"><h3>The story</h3><p>{summary.story}</p></section>}
           {credits.length > 0 && <section className="cid-credits"><h3>Credits</h3><dl>{credits.map(([role,value]) => <div key={role}><dt>{role}</dt><dd>{value}</dd></div>)}</dl></section>}
           {ci.genre && <p className="cid-genre">{issueText(ci.genre)}</p>}

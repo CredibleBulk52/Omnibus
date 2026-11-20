@@ -31,6 +31,8 @@ function parseComicInfo(xmlText) {
       genre:         get('Genre'),
       pageCount:     get('PageCount') ? parseInt(get('PageCount')) : null,
       web:           get('Web'),
+      // Omnibus's own <StoreDate> (on-sale day, YYYY-MM-DD; backend/storeDate.js), 2026-11-19.
+      storeDate:     require('./storeDate').storeDateFromComicInfo(xmlText),
     };
   } catch { return {}; }
 }
