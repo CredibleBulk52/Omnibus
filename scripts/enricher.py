@@ -314,7 +314,8 @@ class CvPool:
 # dates, cover) so Comic Vine's scarce single-issue allowance is not spent on two date lookups per
 # series. Comic Vine's one volume request still supplies the name, year, issue count, publisher,
 # description and characters, and wins where the two disagree (Omnibus matches by Comic Vine IDs).
-# Requests are spaced 3.5 s apart, under Metron's 20 a minute (its maintainer asked us to stay under).
+# Requests are spaced 3.5 s apart, under Metron's 20 a minute (its maintainer asked us to stay under),
+# and Metron's limit headers and Retry-After are obeyed (MetronClient._get).
 
 def _month_year(d: Optional[str]) -> Optional[str]:
     try:
@@ -334,6 +335,7 @@ class MetronClient:
         self.last = 0.0
         self.off = False
         self.conn = conn   # the app database: one pace shared with the server (metron_pace)
+        self._mem_limits: Dict = {}
         # 2026-11-19: these two lines sat after the return in _slot (since 2026-11-13), so every Metron
         # request failed with "no attribute 'session'" and the enricher used Comic Vine only.
         self.session = requests.Session()
@@ -360,6 +362,100 @@ class MetronClient:
         self.last = at
         return at - now
 
+    # ── Metron's rate limits (2026-11-20, after Metron's warning about 164 refused requests) ──
+    # Same rules as backend/metron.js, sharing the metron_limits row: Retry-After is obeyed exactly; a
+    # short refusal (the per-minute limit) is waited out and tried once more; a long one (the daily
+    # limit) blocks every Metron caller until it passes, with no retry; a used-up daily count
+    # (X-RateLimit-Sustained-Remaining 0) stops requests before Metron has to refuse; a used-up
+    # minute is waited out. metron.cloud/wiki/api/handling-rate-limits
+    SHORT_WAIT_S = 65
+    LIMITS_SQL = ("CREATE TABLE IF NOT EXISTS metron_limits (id INTEGER PRIMARY KEY CHECK (id = 1), "
+                  "burst_remaining INTEGER, burst_reset INTEGER, sustained_remaining INTEGER, sustained_reset INTEGER, "
+                  "blocked_until INTEGER NOT NULL DEFAULT 0, reason TEXT, updated_at INTEGER)")
+    COLS = ("burst_remaining", "burst_reset", "sustained_remaining", "sustained_reset", "blocked_until", "reason")
+
+    @staticmethod
+    def parse_limit_headers(headers) -> Dict:
+        out = {}
+        for scope in ("burst", "sustained"):
+            for part, key in (("remaining", f"{scope}_remaining"), ("reset", f"{scope}_reset")):
+                try:
+                    v = int(str(headers.get(f"X-RateLimit-{scope.capitalize()}-{part.capitalize()}")).strip())
+                except (TypeError, ValueError):
+                    continue
+                out[key] = v * 1000 if part == "reset" else v
+        return out
+
+    def limits(self) -> Dict:
+        if self.conn is None:
+            return dict(self._mem_limits)
+        try:
+            self.conn.execute(self.LIMITS_SQL)
+            row = self.conn.execute("SELECT " + ", ".join(self.COLS) + " FROM metron_limits WHERE id = 1").fetchone()
+            return dict(zip(self.COLS, row)) if row else {}
+        except Exception:
+            return dict(self._mem_limits)
+
+    def _write_limits(self, patch: Dict):
+        cur = {**{c: None for c in self.COLS}, "blocked_until": 0, **self.limits(), **patch}
+        self._mem_limits = cur
+        if self.conn is None:
+            return
+        try:
+            self.conn.execute(self.LIMITS_SQL)
+            self.conn.execute(
+                "INSERT INTO metron_limits (id, burst_remaining, burst_reset, sustained_remaining, sustained_reset, blocked_until, reason, updated_at) "
+                "VALUES (1, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET burst_remaining = excluded.burst_remaining, "
+                "burst_reset = excluded.burst_reset, sustained_remaining = excluded.sustained_remaining, "
+                "sustained_reset = excluded.sustained_reset, blocked_until = excluded.blocked_until, reason = excluded.reason, "
+                "updated_at = excluded.updated_at",
+                tuple(cur[c] for c in self.COLS) + (int(time.time() * 1000),))
+        except Exception:
+            pass
+
+    def blocked_until(self) -> int:
+        """When Metron may be asked again (ms), or 0 when it may be asked now."""
+        lim, now = self.limits(), time.time() * 1000
+        until = lim.get("blocked_until") or 0
+        if lim.get("sustained_remaining") == 0 and (lim.get("sustained_reset") or 0) > now:
+            until = max(until, lim["sustained_reset"])
+        return until if until > now else 0
+
+    def _respect(self) -> bool:
+        lim, now = self.limits(), time.time() * 1000
+        until = self.blocked_until()
+        if until > now + self.SHORT_WAIT_S * 1000:
+            if lim.get("sustained_remaining") == 0 and (lim.get("blocked_until") or 0) < until:
+                self._write_limits({"blocked_until": until, "reason": "Metron daily limit"})
+            return False
+        wait = max(until - now, 0)
+        if lim.get("burst_remaining") == 0 and (lim.get("burst_reset") or 0) > now:
+            wait = max(wait, lim["burst_reset"] - now)
+        if wait > 0:
+            time.sleep(min(wait / 1000, self.SHORT_WAIT_S) + 0.25)
+        return True
+
+    def _refused_for(self, headers) -> float:
+        try:
+            ra = int(str(headers.get("Retry-After")).strip())
+            if ra >= 0:
+                return max(1.0, float(ra))
+        except (TypeError, ValueError):
+            pass
+        c, now = self.parse_limit_headers(headers), time.time() * 1000
+        waits = [(c[f"{s}_reset"] - now) / 1000 for s in ("sustained", "burst")
+                 if c.get(f"{s}_remaining") == 0 and (c.get(f"{s}_reset") or 0) > now]
+        return max(waits) if waits else 3600.0
+
+    def _block(self, seconds: float, headers):
+        c = self.parse_limit_headers(headers)
+        scope = "daily" if c.get("sustained_remaining") == 0 else "per-minute" if c.get("burst_remaining") == 0 else "rate"
+        until = int(time.time() * 1000 + seconds * 1000)
+        self._write_limits({"blocked_until": max(until, self.limits().get("blocked_until") or 0), "reason": f"Metron {scope} limit"})
+        if seconds > self.SHORT_WAIT_S:
+            print(f"  [Metron] {scope} limit reached; no Metron requests until "
+                  f"{time.strftime('%Y-%m-%d %H:%M', time.gmtime(until / 1000))} UTC", file=sys.stderr)
+
     def _get(self, url: str, params: Optional[Dict] = None) -> Optional[Any]:
         if self.off:
             return None
@@ -367,7 +463,10 @@ class MetronClient:
             url = self.BASE_URL + url.lstrip("/")
         if not url.startswith(self.BASE_URL):
             return None
+        refused_once = False
         for attempt in range(3):
+            if not self._respect():
+                return None
             wait = self._slot()
             if wait > 0:
                 time.sleep(wait)
@@ -376,12 +475,20 @@ class MetronClient:
             except Exception as e:
                 print(f"  [Metron] Error: {e}", file=sys.stderr)
                 return None
+            counts = self.parse_limit_headers(r.headers)
+            if counts:
+                self._write_limits(counts)
             if r.status_code == 401 and self.scheme == "Bearer" and attempt == 0:
                 self.scheme = "Token"
                 continue
-            if r.status_code == 429 and attempt < 2:
-                time.sleep(min(int(r.headers.get("Retry-After") or 30), 90))
-                continue
+            if r.status_code == 429:
+                seconds = self._refused_for(r.headers)
+                self._block(seconds, r.headers)
+                if seconds <= self.SHORT_WAIT_S and not refused_once:
+                    refused_once = True
+                    time.sleep(seconds)
+                    continue
+                return None
             if r.status_code in (401, 403):
                 print("  [Metron] Token refused; using Comic Vine only", file=sys.stderr)
                 self.off = True

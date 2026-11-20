@@ -8,8 +8,30 @@
 //
 // Courtesy to Metron's maintainer (he asked us in Feb 2026): every address ends in "/" before its
 // query, paging follows the API's own "next" links, requests are spaced (Metron allows 20 a
-// minute; we stay well under), a 429 is waited out once, and results are cached for a day.
+// minute; we stay well under), Metron's limit headers and Retry-After are obeyed (see below), and
+// results are cached for a day.
 const BASE = 'https://metron.cloud/api/';
+const SHORT_WAIT_MS = 65 * 1000;   // longest refusal waited out in place (the per-minute window)
+const LIMITS_TABLE = `CREATE TABLE IF NOT EXISTS metron_limits (id INTEGER PRIMARY KEY CHECK (id = 1),
+  burst_remaining INTEGER, burst_reset INTEGER, sustained_remaining INTEGER, sustained_reset INTEGER,
+  blocked_until INTEGER NOT NULL DEFAULT 0, reason TEXT, updated_at INTEGER)`;
+const header = (headers, name) => {
+  if (!headers) return undefined;
+  if (typeof headers.get === 'function') { const v = headers.get(name); if (v != null) return v; }
+  const key = Object.keys(headers).find(k => k.toLowerCase() === name);
+  return key ? headers[key] : undefined;
+};
+// X-RateLimit-{Burst,Sustained}-{Remaining,Reset} → { burst_remaining, burst_reset (ms), … }; absent headers are left out.
+function parseLimitHeaders(headers) {
+  const out = {};
+  for (const scope of ['burst', 'sustained']) {
+    const rem = parseInt(header(headers, `x-ratelimit-${scope}-remaining`), 10);
+    const reset = parseInt(header(headers, `x-ratelimit-${scope}-reset`), 10);
+    if (Number.isFinite(rem)) out[`${scope}_remaining`] = rem;
+    if (Number.isFinite(reset)) out[`${scope}_reset`] = reset * 1000;
+  }
+  return out;
+}
 const SPACING_MS = 3500;
 const CACHE_MS = 24 * 60 * 60 * 1000;
 const MAX_PAGES = 12;
@@ -38,7 +60,8 @@ function createMetron({ axios, getToken, db, logger, sleep = ms => new Promise(r
   let last = 0;
   let scheme = 'Bearer';   // Metron's client sends a Bearer token; "Token" is tried once if refused
   if (db) db.exec(`CREATE TABLE IF NOT EXISTS metron_cache (key TEXT PRIMARY KEY, value TEXT NOT NULL, at INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS metron_pace (id INTEGER PRIMARY KEY CHECK (id = 1), last INTEGER NOT NULL)`);
+    CREATE TABLE IF NOT EXISTS metron_pace (id INTEGER PRIMARY KEY CHECK (id = 1), last INTEGER NOT NULL);
+    ${LIMITS_TABLE}`);
   // One pace for every Metron caller (2026-11-13): this process and the enricher (enricher.py
   // MetronClient) reserve their request time in metron_pace, so together they stay under the limit.
   const takeSlot = () => {
@@ -57,6 +80,72 @@ function createMetron({ axios, getToken, db, logger, sleep = ms => new Promise(r
   };
   const cachePut = (key, value) => { if (db) db.prepare('INSERT OR REPLACE INTO metron_cache (key, value, at) VALUES (?, ?, ?)').run(key, JSON.stringify(value), now()); };
 
+  // ─── Metron's rate limits (2026-11-20, after Metron's warning about 164 refused requests) ───
+  // Metron counts every request against a burst limit (20 a minute) and a sustained limit (5,000 a
+  // day, more for donors), reports both in X-RateLimit-{Burst,Sustained}-{Limit,Remaining,Reset}
+  // (Reset = Unix seconds) and answers 429 with Retry-After (seconds) when either is exceeded
+  // (metron.cloud/wiki/api/handling-rate-limits). The latest counts and any block are kept in
+  // metron_limits, shared with enricher.py and scripts/store_dates.py, so no caller sends a request
+  // Metron would refuse: a block or a used-up daily count stops all of them until the reset.
+  let warnedUntil = 0;
+  const readLimits = () => {
+    if (!db) return memLimits;
+    try { return db.prepare('SELECT * FROM metron_limits WHERE id = 1').get() || {}; } catch { return {}; }
+  };
+  let memLimits = {};
+  const writeLimits = patch => {
+    const next = { ...readLimits(), ...patch, id: 1, updated_at: now() };
+    if (!db) { memLimits = next; return; }
+    try {
+      db.prepare(`INSERT INTO metron_limits (id, burst_remaining, burst_reset, sustained_remaining, sustained_reset, blocked_until, reason, updated_at)
+        VALUES (1, @burst_remaining, @burst_reset, @sustained_remaining, @sustained_reset, @blocked_until, @reason, @updated_at)
+        ON CONFLICT(id) DO UPDATE SET burst_remaining = excluded.burst_remaining, burst_reset = excluded.burst_reset,
+          sustained_remaining = excluded.sustained_remaining, sustained_reset = excluded.sustained_reset,
+          blocked_until = excluded.blocked_until, reason = excluded.reason, updated_at = excluded.updated_at`)
+        .run({ burst_remaining: null, burst_reset: null, sustained_remaining: null, sustained_reset: null, blocked_until: 0, reason: null, ...next });
+    } catch {}
+  };
+  function noteLimits(headers) {
+    const counts = parseLimitHeaders(headers);
+    if (Object.keys(counts).length) writeLimits(counts);
+  }
+  function refusedFor(headers) {
+    const ra = parseInt(header(headers, 'retry-after'), 10);
+    if (Number.isFinite(ra) && ra >= 0) return Math.max(1000, ra * 1000);
+    const c = parseLimitHeaders(headers);
+    const resets = [['sustained', c.sustained_remaining, c.sustained_reset], ['burst', c.burst_remaining, c.burst_reset]]
+      .filter(([, rem, reset]) => rem === 0 && reset > now()).map(([, , reset]) => reset - now());
+    return resets.length ? Math.max(...resets) : 60 * 60 * 1000;   // no guidance: an hour
+  }
+  function block(ms, headers) {
+    const until = now() + ms;
+    const c = parseLimitHeaders(headers);
+    const scope = c.sustained_remaining === 0 ? 'daily' : c.burst_remaining === 0 ? 'per-minute' : 'rate';
+    writeLimits({ blocked_until: Math.max(until, readLimits().blocked_until || 0), reason: `Metron ${scope} limit` });
+    if (ms > SHORT_WAIT_MS && until > warnedUntil) {
+      warnedUntil = until;
+      logger?.warn?.('metron', `Metron's ${scope} limit reached; no Metron requests until ${new Date(until).toISOString()}`);
+    }
+  }
+  function limitedError() {
+    const until = readLimits().blocked_until || 0;
+    return Object.assign(new Error(`Metron's request limit is used up until ${new Date(until).toISOString()}`), { code: 'METRON_LIMITED', until });
+  }
+  // Before a request: nothing while blocked or while the daily count is used up; a used-up minute is waited out.
+  async function respectLimits() {
+    const l = readLimits(), t = now();
+    if ((l.blocked_until || 0) > t + SHORT_WAIT_MS) throw limitedError();
+    if (l.sustained_remaining === 0 && (l.sustained_reset || 0) > t) {
+      writeLimits({ blocked_until: l.sustained_reset, reason: 'Metron daily limit' });
+      throw limitedError();
+    }
+    let wait = Math.max((l.blocked_until || 0) - t, 0);
+    if (l.burst_remaining === 0 && (l.burst_reset || 0) > t) wait = Math.max(wait, l.burst_reset - t);
+    if (wait > 0) await sleep(Math.min(wait, SHORT_WAIT_MS) + 250);
+  }
+  // The latest counts and block, for status pages and callers that want to skip Metron early.
+  const limits = () => readLimits();
+
   // url: a path under /api/ ("reading_list/") or a "next" link from Metron itself.
   async function get(url, params) {
     const token = getToken();
@@ -66,16 +155,23 @@ function createMetron({ axios, getToken, db, logger, sleep = ms => new Promise(r
     if (!u.href.startsWith(BASE)) throw new Error(`not a Metron API address: ${u.href}`);
     if (!u.pathname.endsWith('/')) u.pathname += '/';
     for (const [k, v] of Object.entries(params || {})) if (v != null) u.searchParams.set(k, String(v));
+    let refusedOnce = false;
     for (let attempt = 0; attempt < 3; attempt++) {
+      await respectLimits();
       const wait = takeSlot();
       if (wait > 0) await sleep(wait);
       const r = await axios.get(u.href, { timeout: 20000, validateStatus: () => true,
         headers: { Authorization: `${scheme} ${token}`, Accept: 'application/json', 'User-Agent': USER_AGENT } });
+      noteLimits(r.headers);
       if (r.status === 401 && scheme === 'Bearer' && attempt === 0) { scheme = 'Token'; continue; }
-      if (r.status === 429 && attempt < 2) {
-        const s = Math.min(parseInt(r.headers?.['retry-after'], 10) || 30, 90);
-        logger?.warn?.('metron', `Rate limited; waiting ${s} s`);
-        await sleep(s * 1000); continue;
+      if (r.status === 429) {
+        // Metron's rule: wait exactly Retry-After. A short wait (the per-minute limit) is waited out
+        // and the request tried once more; a long one (the daily limit) blocks every Metron caller
+        // until it passes, with no retry.
+        const ms = refusedFor(r.headers);
+        block(ms, r.headers);
+        if (ms <= SHORT_WAIT_MS && !refusedOnce) { refusedOnce = true; await sleep(ms); continue; }
+        throw limitedError();
       }
       if (r.status === 401 || r.status === 403) throw Object.assign(new Error('Metron refused the API token'), { code: 'METRON_AUTH' });
       if (r.status >= 400) throw new Error(`Metron answered ${r.status}`);
@@ -203,7 +299,7 @@ function createMetron({ axios, getToken, db, logger, sleep = ms => new Promise(r
     return valid ? value : null;
   }
 
-  return { test, search, items, findEventList, get, seriesStatus, storeDateOfCvIssue };
+  return { test, search, items, findEventList, get, seriesStatus, storeDateOfCvIssue, limits };
 }
 
 // The prompt block: the list as a compact table, and how to use it.
@@ -218,4 +314,4 @@ How to use it: it is your starting list of candidates. Its issues are real and c
 With this list, one guide page is usually enough: read the guide page below for editorial judgement (what matters, what is skippable, lead-ins); search once more only if a need is still unmet.`;
 }
 
-module.exports = { createMetron, metronPrompt, issueKey, norm, nameForms, searchForms };
+module.exports = { parseLimitHeaders, LIMITS_TABLE, createMetron, metronPrompt, issueKey, norm, nameForms, searchForms };

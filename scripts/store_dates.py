@@ -45,7 +45,7 @@ import time
 import xml.etree.ElementTree as ET
 import zipfile
 import zlib
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", "/appdata/omnibus.db")
@@ -238,11 +238,13 @@ class Collector:
                 self.metron.conn = sqlite3.connect(DB_PATH, timeout=15, isolation_level=None)
             log(f"Sources: Metron {'on' if self.metron else 'off'}, Comic Vine {'on' if self.cv else 'off'}")
         self.retry_missing = args.retry_missing
-        # Metron allows 20 requests a minute and 5,000 a day (more for its donors). The script keeps to
-        # a daily budget (--metron-budget, default 3,500) so Omnibus keeps room for its own Metron use,
-        # and stops asking Metron for the rest of the run after two refusals in a row (2026-11-20: the
-        # first full run used its 5,000 overnight; each refused request then waited about 3 minutes).
+        # Metron allows 20 requests a minute and 5,000 a day (more for its donors). The script stops using
+        # Metron for the run when Metron's limit is in force, when its daily count left falls to
+        # --metron-reserve (default 1,500, kept for Omnibus), after its own --metron-budget (3,500 a
+        # day), or after two failed requests in a row. 2026-11-20: the first full run used Metron's
+        # 5,000 overnight and the old client kept retrying refused requests; Metron warned the account.
         self.metron_budget = getattr(args, "metron_budget", None) or 3500
+        self.metron_reserve = getattr(args, "metron_reserve", None) or 1500
         self.metron_fails = 0
         self.queue, self.found_by_id = [], 0
 
@@ -351,13 +353,25 @@ class Collector:
         return self.metron is not None and not self.metron.off
 
     def metron_used_today(self):
-        day = datetime.utcnow().strftime("%Y-%m-%d")
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         row = self.st.execute("SELECT calls FROM metron_usage WHERE day = ?", (day,)).fetchone()
         return day, (row["calls"] if row else 0)
 
     def mget(self, url, params=None):
         """One Metron request within the daily budget; None (and Metron off for the run) when refused."""
         if not self.metron_ok():
+            return None
+        # Metron's own counts (shared metron_limits, kept by enricher.py's MetronClient and the server):
+        # stop while Metron is blocked, and leave the last --metron-reserve daily requests to Omnibus.
+        lim = self.metron.limits()
+        if self.metron.blocked_until():
+            log("Metron: its limit is in force (shared with Omnibus); Comic Vine only for the rest of this run")
+            self.metron.off = True
+            return None
+        if lim.get("sustained_remaining") is not None and lim["sustained_remaining"] <= self.metron_reserve \
+                and (lim.get("sustained_reset") or 0) > time.time() * 1000:
+            log(f"Metron: {lim['sustained_remaining']} requests left today, kept for Omnibus; Comic Vine only for the rest of this run")
+            self.metron.off = True
             return None
         day, used = self.metron_used_today()
         if used >= self.metron_budget:
@@ -744,7 +758,7 @@ def write_one(db, r, dry_run):
 
 def cmd_probe(args):
     """What Metron's issue list holds for each series and how it matches the books (a few Metron calls)."""
-    c = Collector(argparse.Namespace(no_metron=False, no_cv=True, retry_missing=False, metron_budget=None))
+    c = Collector(argparse.Namespace(no_metron=False, no_cv=True, retry_missing=False, metron_budget=None, metron_reserve=None))
     if c.metron is None:
         log("No Metron token")
         return
@@ -787,6 +801,7 @@ def main():
     c.add_argument("--no-cv", action="store_true")
     c.add_argument("--retry-missing", action="store_true")
     c.add_argument("--metron-budget", type=int, help="Metron requests this script may use per UTC day (default 3500 of Metron's 5000)")
+    c.add_argument("--metron-reserve", type=int, help="stop using Metron when its daily count left falls to this (default 1500, kept for Omnibus)")
     r = sub.add_parser("report")
     r.add_argument("--csv")
     w = sub.add_parser("write")
