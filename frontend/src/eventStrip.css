@@ -1,0 +1,30 @@
+/* Timeline event strip on issue covers (components/EventStrip.jsx, 2026-11-19). */
+/* Above the hover overlay so it stays clickable; below the ⋮ menu (z-index 40) and the progress bar sits on its bottom edge. */
+.issue-event-strip {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
+  display: flex; flex-direction: column-reverse;
+  background: rgba(0, 0, 0, 0.82);
+  border-top: 1px solid color-mix(in srgb, var(--td-yellow) 55%, transparent);
+  padding: 2px 0 3px;
+}
+.ies-row { display: flex; align-items: center; min-width: 0; }
+.ies-link {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px;
+  padding: 1px 5px; background: none; border: 0; cursor: pointer; text-align: left;
+  font: 700 0.64rem/1.25 'DM Sans', system-ui, sans-serif; letter-spacing: 0.01em;
+  color: var(--td-yellow);
+}
+.ies-link:hover .ies-name, .ies-link:focus-visible .ies-name { text-decoration: underline; }
+.ies-link:focus-visible, .ies-more:focus-visible { outline: 2px solid var(--td-yellow); outline-offset: -2px; }
+.ies-mark { flex: none; font-size: 0.6rem; }
+.ies-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ies-more {
+  flex: none; margin-right: 4px; padding: 0 5px; cursor: pointer;
+  font: 800 0.6rem/1.4 'DM Sans', system-ui, sans-serif; color: #000;
+  background: var(--td-yellow); border: 0; border-radius: 3px;
+}
+/* The issue ⋮ sits bottom-right on the cover: lift it above the strip. */
+.issue-cover.has-event-strip .scm-toggle.scm-toggle--issue { bottom: 24px; }
+.issue-cover.has-event-strip .issue-event-strip.is-open ~ .scm-toggle.scm-toggle--issue { bottom: 40px; }
+/* The reading-progress bar stays visible on the strip's bottom edge. */
+.issue-cover.has-event-strip .issue-progress-bar { z-index: 5; }

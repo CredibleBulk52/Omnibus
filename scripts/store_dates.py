@@ -16,10 +16,12 @@ Run inside the Omnibus container (docker exec omnibus python3 /app/scripts/store
            because its allowance is larger. Calls share Omnibus's limits (cv_api_log / cv_windows in
            the background lane, metron_pace). Progress is kept: run it again to continue.
   report   What collect found: dates per source, disagreements, books without a date. --csv FILE.
+  probe    Show what Metron's issue list holds for --series and how it matches the books.
   write    Add <StoreDate> to each book collect dated. Pauses the metadata routine and restores it
-           afterwards. Only the ComicInfo.xml member changes; every other member keeps its bytes and
-           order (checked before the file is swapped in). A file that changed since it was read is
-           left alone. --dry-run builds and checks each new archive in /tmp and keeps the original.
+           afterwards. Edits each archive in place: a new ComicInfo.xml and index are added at the end
+           of the file and nothing before is changed; if the check afterwards fails, the file is cut
+           back to its old length (restoring it exactly). A file that changed since it was read is left
+           alone. --dry-run makes the same edit on a copy in /tmp and keeps the original.
            Run a library scan afterwards so Omnibus reads the new tags.
 
 Options for collect and write: --series ID|CV volume ID|"Name"|"Name (Year)" (repeatable),
@@ -35,12 +37,14 @@ import os
 import re
 import shutil
 import sqlite3
+import struct
 import subprocess
 import sys
 import tempfile
 import time
 import xml.etree.ElementTree as ET
 import zipfile
+import zlib
 from datetime import date, datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -106,6 +110,7 @@ def state_db():
         PRIMARY KEY (book_id, source_a, source_b));
       CREATE TABLE IF NOT EXISTS metron_series (cv_volume_id TEXT PRIMARY KEY, metron_id INTEGER, checked_at TEXT);
       CREATE TABLE IF NOT EXISTS written (book_id TEXT PRIMARY KEY, path TEXT, store_date TEXT, result TEXT, at TEXT);
+      CREATE TABLE IF NOT EXISTS metron_usage (day TEXT PRIMARY KEY, calls INTEGER NOT NULL);
     """)
     return conn
 
@@ -233,6 +238,12 @@ class Collector:
                 self.metron.conn = sqlite3.connect(DB_PATH, timeout=15, isolation_level=None)
             log(f"Sources: Metron {'on' if self.metron else 'off'}, Comic Vine {'on' if self.cv else 'off'}")
         self.retry_missing = args.retry_missing
+        # Metron allows 20 requests a minute and 5,000 a day (more for its donors). The script keeps to
+        # a daily budget (--metron-budget, default 3,500) so Omnibus keeps room for its own Metron use,
+        # and stops asking Metron for the rest of the run after two refusals in a row (2026-11-20: the
+        # first full run used its 5,000 overnight; each refused request then waited about 3 minutes).
+        self.metron_budget = getattr(args, "metron_budget", None) or 3500
+        self.metron_fails = 0
         self.queue, self.found_by_id = [], 0
 
     def save(self, book, d, source):
@@ -276,7 +287,7 @@ class Collector:
         if not need or (self.cv is None and self.metron is None):
             return len(need), 0
         found = {}
-        if self.metron is not None and not self.metron.off and s["volume"]:
+        if self.metron_ok() and s["volume"]:
             found.update(self.from_metron(s, need))
         rest = [b for b in need if b["id"] not in found]
         if rest and self.cv is not None:
@@ -336,6 +347,36 @@ class Collector:
                 return dates
             offset += CV_PAGE
 
+    def metron_ok(self):
+        return self.metron is not None and not self.metron.off
+
+    def metron_used_today(self):
+        day = datetime.utcnow().strftime("%Y-%m-%d")
+        row = self.st.execute("SELECT calls FROM metron_usage WHERE day = ?", (day,)).fetchone()
+        return day, (row["calls"] if row else 0)
+
+    def mget(self, url, params=None):
+        """One Metron request within the daily budget; None (and Metron off for the run) when refused."""
+        if not self.metron_ok():
+            return None
+        day, used = self.metron_used_today()
+        if used >= self.metron_budget:
+            log(f"Metron: today's budget of {self.metron_budget} requests is used; Comic Vine only for the rest of this run")
+            self.metron.off = True
+            return None
+        self.st.execute("INSERT INTO metron_usage VALUES (?, 1) ON CONFLICT(day) DO UPDATE SET calls = calls + 1", (day,))
+        self.st.commit()
+        self.calls["metron"] += 1
+        data = self.metron._get(url, params)
+        if data is None:
+            self.metron_fails += 1
+            if self.metron_fails >= 2:
+                log("Metron: refused twice in a row (likely its daily limit); Comic Vine only for the rest of this run")
+                self.metron.off = True
+        else:
+            self.metron_fails = 0
+        return data
+
     def metron_series_id(self, s):
         row = self.st.execute("SELECT metron_id FROM metron_series WHERE cv_volume_id = ?", (s["volume"],)).fetchone()
         if row:
@@ -345,14 +386,12 @@ class Collector:
             r = self.db.execute("SELECT metron_series_id FROM monitored_series WHERE id = ?", (s["monitored"],)).fetchone()
             mid = r["metron_series_id"] if r and r["metron_series_id"] else None
         if not mid:
-            self.calls["metron"] += 1
-            found = self.metron._get("series/", {"cv_id": s["volume"]})
+            found = self.mget("series/", {"cv_id": s["volume"]})
             if found is None:
                 return None                                # failed: ask again next run, do not record
             hit = (found.get("results") or [None])[0]
             if hit and hit.get("id"):
-                self.calls["metron"] += 1
-                d = self.metron._get(f"series/{hit['id']}/")
+                d = self.mget(f"series/{hit['id']}/")
                 if d is None:
                     return None
                 mid = hit["id"] if str(d.get("cv_id")) == s["volume"] else None
@@ -365,8 +404,7 @@ class Collector:
             return {}
         items, url, params = [], "issue/", {"series_id": mid}
         while url:
-            self.calls["metron"] += 1
-            page = self.metron._get(url, params)
+            page = self.mget(url, params)
             if page is None:
                 return {}                                  # failed: Comic Vine covers this series
             items += page.get("results") or []
@@ -483,45 +521,130 @@ def add_store_date(xml, d):
     return new if len(hits) == 1 and hits[0].text == d else None
 
 
-def rebuild(src, dst, d):
-    """Copy src to dst with <StoreDate> added. Returns None on success, else the reason."""
-    with zipfile.ZipFile(src) as zin:
-        ci = root_comicinfo(zin)
+# In-place edit (user's choice, 2026-11-19): append a new ComicInfo.xml and a new central directory
+# at the end of the archive; nothing before the old end of file is changed, so cutting the file back
+# to its old length restores it exactly. Readers that use the central directory (Omnibus, Komga,
+# Kavita, 7-Zip, Python's zipfile) see the new ComicInfo.xml; the old one stays as a few KB of unused
+# bytes. A reader that walks the local headers front to back still sees the old one (no StoreDate).
+# Skipped: ZIP64 archives (over 4 GB or 65,535 members), multi-disk archives, anything unexpected.
+LOC_SIG, CEN_SIG, EOCD_SIG = b"PK\x03\x04", b"PK\x01\x02", b"PK\x05\x06"
+CEN = struct.Struct("<4sHHHHHHIIIHHHHHII")
+EOCD = struct.Struct("<4sHHHHIIH")
+LOC = struct.Struct("<4sHHHHHIIIHH")
+
+
+class Skip(Exception):
+    pass
+
+
+def read_layout(f, size):
+    """End record and central directory records of a plain (non-ZIP64, single-disk) ZIP."""
+    span = min(size, 65535 + EOCD.size)
+    f.seek(size - span)
+    tail = f.read(span)
+    i = tail.rfind(EOCD_SIG)
+    while i >= 0:
+        if i + EOCD.size <= len(tail):
+            sig, disk, cd_disk, n_disk, n, cd_size, cd_off, clen = EOCD.unpack_from(tail, i)
+            if i + EOCD.size + clen == len(tail):
+                eocd_at = size - span + i
+                break
+        i = tail.rfind(EOCD_SIG, 0, i)
+    else:
+        raise Skip("no ZIP end record")
+    comment = tail[i + EOCD.size:]
+    if disk or cd_disk or n_disk != n or n == 0xFFFF or 0xFFFFFFFF in (cd_size, cd_off):
+        raise Skip("ZIP64 or multi-disk archive")
+    if cd_off + cd_size != eocd_at or (eocd_at >= 20 and tail[i - 20:i - 16] == b"PK\x06\x07"):
+        raise Skip("unexpected bytes around the central directory")
+    f.seek(cd_off)
+    cd = f.read(cd_size)
+    records, p = [], 0
+    for _ in range(n):
+        if cd[p:p + 4] != CEN_SIG:
+            raise Skip("damaged central directory")
+        h = CEN.unpack_from(cd, p)
+        end = p + CEN.size + h[10] + h[11] + h[12]
+        raw_name = cd[p + CEN.size:p + CEN.size + h[10]]
+        name = raw_name.decode("utf-8" if h[3] & 0x800 else "cp437", "replace")
+        records.append({"raw": cd[p:end], "h": h, "name": name, "raw_name": raw_name,
+                        "comment": cd[p + CEN.size + h[10] + h[11]:end]})
+        p = end
+    if p != len(cd):
+        raise Skip("damaged central directory")
+    return records, comment
+
+
+def append_store_date(path, d):
+    """Add <StoreDate> to the archive at path, in place. None on success, else the reason (file unchanged)."""
+    with zipfile.ZipFile(path) as z:
+        ci = root_comicinfo(z)
         if ci is None:
             return "no single top-level ComicInfo.xml"
-        raw = zin.read(ci)
         try:
-            xml = raw.decode("utf-8")
+            xml = z.read(ci).decode("utf-8")
         except UnicodeDecodeError:
             return "ComicInfo.xml is not UTF-8"
-        new = add_store_date(xml, d)
-        if new is None:
-            return "ComicInfo.xml not safe to edit (encoding, existing StoreDate or structure)"
-        with zipfile.ZipFile(dst, "w", allowZip64=True) as zout:
-            zout.comment = zin.comment
-            for info in zin.infolist():
-                out = zipfile.ZipInfo(info.filename, date_time=info.date_time)
-                out.compress_type, out.external_attr, out.comment = info.compress_type, info.external_attr, info.comment
-                out.create_system = info.create_system
-                if info.filename == ci.filename:
-                    zout.writestr(out, new.encode("utf-8"))
-                elif info.is_dir():
-                    zout.writestr(out, b"")
-                else:
-                    out.file_size = info.file_size
-                    with zin.open(info) as fi, zout.open(out, "w", force_zip64=info.file_size > 0x7FFFFFFF) as fo:
-                        shutil.copyfileobj(fi, fo, 1 << 20)
-    # Every member except ComicInfo.xml: same names, order, sizes and CRCs; ComicInfo has the date.
-    with zipfile.ZipFile(src) as a, zipfile.ZipFile(dst) as b:
-        la, lb = a.infolist(), b.infolist()
-        if [i.filename for i in la] != [i.filename for i in lb]:
-            return "check failed: member list changed"
-        for x, y in zip(la, lb):
-            if x.filename == ci.filename:
-                if comicinfo_store_date(b.read(y).decode("utf-8")) != d:
-                    return "check failed: StoreDate not read back"
-            elif (x.CRC, x.file_size) != (y.CRC, y.file_size):
-                return f"check failed: {x.filename} changed"
+        before = [(i.filename, i.CRC, i.file_size, i.header_offset) for i in z.infolist()]
+    new_xml = add_store_date(xml, d)
+    if new_xml is None:
+        return "ComicInfo.xml not safe to edit (encoding, existing StoreDate or structure)"
+    data = new_xml.encode("utf-8")
+    size = os.path.getsize(path)
+    with open(path, "r+b") as f:
+        try:
+            records, comment = read_layout(f, size)
+        except Skip as e:
+            return str(e)
+        hits = [r for r in records if r["name"] == ci.filename]
+        if len(hits) != 1 or len(records) != len(before):
+            return "central directory does not match the archive listing"
+        old = hits[0]
+        h = old["h"]
+        flags = h[3] & 0x800                     # keep the UTF-8 name flag only
+        crc = zlib.crc32(data) & 0xFFFFFFFF
+        local = LOC.pack(LOC_SIG, 20, flags, 0, h[5], h[6], crc, len(data), len(data), len(old["raw_name"]), 0) + old["raw_name"]
+        entry = CEN.pack(CEN_SIG, h[1], 20, flags, 0, h[5], h[6], crc, len(data), len(data), len(old["raw_name"]), 0,
+                         len(old["comment"]), 0, h[14], h[15], size) + old["raw_name"] + old["comment"]
+        cd = b"".join(entry if r is old else r["raw"] for r in records)
+        cd_off = size + len(local) + len(data)
+        if cd_off + len(cd) + EOCD.size + len(comment) >= 0xFFFFFFFF:
+            return "archive would need ZIP64"
+        tail = local + data + cd + EOCD.pack(EOCD_SIG, 0, 0, len(records), len(records), len(cd), cd_off, len(comment)) + comment
+        try:
+            f.seek(size)
+            f.write(tail)
+            f.flush()
+            os.fsync(f.fileno())
+        except BaseException:
+            f.truncate(size)
+            f.flush()
+            raise
+    reason = verify_append(path, before, ci.filename, d)
+    if reason:
+        with open(path, "r+b") as f:
+            f.truncate(size)
+            f.flush()
+            os.fsync(f.fileno())
+        return reason + " (restored)"
+    return None
+
+
+def verify_append(path, before, ci_name, d):
+    """Same members in the same order; every other member's CRC, size and position unchanged; the date reads back."""
+    try:
+        with zipfile.ZipFile(path) as z:
+            after = z.infolist()
+            if [i.filename for i in after] != [b[0] for b in before]:
+                return "check failed: member list changed"
+            for (name, crc, fsize, off), i in zip(before, after):
+                if name == ci_name:
+                    if comicinfo_store_date(z.read(i).decode("utf-8")) != d:
+                        return "check failed: StoreDate not read back"
+                elif (crc, fsize, off) != (i.CRC, i.file_size, i.header_offset):
+                    return f"check failed: {name} changed"
+    except Exception as e:
+        return f"check failed: {e}"
     return None
 
 
@@ -595,32 +718,63 @@ def write_one(db, r, dry_run):
         before = os.stat(path)
     except OSError:
         return "skipped: file missing"
-    folder = tempfile.gettempdir() if dry_run else os.path.dirname(path)
-    tmp = os.path.join(folder, f".{os.path.basename(path)}.storedate-{os.getpid()}.tmp")
-    try:
-        reason = rebuild(path, tmp, r["store_date"])
-        if reason:
-            return "skipped: " + reason
-        if dry_run:
-            return "dry-run ok"
-        after = os.stat(path)
-        if (after.st_mtime_ns, after.st_size) != (before.st_mtime_ns, before.st_size):
-            return "skipped: file changed while writing"
-        shutil.copymode(path, tmp)
+    if dry_run:
+        # Same edit on a copy in /tmp; the library file is not touched.
+        copy = os.path.join(tempfile.gettempdir(), f"storedate-{os.getpid()}.cbz")
         try:
-            os.chown(tmp, before.st_uid, before.st_gid)
-        except OSError:
-            pass
-        os.replace(tmp, path)
-        return "written"
+            shutil.copyfile(path, copy)
+            reason = append_store_date(copy, r["store_date"])
+            return "skipped: " + reason if reason else "dry-run ok"
+        except Exception as e:
+            return f"error: {e}"
+        finally:
+            if os.path.exists(copy):
+                os.remove(copy)
+    try:
+        now = os.stat(path)
+        if (now.st_mtime_ns, now.st_size) != (before.st_mtime_ns, before.st_size):
+            return "skipped: file changed while writing"
+        reason = append_store_date(path, r["store_date"])
+        return "skipped: " + reason if reason else "written"
     except Exception as e:
         return f"error: {e}"
-    finally:
-        if os.path.exists(tmp):
-            try:
-                os.remove(tmp)
-            except OSError:
-                pass
+
+
+# ─── probe ───────────────────────────────────────────────────────────
+
+def cmd_probe(args):
+    """What Metron's issue list holds for each series and how it matches the books (a few Metron calls)."""
+    c = Collector(argparse.Namespace(no_metron=False, no_cv=True, retry_missing=False, metron_budget=None))
+    if c.metron is None:
+        log("No Metron token")
+        return
+    for s in select_series(c.db, args.series, None):
+        mid = c.metron_series_id(s)
+        c.st.commit()
+        print(f"\n{s['name']} ({s['year']}) - Comic Vine volume {s['volume'] or '?'}, Metron series {mid or 'not found'}")
+        if not mid:
+            continue
+        items, url, params = [], "issue/", {"series_id": mid}
+        while url:
+            page = c.mget(url, params)
+            if page is None:
+                print("  Metron request failed")
+                break
+            items += page.get("results") or []
+            url, params = page.get("next"), None
+        print(f"  Metron issues {len(items)}; with cv_id {sum(1 for i in items if i.get('cv_id'))}; "
+              f"with store_date {sum(1 for i in items if valid_date(i.get('store_date') or ''))}")
+        if items:
+            first = items[0]
+            print(f"  fields: {', '.join(sorted(first.keys()))}")
+            print(f"  first: number {first.get('number')!r}, store_date {first.get('store_date')!r}, "
+                  f"cover_date {first.get('cover_date')!r}, cv_id {first.get('cv_id')!r}")
+        books = [b for b in books_of(c.db, s["id"]) if writable(b)]
+        found = c.from_metron(s, books) if items else {}
+        print(f"  books {len(books)}; dated by Metron's list {len(found)}")
+        for b in books[:3]:
+            print(f"    {b['filename']}: number {b['issue_number']!r}, cv {b['cv_issue_id']} -> {found.get(b['id'], ('-',))[0]}")
+    print(f"\nMetron calls: {c.calls['metron']}")
 
 
 def main():
@@ -632,6 +786,7 @@ def main():
     c.add_argument("--no-metron", action="store_true")
     c.add_argument("--no-cv", action="store_true")
     c.add_argument("--retry-missing", action="store_true")
+    c.add_argument("--metron-budget", type=int, help="Metron requests this script may use per UTC day (default 3500 of Metron's 5000)")
     r = sub.add_parser("report")
     r.add_argument("--csv")
     w = sub.add_parser("write")
@@ -639,8 +794,10 @@ def main():
     w.add_argument("--max-series", type=int)
     w.add_argument("--limit", type=int)
     w.add_argument("--dry-run", action="store_true")
+    pr = sub.add_parser("probe")
+    pr.add_argument("--series", action="append", required=True)
     args = p.parse_args()
-    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write}[args.cmd](args)
+    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe}[args.cmd](args)
 
 
 if __name__ == "__main__":

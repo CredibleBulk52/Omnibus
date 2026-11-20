@@ -6,6 +6,7 @@ import ComicIssueDetail from '../components/ComicIssueDetail';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ManageMenu from '../components/ManageMenu';
 import IssueCardMenu from '../components/IssueCardMenu';
+import EventStrip from '../components/EventStrip';
 import { ReidentifySeriesButton } from '../components/LibraryHealth';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useSeriesCache, isAdmin, InfoTip } from '../App';
@@ -954,11 +955,13 @@ export default function SeriesDetailComic() {
                         <div key={book.id} className={`issue-book${isCurrent ? ' issue-book--current' : ''}`} style={{ width: ISSUE_W }}>
                           {isCurrent && <div className="issue-tagrow"><span /><span className="issue-here">▶ Reading</span></div>}
                           {/* Cover + hover overlay */}
-                          <div className="issue-cover issue-cover-hoverable" style={{ width: ISSUE_W, height: ISSUE_H, outline: isSelected ? '2px solid var(--td-yellow)' : 'none', outlineOffset: 2 }}
+                          <div className={`issue-cover issue-cover-hoverable${book.events?.length ? ' has-event-strip' : ''}`} style={{ width: ISSUE_W, height: ISSUE_H, outline: isSelected ? '2px solid var(--td-yellow)' : 'none', outlineOffset: 2 }}
                             onClick={selectMode ? () => toggleSelect(book.id) : undefined}>
                             <img src={`/api/books/${book.id}/thumbnail`} alt="" loading="lazy"
                               onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
                             <div className="shelf-book-placeholder" style={{ display:'none' }}>◈</div>
+                            {/* Timeline event strip (EventStrip.jsx, 2026-11-19) */}
+                            <EventStrip bookId={book.id} events={book.events} hidden={selectMode} />
 
                             {/* Selection checkbox */}
                             {selectMode && (
@@ -1036,10 +1039,12 @@ export default function SeriesDetailComic() {
                     <div className="issues-books">
                         {annuals.books.map((book, i) => (
                           <div key={book.id} className="issue-book" style={{ width: ISSUE_W }}>
-                            <div className="issue-cover issue-cover-hoverable" style={{ width: ISSUE_W, height: ISSUE_H }}>
+                            <div className={`issue-cover issue-cover-hoverable${book.events?.length ? ' has-event-strip' : ''}`} style={{ width: ISSUE_W, height: ISSUE_H }}>
                               <img src={`/api/books/${book.id}/thumbnail`} alt="" loading="lazy"
                                 onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
                               <div className="shelf-book-placeholder" style={{ display:'none' }}>◈</div>
+                              {/* Timeline event strip (EventStrip.jsx, 2026-11-19) */}
+                              <EventStrip bookId={book.id} events={book.events} />
                               {book.readProgress?.completed && <div className="issue-read-badge">✓</div>}
                               <IssueCardMenu bookId={book.id} label={issueLabel(book)} read={!!book.readProgress?.completed} onChanged={c => issueReadChanged(book.id, c)} />
                               <div className="issue-hover-overlay">
@@ -1089,10 +1094,12 @@ export default function SeriesDetailComic() {
                       <div className="issues-books">
                         {specials.books.map((book, i) => (
                           <div key={book.id} className="issue-book" style={{ width: ISSUE_W }}>
-                            <div className="issue-cover issue-cover-hoverable" style={{ width: ISSUE_W, height: ISSUE_H }}>
+                            <div className={`issue-cover issue-cover-hoverable${book.events?.length ? ' has-event-strip' : ''}`} style={{ width: ISSUE_W, height: ISSUE_H }}>
                               <img src={`/api/books/${book.id}/thumbnail`} alt="" loading="lazy"
                                 onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
                               <div className="shelf-book-placeholder" style={{ display:'none' }}>◈</div>
+                              {/* Timeline event strip (EventStrip.jsx, 2026-11-19) */}
+                              <EventStrip bookId={book.id} events={book.events} />
                               {book.readProgress?.completed && <div className="issue-read-badge">✓</div>}
                               <IssueCardMenu bookId={book.id} label={issueLabel(book)} read={!!book.readProgress?.completed} onChanged={c => issueReadChanged(book.id, c)} />
                               <div className="issue-hover-overlay">

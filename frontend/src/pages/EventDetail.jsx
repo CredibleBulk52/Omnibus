@@ -78,6 +78,15 @@ export default function EventDetail() {
   useEffect(() => { loadRequests(); }, [loadRequests]);
   const acq = { eventId: id, requests, label: canDownload ? '⬇ Get' : '✉ Request', open: i => setAcquireIssue(i), refresh: loadRequests };
 
+  // ?book=<id>: arrived from an issue card's event strip (EventStrip.jsx, 2026-11-19): open at that
+  // issue, highlighted, even when the chosen tier view or a collapsed part would hide it.
+  const focusBook = searchParams.get('book');
+  const focusId = focusBook ? (event?.issues || []).find(i => i.scanned_book_id === focusBook)?.id ?? null : null;
+  useEffect(() => {
+    if (focusId == null) return;
+    const t = setTimeout(() => document.querySelector(`[data-issue-id="${focusId}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
+    return () => clearTimeout(t);
+  }, [focusId, view]);
   const selectedPath = effectivePath(event?.issues || [], tierView);
   const reading = runReadingState((event?.issues || []).filter(i => includesTier(i, selectedPath)));
   const readingTheme = useReadingTheme({ name: event?.name }, reading.first?.scanned_book_id);
@@ -94,8 +103,10 @@ export default function EventDetail() {
   };
   const stepIdx = Math.max(0, TIER_STEPS.findIndex(([k]) => k === tierView));
   const effective = (TIER_STEPS.slice(stepIdx).find(([k]) => stepCounts[k] > 0) || ['all'])[0];
-  const displayed = effective === 'all' ? issues
+  let displayed = effective === 'all' ? issues
     : issues.filter(i => i.tier === 'essential' || (effective === 'recommended' && i.tier === 'recommended'));
+  const widenedForFocus = focusId != null && !displayed.some(i => i.id === focusId);
+  if (widenedForFocus) displayed = issues;
   const showTierBar = stepCounts.essential < issues.length;
 
   const progress = {
@@ -176,7 +187,8 @@ export default function EventDetail() {
                 </button>
               ))}
             </div>
-            {effective !== tierView && <span className="rl-stat-line">Nothing is marked {tierView} here, so more is shown.</span>}
+            {effective !== tierView && !widenedForFocus && <span className="rl-stat-line">Nothing is marked {tierView} here, so more is shown.</span>}
+            {widenedForFocus && <span className="rl-stat-line">Every issue is shown so the one you came from is visible.</span>}
           </div>
         )}
 
@@ -187,7 +199,8 @@ export default function EventDetail() {
           const prog = { total: p.issues.length, read: p.issues.filter(i => i.readProgress?.completed).length };
           const hasCurrent = current && p.issues.some(i => i.id === current.id);
           const curIdx = hasCurrent ? p.issues.findIndex(i => i.id === current.id) : -1;
-          const isOpen = expanded.has(key) || curIdx >= COLLAPSE_AT || p.issues.length <= COLLAPSE_AT + 3;
+          const isOpen = expanded.has(key) || curIdx >= COLLAPSE_AT || p.issues.length <= COLLAPSE_AT + 3
+            || (focusId != null && p.issues.some(i => i.id === focusId));
           const shown = isOpen ? p.issues : p.issues.slice(0, COLLAPSE_AT);
           return (
             <div key={key} className="ev-phase">
@@ -201,11 +214,11 @@ export default function EventDetail() {
                 </div>
               )}
               {view === 'shelf'
-                ? <EventShelf issues={shown} current={current} acq={acq} onIssueChanged={load} onRead={i => navigate(readUrl(i.scanned_book_id))}
+                ? <EventShelf issues={shown} current={current} focusId={focusId} acq={acq} onIssueChanged={load} onRead={i => navigate(readUrl(i.scanned_book_id))}
                     more={isOpen ? 0 : p.issues.length - shown.length} onMore={() => toggle(key)} />
                 : (
                   <div className="rl-rows">
-                    {shown.map(i => <EventRow key={i.id} issue={i} acq={acq} isCurrent={current && i.id === current.id} onRead={() => navigate(readUrl(i.scanned_book_id))} />)}
+                    {shown.map(i => <EventRow key={i.id} issue={i} acq={acq} isFocus={i.id === focusId} isCurrent={current && i.id === current.id} onRead={() => navigate(readUrl(i.scanned_book_id))} />)}
                   </div>
                 )}
               {view === 'rows' && p.issues.length > COLLAPSE_AT + 3 && curIdx < COLLAPSE_AT && (
@@ -225,8 +238,11 @@ export default function EventDetail() {
   );
 }
 
+// The issue opened from a series page's event strip (?book=).
+const FOCUS_STYLE = { outline: '3px solid var(--td-yellow)', outlineOffset: 4, borderRadius: 4 };
+
 // ─── Shelf: one continuous shelf per phase, tier ribbon on each cover ──
-function EventShelf({ issues, current, onRead, more, onMore, acq, onIssueChanged }) {
+function EventShelf({ issues, current, focusId = null, onRead, more, onMore, acq, onIssueChanged }) {
   const [card, setCard] = useState(null);   // the issue whose note card is open (tap the caption; works on touch)
   const [solicitOpen, setSolicitOpen] = useState(false);
   useEffect(() => { setSolicitOpen(false); }, [card]);
@@ -246,7 +262,8 @@ function EventShelf({ issues, current, onRead, more, onMore, acq, onIssueChanged
             const done = !!rp?.completed, inProg = owned && !done && rp?.page > 0;
             const isCurrent = current && i.id === current.id;
             return (
-              <div key={i.id} className={`issue-book ev-book ev-book--${i.tier || 'none'}${isCurrent ? ' issue-book--current' : ''}`} style={{ width: ISSUE_W }}
+              <div key={i.id} data-issue-id={i.id} className={`issue-book ev-book ev-book--${i.tier || 'none'}${isCurrent ? ' issue-book--current' : ''}`}
+                style={{ width: ISSUE_W, ...(i.id === focusId ? FOCUS_STYLE : null) }}
                 title={[`${i._n}. ${i.series_name} #${i.issue_number}`, i.tier_note].filter(Boolean).join('\n')}>
                 {(i.tier || isCurrent) && (
                   <div className="issue-tagrow">
@@ -311,14 +328,15 @@ function EventShelf({ issues, current, onRead, more, onMore, acq, onIssueChanged
 }
 
 // ─── Rows: the reading-list row, with the issue's note ────────────
-function EventRow({ issue: i, isCurrent, onRead, acq }) {
+function EventRow({ issue: i, isCurrent, isFocus = false, onRead, acq }) {
   const owned = !!i.scanned_book_id;
   const rp = i.readProgress || null;
   const done = !!rp?.completed, inProg = owned && !done && rp?.page > 0;
   const colour = TIER_COLOUR[i.tier] || '#8a8a98';
   return (
     <div className={`rl-row ${owned ? '' : 'rl-row--missing'} ${isCurrent ? 'rl-row--current' : ''} ${i.tier === 'tie-in' ? 'ev-row--tiein' : ''}`}
-      style={{ borderLeft: `3px solid ${owned ? colour : 'transparent'}` }}
+      data-issue-id={i.id}
+      style={{ borderLeft: `3px solid ${owned ? colour : 'transparent'}`, ...(isFocus ? FOCUS_STYLE : null) }}
       onClick={owned ? onRead : undefined} title={owned ? 'Read' : 'Not in your library'}>
       <div className="rl-row-num">{i._n}</div>
       <div className="rl-thumb">

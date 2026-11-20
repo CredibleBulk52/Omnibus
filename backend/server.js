@@ -1440,6 +1440,7 @@ for (const sql of [
 ]) { try { db.prepare(sql).run(); } catch {} }
 
 const { STORE_DATE_SQL } = require('./storeDate');
+const { withEventMarkers } = require('./eventMarkers');
 // ─── Schema migrations (safe to run on every startup) ────────────
 // SQLite has no ALTER TABLE IF NOT EXISTS — just catch duplicate-column errors
 [
@@ -3112,7 +3113,9 @@ app.get('/api/series/:id/books', requireAuth, (req, res) => {
         media: { pagesCount: b.comicinfo ? (parseComicInfo(b.comicinfo).pageCount || null) : null },
         readProgress: progressMap[b.id] ? { page: progressMap[b.id].page, completed: !!progressMap[b.id].completed } : null,
       }));
-    res.json({ content: mapped, totalElements: mapped.length });
+    // Timeline event markers on the issue cards (eventMarkers.js, 2026-11-19).
+    const withEvents = withEventMarkers(db, mapped);
+    res.json({ content: withEvents, totalElements: withEvents.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3137,7 +3140,7 @@ app.get('/api/series/:id/specials', requireAuth, (req, res) => {
       media: { pagesCount: b.comicinfo ? (parseComicInfo(b.comicinfo).pageCount || null) : null },
       readProgress: progressMap[b.id] ? { page: progressMap[b.id].page, completed: !!progressMap[b.id].completed } : null,
     }));
-    res.json({ books: mapped });
+    res.json({ books: withEventMarkers(db, mapped) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -3219,7 +3222,7 @@ app.get('/api/series/:id/annuals', (req, res) => {
     }));
 
     if (!allAnnuals.length) return res.json(null);
-    res.json({ books: allAnnuals });
+    res.json({ books: withEventMarkers(db, allAnnuals) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
