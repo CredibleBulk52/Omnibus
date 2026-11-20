@@ -1439,6 +1439,7 @@ for (const sql of [
   'ALTER TABLE publisher_eras ADD COLUMN folder TEXT',
 ]) { try { db.prepare(sql).run(); } catch {} }
 
+const { STORE_DATE_SQL } = require('./storeDate');
 // ─── Schema migrations (safe to run on every startup) ────────────
 // SQLite has no ALTER TABLE IF NOT EXISTS — just catch duplicate-column errors
 [
@@ -1474,6 +1475,10 @@ for (const sql of [
   "ALTER TABLE scanned_books ADD COLUMN file_size INTEGER DEFAULT 0",
   "ALTER TABLE scanned_books ADD COLUMN cv_issue_id TEXT",
   "ALTER TABLE scanned_books ADD COLUMN is_special INTEGER DEFAULT 0",
+  // store_date (2026-11-19): the on-sale day from the book's ComicInfo <StoreDate> (Omnibus's own
+  // element, YYYY-MM-DD), computed by SQLite from comicinfo so every path that saves ComicInfo keeps
+  // it current. NULL when the element is missing or not a plain date.
+  `ALTER TABLE scanned_books ADD COLUMN store_date TEXT GENERATED ALWAYS AS (${STORE_DATE_SQL}) VIRTUAL`,
   "ALTER TABLE libraries ADD COLUMN scan_interval_hours INTEGER DEFAULT 0",
   "ALTER TABLE libraries ADD COLUMN last_scanned_at TEXT",
   "ALTER TABLE monitored_series ADD COLUMN annual_no_match_until TEXT",
@@ -11712,12 +11717,26 @@ catch (e) { logger.error('achievements', 'Achievements unavailable', e.message);
 const webLookup = require('./ai/webLookup').createWebLookup({ ai, modelCatalog, logger });
 const recaps = require('./recaps')({ app, db, ai, logger, getPageImage: (...a) => getPageImageForAssistant(...a), modelCatalog, cvApiGet, getCVKey, readingLists, bookIndex, requireAdmin, axios, webLookup });
 // Installed synchronously before startup timers or HTTP requests can run.
+// Metron's store date for one Comic Vine issue: the metadata writer's second source when Comic Vine
+// has none (claude/SERIES_READING_ORDER.md, store-date plan). Off for the rest of the run after
+// Metron refuses the token; null when no token is set.
+let storeDateMetronOn = true;
+async function metronStoreDate(cvIssueId) {
+  if (!storeDateMetronOn || !(getSetting('metron_api_token') || process.env.METRON_API_TOKEN)) return null;
+  try { return await metron.storeDateOfCvIssue(cvIssueId); }
+  catch (e) {
+    if (e.code === 'METRON_AUTH' || e.code === 'METRON_TOKEN_MISSING') storeDateMetronOn = false;
+    throw e;
+  }
+}
 const metadataRuntime = require('./metadata/retagRuntime').createRetagRuntime({
   db, access: libraryAccess, deploymentGate, stableIds, bookIndex,
   getLibraryRoots: () => db.prepare('SELECT path FROM libraries').all().map(row => row.path),
   scratchParent: path.join(path.dirname(DB_PATH), 'metadata-scratch'),
   logger,
   fetchIssue: fetchCvIssue, saveIssue: saveFreshCvIssue, buildDestFilename, buildMangaDestFilename,
+  // Store dates (2026-11-19): Metron's, when Comic Vine has none (ComicInfo <StoreDate>).
+  fetchStoreDate: metronStoreDate,
   onManualSuccess: (bookId,outcome) => metadataMaintenance.recordManualSuccess(bookId,outcome),
   // Phase 6.6: per-step timing for every tag, conversion and arrival.
   onTimings: summary => {

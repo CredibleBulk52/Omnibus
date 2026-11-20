@@ -4,7 +4,9 @@ const { parseComicInfoEvidence, parseCvIssueId } = require('./evidence');
 const { locateElements } = require('./xmlLayout');
 const POLICY_VERSION = 'merge-v2';
 // Identity links, Notes, Pages and unknown extension elements require their own preservation path.
-const FIELDS = Object.freeze(['Series','Number','Volume','Title','Year','Month','Day','Publisher','Imprint','Format','Summary','Writer','Penciller','Inker','Colorist','Letterer','CoverArtist','Editor','Characters','Teams','Locations','Genre','LanguageISO','AgeRating','Count','Manga']);
+// StoreDate (2026-11-19) is Omnibus's own element (ComicInfo has no store-date field): the on-sale day,
+// YYYY-MM-DD. It is a plain issue field, not part of the Year/Month/Day cover-date group.
+const FIELDS = Object.freeze(['Series','Number','Volume','Title','Year','Month','Day','StoreDate','Publisher','Imprint','Format','Summary','Writer','Penciller','Inker','Colorist','Letterer','CoverArtist','Editor','Characters','Teams','Locations','Genre','LanguageISO','AgeRating','Count','Manga']);
 const owns = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const text = value => {
   if (value == null) return '';
@@ -49,7 +51,7 @@ function validDateRecord(date, fields) {
 // issue); series-level and format fields are kept when the source is blank.
 // Unknown XML, pages and other elements are untouched; the patcher rewrites the
 // Web/Notes identity references.
-const ISSUE_FIELDS = new Set(['Title','Summary','Writer','Penciller','Inker','Colorist','Letterer','CoverArtist','Editor','Characters','Teams','Locations','Year','Month','Day']);
+const ISSUE_FIELDS = new Set(['Title','Summary','Writer','Penciller','Inker','Colorist','Letterer','CoverArtist','Editor','Characters','Teams','Locations','Year','Month','Day','StoreDate']);
 function planExplicitCorrection(result, current, source, directElements) {
   result.identityCorrection = true;
   const dates = ['Year','Month','Day'];

@@ -4,7 +4,7 @@ const {parseCvIssueId,parseComicInfoEvidence}=require('./evidence');
 const {initializeWorkJournal,createWorkJournal}=require('./workJournal');
 const {initializeBookFinalization}=require('./bookFinalization');
 const {createReprocessingService}=require('./reprocessingService');
-const {adaptCvSource}=require('./cvSource');
+const {adaptCvSource,secondSourceStoreDate}=require('./cvSource');
 const {publicationHint,candidateMatches,isMangaPublication,bookFolderName}=require('./candidate');
 const {isYearNamedVolume}=require('./annualIdentification');
 const {flattenUnsafeFolders}=require('./flattenUnsafeFolders');
@@ -15,7 +15,7 @@ const fail=(code,message)=>{throw Object.assign(new Error(message),{code});};
 // Runtime only: called after the application's DB, index and reconcilers exist.
 // Uses their providers, naming and conversion services; owns no second cache.
 function createRetagRuntime({db,access,deploymentGate=null,stableIds,bookIndex,getLibraryRoots,scratchParent,
-  fetchIssue,fetchVolume,saveIssue,buildDestFilename,buildMangaDestFilename=null,followups,executables,discoverCandidates=async()=>[],discoverAnnual=null,registerArrival,onManualSuccess=()=>{},onTimings=null,logger=null,
+  fetchIssue,fetchVolume,saveIssue,fetchStoreDate=null,buildDestFilename,buildMangaDestFilename=null,followups,executables,discoverCandidates=async()=>[],discoverAnnual=null,registerArrival,onManualSuccess=()=>{},onTimings=null,logger=null,
   pathPolicy={style:process.platform==='win32'?'win32':'posix',caseSensitive:false}}) {
   initializeWorkJournal(db,pathPolicy);initializeBookFinalization(db);
   const ownerId=crypto.randomUUID();let activeRequests=0;
@@ -54,8 +54,11 @@ function createRetagRuntime({db,access,deploymentGate=null,stableIds,bookIndex,g
     if(!volumeId)fail('CV_NO_DATA','Comic Vine issue has no referenced volume');
     const volume=await fetchVolume(volumeId);
     if(adaptCvSource({expectedIssueId:id,issue,volume}).status!=='ready'||!volume?.name||issue.issue_number==null)fail('CV_NO_DATA','Comic Vine returned incomplete or conflicting publication data');
-    saveIssue(id,issue);return {issue,volume};
+    saveIssue(id,issue);
+    return {issue,volume,storeDate:await otherStoreDate(id,issue)};
   }
+  // Store dates (2026-11-19): when Comic Vine has none, ask the second source (Metron).
+  const otherStoreDate=(id,issue)=>secondSourceStoreDate({fetchStoreDate,id,issue,logger});
   function options(loadSource,arrivalRoots=[]) {
     const roots=getLibraryRoots();
     // Scratch is application data, never a watched library directory.

@@ -183,7 +183,27 @@ function createMetron({ axios, getToken, db, logger, sleep = ms => new Promise(r
     return found;
   }
 
-  return { test, search, items, findEventList, get, seriesStatus };
+  // One issue's store date by its Comic Vine issue ID (2026-11-19, store dates in ComicInfo): the
+  // metadata writer's second source when Comic Vine has no store date. Only an unambiguous answer
+  // counts (exactly one Metron issue for the ID). Returns 'YYYY-MM-DD' or null; cached for a day,
+  // misses too, like everything else here.
+  async function storeDateOfCvIssue(cvIssueId) {
+    const id = String(cvIssueId || '').trim();
+    if (!/^\d+$/.test(id)) return null;
+    const key = `store-date:${id}`;
+    const cached = cacheGet(key);
+    if (cached) return cached.date || null;
+    const r = await get('issue/', { cv_id: id });
+    const rows = (r && Array.isArray(r.results)) ? r.results : [];
+    const one = rows.length === 1 && (r.count == null || Number(r.count) === 1) ? rows[0] : null;
+    const value = one && typeof one.store_date === 'string' ? one.store_date.slice(0, 10) : '';
+    const stamp = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(value + 'T00:00:00Z') : null;
+    const valid = !!stamp && Number.isFinite(stamp.getTime()) && stamp.toISOString().slice(0, 10) === value;
+    cachePut(key, { date: valid ? value : null });
+    return valid ? value : null;
+  }
+
+  return { test, search, items, findEventList, get, seriesStatus, storeDateOfCvIssue };
 }
 
 // The prompt block: the list as a compact table, and how to use it.
