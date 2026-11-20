@@ -681,9 +681,11 @@ def cmd_write(args):
     if args.limit:
         rows = rows[:args.limit]
     log(f"{len(rows)} books to {'check (dry run)' if args.dry_run else 'write'}")
-    if not rows:
-        return
     rw = sqlite3.connect(DB_PATH, timeout=15, isolation_level=None)
+    if not rows:
+        if not args.dry_run:
+            mark_for_rescan(rw, st)
+        return
     paused_before = None
     if not args.dry_run:
         paused_before = rw.execute("SELECT paused FROM metadata_maintenance_control WHERE id = 1").fetchone()[0]
@@ -715,8 +717,29 @@ def cmd_write(args):
             rw.execute("UPDATE metadata_maintenance_control SET paused = ? WHERE id = 1", (paused_before,))
             log(f"Metadata routine {'left paused (it was paused before)' if paused_before else 'resumed'}")
     log("Result: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
-    if not args.dry_run and counts.get("written"):
-        log("Run a library scan in Omnibus so it reads the new tags.")
+    if not args.dry_run:
+        mark_for_rescan(rw, st)
+
+
+def mark_for_rescan(rw, st):
+    """Make the next library scan re-read every folder holding a written book Omnibus has not re-read yet.
+    The scanner skips a series folder whose modified time and file count are unchanged
+    (libraryScanner.js), and an in-place edit changes neither; dir_mtime = -1 is the scanner's own
+    "scan this folder again" mark (it uses it for deferred folders). 2026-11-20."""
+    ids = [r[0] for r in st.execute("SELECT book_id FROM written WHERE result = 'written'")]
+    series = set()
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        series.update(r[0] for r in rw.execute(
+            f"SELECT DISTINCT series_id FROM scanned_books WHERE id IN ({','.join('?' * len(part))}) "
+            "AND (comicinfo IS NULL OR instr(comicinfo, '<StoreDate>') = 0)", part))
+    series.discard(None)
+    if not series:
+        log("Omnibus has read every written file.")
+        return
+    for sid in series:
+        rw.execute("UPDATE scanned_series SET dir_mtime = -1 WHERE id = ?", (sid,))
+    log(f"{len(series)} series folders marked for the next library scan. Run a library scan in Omnibus so it reads the new tags.")
 
 
 def write_one(db, r, dry_run):
