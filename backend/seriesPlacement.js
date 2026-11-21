@@ -1,0 +1,278 @@
+'use strict';
+// ─── Annuals and specials in a series' reading order (2026-11-21) ───────────────────────────────
+// Where each annual, special and linked mini of a series goes in its Issues grid. Decided with the
+// user 2026-11-20/21 (claude/SERIES_READING_ORDER.md, "Placement rules"):
+//   1. an admin's pin (Read after #N, Read first, Show on shelf only) wins;
+//   2. a filename hint "(Read after N)" / "(After N)" naming an issue of the run;
+//   3. a saved Timeline that holds the extra and an issue of this run: the Timeline's order;
+//   4. the release week (store dates; sources differ by a few days, so weeks, not days);
+//   5. the same week as a regular issue: the regular issue first.
+// Stay on the shelf: reprints, books without a store date, books far outside the run (more than 4
+// weeks after the last or before the first issue; minis may lead in up to 10 weeks before #1),
+// books next to issues without a date. On an event's own series (Convergence, Secret Wars…) only
+// pins place anything: the Event page is the full reading order there.
+// The regular issues keep their order; nothing here changes numbering, totals or the shelves.
+
+const PIN_MODES = new Set(['after', 'first', 'shelf']);
+const ANNUAL_RE = /annual/i;
+const HINT_RE = /\((?:read\s+)?after\s+#?(\d+(?:\.\d+)?)\)/i;
+const AFTER_WEEKS = 4, BEFORE_WEEKS = 4, MINI_BEFORE_WEEKS = 10;
+
+function ensurePlacementSchema(db) {
+  db.exec(`CREATE TABLE IF NOT EXISTS series_placement_pins (
+    series_id      TEXT NOT NULL,
+    book_id        TEXT NOT NULL,
+    mode           TEXT NOT NULL,            -- after | first | shelf
+    anchor_book_id TEXT,                     -- after: the regular issue it follows
+    anchor_number  TEXT,                     -- after: that issue's number (used if the book is replaced)
+    updated_at     INTEGER NOT NULL,
+    updated_by     TEXT,
+    PRIMARY KEY (series_id, book_id))`);
+}
+
+const tag = (xml, name) => {
+  const m = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(xml || '');
+  return m ? m[1].replace(/&amp;/g, '&').trim() : '';
+};
+// Monday-based week number of a YYYY-MM-DD date (1970-01-01 was a Thursday).
+const weekOf = d => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || '');
+  return m ? Math.floor((Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 + 3) / 7) : null;
+};
+const num = s => { const n = parseFloat(String(s ?? '').replace(/^#/, '')); return Number.isFinite(n) ? n : null; };
+const norm = s => String(s || '').toLowerCase().replace(/^the\s+/, '').replace(/[^a-z0-9]+/g, '');
+
+// The label on the card's number line and its title line: "2026 Annual #1" / "Matriarch Special",
+// "Knight Terrors #1", "Annual #3", "Amazons Attack #1".
+function extraLabel(book, parentNames, isAnnual) {
+  const ci = book.comicinfo || '';
+  const number = tag(ci, 'Number') || book.issue_number || '';
+  let rest = tag(ci, 'Series');
+  for (const p of parentNames) {
+    const clean = String(p || '').replace(/^the\s+/i, '');
+    const body = rest.replace(/^the\s+/i, '');
+    if (clean && body.toLowerCase().startsWith(clean.toLowerCase()) && /^($|[\s:–-])/.test(body.slice(clean.length))) {
+      rest = body.slice(clean.length).replace(/^[\s:–-]+/, '');
+      break;
+    }
+  }
+  let head = rest, sub = '';
+  const colon = rest.indexOf(':');
+  if (colon >= 0) { head = rest.slice(0, colon).trim(); sub = rest.slice(colon + 1).trim(); }
+  if (!head) head = isAnnual ? 'Annual' : 'Special';
+  let title = book.title || '';
+  if (sub && !parentNames.some(p => norm(p) === norm(sub))) title = sub.split(/\s+[-–]\s+/).pop().replace(/^the\s+/i, '');
+  return { label: number ? `${head} #${String(number).replace(/^0+(?=\d)/, '')}` : head, title };
+}
+
+function createSeriesPlacement({ db, members = () => [] }) {
+  ensurePlacementSchema(db);
+  const one = (sql, ...a) => db.prepare(sql).get(...a);
+  const all = (sql, ...a) => db.prepare(sql).all(...a);
+  const COLS = 'id, series_id, filename, issue_number, title, comicinfo, is_special, sort_order, store_date';
+
+  function extrasOf(seriesId, series) {
+    const own = all(`SELECT ${COLS} FROM scanned_books WHERE series_id = ?`, seriesId);
+    const regular = own.filter(b => !b.is_special && !ANNUAL_RE.test(b.filename))
+      .sort((a, b) => (a.sort_order - b.sort_order) || String(a.filename).localeCompare(String(b.filename)));
+    const extras = [];
+    const seen = new Set(own.map(b => b.id));
+    // In the folder: annuals and specials. A special whose ComicInfo series has other books here is a mini.
+    const inFolder = own.filter(b => b.is_special || ANNUAL_RE.test(b.filename));
+    const seriesCount = new Map();
+    for (const b of inFolder) if (b.is_special && !ANNUAL_RE.test(b.filename)) {
+      const k = norm(tag(b.comicinfo, 'Series')); seriesCount.set(k, (seriesCount.get(k) || 0) + 1);
+    }
+    for (const b of inFolder) {
+      const annual = ANNUAL_RE.test(b.filename);
+      extras.push({ book: b, kind: annual ? 'annual' : 'special', mini: !annual && (seriesCount.get(norm(tag(b.comicinfo, 'Series'))) || 0) > 1 });
+    }
+    // Linked annual volumes (series_annual_links), as on the Annuals shelf.
+    if (series?.monitored_series_id) {
+      for (const s of all(`SELECT ss.id FROM series_annual_links l JOIN scanned_series ss ON ss.monitored_series_id = l.annual_series_id
+                           WHERE l.parent_series_id = ?`, series.monitored_series_id)) {
+        for (const b of all(`SELECT ${COLS} FROM scanned_books WHERE series_id = ?`, s.id)) {
+          if (!seen.has(b.id)) { seen.add(b.id); extras.push({ book: b, kind: 'annual', mini: false }); }
+        }
+      }
+    }
+    // Series on the Specials shelf (series grouping): one-shots, and minis of two or more books.
+    for (const m of members(seriesId) || []) {
+      const books = all(`SELECT ${COLS} FROM scanned_books WHERE series_id = ?`, m.id);
+      for (const b of books) if (!seen.has(b.id)) { seen.add(b.id); extras.push({ book: b, kind: 'linked', mini: books.length > 1 }); }
+    }
+    return { regular, extras };
+  }
+
+  // Timeline positions: book id -> [{event, order}] for saved (non-draft) events.
+  function timelineOf(ids) {
+    const out = new Map();
+    if (!ids.length) return out;
+    try {
+      for (let i = 0; i < ids.length; i += 500) {
+        const part = ids.slice(i, i + 500);
+        for (const r of all(`SELECT ei.event_id AS event, ei.scanned_book_id AS book, ei.sort_order AS ord, e.year, e.name
+            FROM event_issues ei JOIN events e ON e.id = ei.event_id
+            WHERE COALESCE(e.draft, 0) = 0 AND ei.scanned_book_id IN (${part.map(() => '?').join(',')})`, ...part)) {
+          if (!out.has(r.book)) out.set(r.book, []);
+          out.get(r.book).push(r);
+        }
+      }
+    } catch { /* no events tables yet */ }
+    return out;
+  }
+
+  function isEventHome(seriesId) {
+    try { return !!one('SELECT 1 FROM events WHERE home_series_id = ? AND COALESCE(draft, 0) = 0 LIMIT 1', seriesId); } catch { return false; }
+  }
+
+  // The automatic position of one extra: { after: index of the regular issue it follows (-1 = before the
+  // first), evidence, ord } or { shelf: reason }.
+  function automatic(x, regular, weeks, timeline, regIndex) {
+    const b = x.book;
+    const hint = HINT_RE.exec(b.filename || '');
+    if (hint) {
+      const n = num(hint[1]);
+      const i = regular.findIndex(r => num(r.issue_number) === n);
+      if (i >= 0) return { after: i, evidence: 'filename' };
+    }
+    const tl = (timeline.get(b.id) || []).slice().sort((a, c) => (a.year || 0) - (c.year || 0) || String(a.name).localeCompare(String(c.name)));
+    for (const ev of tl) {
+      const regs = [];
+      for (const r of regular) for (const p of timeline.get(r.id) || []) if (p.event === ev.event) regs.push({ i: regIndex.get(r.id), ord: p.ord });
+      if (!regs.length) continue;
+      const before = regs.filter(r => r.ord < ev.ord).sort((a, c) => c.ord - a.ord)[0];
+      if (before) return { after: before.i, evidence: 'timeline', ord: ev.ord };
+      const first = regs.sort((a, c) => a.ord - c.ord)[0];
+      return { after: first.i - 1, evidence: 'timeline', ord: ev.ord };
+    }
+    if (/\breprint/i.test(`${tag(b.comicinfo, 'Summary')} ${tag(b.comicinfo, 'Notes')}`)) return { shelf: 'reprint' };
+    const w = weekOf(b.store_date);
+    if (w == null) return { shelf: 'no store date' };
+    let i = -1;
+    weeks.forEach((rw, k) => { if (rw != null && rw <= w) i = k; });
+    if (i < 0) {
+      const first = weeks.findIndex(rw => rw != null);
+      if (first < 0) return { shelf: 'no dates in the run' };
+      if (first > 0) return { shelf: 'next to issues without a date' };
+      return weeks[0] - w <= (x.mini ? MINI_BEFORE_WEEKS : BEFORE_WEEKS)
+        ? { after: -1, evidence: 'release week' } : { shelf: 'long before the run' };
+    }
+    let j = i + 1;
+    while (j < weeks.length && weeks[j] == null) j++;
+    if (j > i + 1) return { shelf: 'next to issues without a date' };
+    if (j >= weeks.length && w - weeks[i] > AFTER_WEEKS) return { shelf: 'long after the run' };
+    return { after: i, evidence: weeks[i] === w ? 'same week, regular issue first' : 'release week' };
+  }
+
+  // The series' reading order: placed extras with the regular issue each follows, and the shelved rest.
+  function placement(seriesId) {
+    const series = one('SELECT id, name, monitored_series_id FROM scanned_series WHERE id = ?', seriesId);
+    if (!series) return null;
+    const { regular, extras } = extrasOf(seriesId, series);
+    const regIndex = new Map(regular.map((r, i) => [r.id, i]));
+    const weeks = regular.map(r => weekOf(r.store_date));
+    const timeline = timelineOf([...regular, ...extras.map(x => x.book)].map(b => b.id));
+    const pins = new Map(all('SELECT * FROM series_placement_pins WHERE series_id = ?', seriesId).map(p => [p.book_id, p]));
+    const eventHome = isEventHome(seriesId);
+    const parentNames = [series.name, tag(regular[0]?.comicinfo, 'Series')].filter(Boolean);
+    const placed = [], shelf = [];
+    for (const x of extras) {
+      const pin = pins.get(x.book.id);
+      let pos;
+      if (pin?.mode === 'shelf') pos = { shelf: 'pinned to the shelf' };
+      else if (pin?.mode === 'first') pos = { after: -1, evidence: 'pin' };
+      else if (pin?.mode === 'after') {
+        let i = regIndex.has(pin.anchor_book_id) ? regIndex.get(pin.anchor_book_id) : -2;
+        if (i === -2 && num(pin.anchor_number) != null) {      // the anchor was replaced: follow its number
+          i = -1;
+          regular.forEach((r, k) => { if (num(r.issue_number) != null && num(r.issue_number) <= num(pin.anchor_number)) i = k; });
+        }
+        pos = i === -2 ? { shelf: 'pinned issue is gone' } : { after: i, evidence: 'pin' };
+      } else if (eventHome) pos = { shelf: "event series: the Event page has the full order" };
+      else pos = automatic(x, regular, weeks, timeline, regIndex);
+      const label = extraLabel(x.book, parentNames, x.kind === 'annual' || ANNUAL_RE.test(x.book.filename));
+      if (pos.shelf) shelf.push({ bookId: x.book.id, reason: pos.shelf, pinned: !!pin });
+      else placed.push({ bookId: x.book.id, afterBookId: pos.after >= 0 ? regular[pos.after].id : null, after: pos.after,
+        evidence: pos.evidence, kind: x.kind, mini: x.mini, pinned: !!pin, ...label,
+        sortKey: [x.book.store_date || '9999-99-99', pos.ord ?? 0, String(x.book.filename || '')] });
+    }
+    // Several extras after one issue: by date, then Timeline order, then filename.
+    placed.sort((a, b) => (a.after - b.after) || (a.sortKey[0] < b.sortKey[0] ? -1 : a.sortKey[0] > b.sortKey[0] ? 1 : 0)
+      || (a.sortKey[1] - b.sortKey[1]) || a.sortKey[2].localeCompare(b.sortKey[2]));
+    placed.forEach(p => { delete p.sortKey; });
+    return { seriesId, eventHome, regular: regular.map(r => ({ id: r.id, number: r.issue_number })), placed, shelf,
+      pins: Object.fromEntries([...pins.values()].map(p => [p.book_id, { mode: p.mode, anchorBookId: p.anchor_book_id || null }])) };
+  }
+
+  // The displayed sequence: regular issues with the placed extras after their anchors (book ids).
+  function sequence(seriesId) {
+    const p = placement(seriesId);
+    if (!p) return null;
+    const out = p.placed.filter(x => x.after < 0).map(x => x.bookId);
+    p.regular.forEach((r, i) => { out.push(r.id); for (const x of p.placed) if (x.after === i) out.push(x.bookId); });
+    return out;
+  }
+
+  function setPin(seriesId, bookId, { mode, anchorBookId } = {}, userId = null) {
+    if (!PIN_MODES.has(mode)) throw Object.assign(new Error('mode must be after, first or shelf'), { status: 400 });
+    let anchorNumber = null;
+    if (mode === 'after') {
+      const a = one('SELECT id, issue_number, filename, is_special FROM scanned_books WHERE id = ? AND series_id = ?', String(anchorBookId || ''), seriesId);
+      if (!a || a.is_special || ANNUAL_RE.test(a.filename)) throw Object.assign(new Error('Choose a regular issue of this series'), { status: 400 });
+      anchorNumber = a.issue_number;
+    }
+    if (!one('SELECT 1 FROM scanned_books WHERE id = ?', bookId)) throw Object.assign(new Error('Book not found'), { status: 404 });
+    db.prepare(`INSERT INTO series_placement_pins (series_id, book_id, mode, anchor_book_id, anchor_number, updated_at, updated_by)
+      VALUES (?,?,?,?,?,?,?) ON CONFLICT(series_id, book_id) DO UPDATE SET mode = excluded.mode, anchor_book_id = excluded.anchor_book_id,
+      anchor_number = excluded.anchor_number, updated_at = excluded.updated_at, updated_by = excluded.updated_by`)
+      .run(seriesId, bookId, mode, mode === 'after' ? String(anchorBookId) : null, anchorNumber, Date.now(), userId);
+  }
+  const clearPin = (seriesId, bookId) => db.prepare('DELETE FROM series_placement_pins WHERE series_id = ? AND book_id = ?').run(seriesId, bookId).changes;
+
+  return { placement, sequence, setPin, clearPin };
+}
+
+// Routes (2026-11-21). GET for any signed-in reader (the series page's Issues grid); pins for admins:
+// one shared reading order per series (user's choice).
+function registerPlacementRoutes({ app, db, requireAuth, requireAdmin, members, parseComicInfo, withEventMarkers }) {
+  const placement = createSeriesPlacement({ db, members });
+  const fail = (res, e) => res.status(e.status || 500).json({ error: e.message });
+  app.get('/api/series/:id/placement', requireAuth, (req, res) => {
+    try {
+      const p = placement.placement(req.params.id);
+      if (!p) return res.status(404).json({ error: 'Series not found' });
+      const ids = p.placed.map(x => x.bookId);
+      const rows = new Map();
+      for (let i = 0; i < ids.length; i += 500) {
+        const part = ids.slice(i, i + 500);
+        for (const b of db.prepare(`SELECT * FROM scanned_books WHERE id IN (${part.map(() => '?').join(',')})`).all(...part)) rows.set(b.id, b);
+      }
+      const userId = req.user?.sub || null;
+      const progress = new Map();
+      if (userId && ids.length) {
+        for (let i = 0; i < ids.length; i += 500) {
+          const part = ids.slice(i, i + 500);
+          for (const r of db.prepare(`SELECT book_id, page, completed FROM read_progress WHERE user_id = ? AND book_id IN (${part.map(() => '?').join(',')})`).all(userId, ...part)) progress.set(r.book_id, r);
+        }
+      }
+      // The same shape as /api/series/:id/books, so the grid renders a placed book like an issue.
+      const mapped = ids.filter(id => rows.has(id)).map(id => {
+        const b = rows.get(id), ci = b.comicinfo ? parseComicInfo(b.comicinfo) : {}, rp = progress.get(id);
+        return { ...b, comicinfo: ci, metadata: { number: b.issue_number, title: b.title, numberSort: b.sort_order },
+          media: { pagesCount: ci.pageCount || null }, readProgress: rp ? { page: rp.page, completed: !!rp.completed } : null };
+      });
+      const books = new Map(withEventMarkers(db, mapped).map(b => [b.id, b]));
+      res.json({ ...p, placed: p.placed.filter(x => books.has(x.bookId)).map(x => ({ ...x, book: books.get(x.bookId) })) });
+    } catch (e) { fail(res, e); }
+  });
+  app.put('/api/series/:id/placement/:bookId', requireAdmin, (req, res) => {
+    try { placement.setPin(req.params.id, req.params.bookId, req.body || {}, req.user?.sub || null); res.json({ ok: true }); } catch (e) { fail(res, e); }
+  });
+  app.delete('/api/series/:id/placement/:bookId', requireAdmin, (req, res) => {
+    try { res.json({ ok: true, cleared: placement.clearPin(req.params.id, req.params.bookId) }); } catch (e) { fail(res, e); }
+  });
+  return placement;
+}
+
+module.exports = { createSeriesPlacement, ensurePlacementSchema, extraLabel, weekOf, registerPlacementRoutes };

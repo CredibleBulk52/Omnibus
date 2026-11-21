@@ -200,10 +200,50 @@ export default function SeriesDetailComic() {
   const [batchLog, setBatchLog] = useState([]);
   const [showBatchLog, setShowBatchLog] = useState(false);
 
+  // ─── Annuals and specials in the reading order (seriesPlacement.js, 2026-11-21) ───
+  // Placed extras sit after the regular issue they follow; regular numbering and totals stay.
+  const [placement, setPlacement] = useState(null);
+  const loadPlacement = React.useCallback(() => fetch(`/api/series/${id}/placement`)
+    .then(r => (r.ok ? r.json() : null)).then(setPlacement).catch(() => setPlacement(null)), [id]);
+  const readingSeq = React.useMemo(() => {
+    const after = new Map();
+    for (const x of placement?.placed || []) {
+      const k = x.afterBookId || '';
+      if (!after.has(k)) after.set(k, []);
+      after.get(k).push(x);
+    }
+    const out = (after.get('') || []).map(x => ({ book: x.book, placed: x }));
+    for (const b of books) { out.push({ book: b }); for (const x of after.get(b.id) || []) out.push({ book: x.book, placed: x }); }
+    return out;
+  }, [books, placement]);
+  // The ⋮ menu's placement items, for admins (one shared reading order per series).
+  const placementMenu = bookId => {
+    if (!placement || !isAdmin()) return null;
+    const placed = placement.placed.find(x => x.bookId === bookId);
+    const shelf = placement.shelf.find(x => x.bookId === bookId);
+    if (!placed && !shelf) return null;
+    const num = rid => placement.regular.find(r => r.id === rid)?.number;
+    const pin = placement.pins?.[bookId];
+    const status = placed
+      ? `In Issues ${placed.afterBookId ? `after #${num(placed.afterBookId)}` : 'before the first issue'} · ${placed.pinned ? 'pinned' : placed.evidence}`
+      : `On the shelf · ${shelf.reason}`;
+    return {
+      status, pinned: !!pin, mode: pin?.mode || null, regular: placement.regular,
+      current: placed ? (placed.afterBookId || 'first') : null,
+      onSet: async body => {
+        const r = await fetch(`/api/series/${id}/placement/${bookId}`, body
+          ? { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { method: 'DELETE' });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'That did not work. Try again.');
+        await loadPlacement();
+      },
+    };
+  };
+
   // ─── Current book (bookmark target) ─────────────────────────────
   // The "current" issue is: highest in-progress book, OR if none,
   // the first unread book after the last completed one.
   const currentBookId = React.useMemo(() => {
+    const books = readingSeq.map(x => x.book);   // the displayed order, placed extras included
     if (!books.length) return null;
     // In-progress takes priority
     const inProgress = books.filter(b => b.readProgress && !b.readProgress.completed && b.readProgress.page > 0);
@@ -213,7 +253,7 @@ export default function SeriesDetailComic() {
     const nextIdx = lastCompletedIdx + 1;
     if (nextIdx < books.length) return books[nextIdx].id;
     return null;
-  }, [books]);
+  }, [readingSeq]);
 
   // ─── Missing issues (2026-10-28, claude/REQUESTS_AND_REPORTS.md) ───────
   // The issues of this series' Comic Vine volume that are not in the library,
@@ -267,6 +307,7 @@ export default function SeriesDetailComic() {
     ]);
     setSeries(sRes);
     setBooks((bRes.content || []).sort((a, b) => (a.number || 0) - (b.number || 0)));
+    loadPlacement();
     // Load tags from dedicated table (shared across all users)
     fetch(`/api/series/${id}/tags`).then(r => r.json()).then(t => setUserTags(Array.isArray(t) ? t : [])).catch(() => {});
     // Load ratings & awards
@@ -281,6 +322,7 @@ export default function SeriesDetailComic() {
 
   useEffect(() => {
     setLoading(true);
+    setPlacement(null);   // another series: its own placement, not the last one's
     reload().finally(() => setLoading(false));
   }, [id]);
 
@@ -537,6 +579,7 @@ export default function SeriesDetailComic() {
     setBooks(prev => prev.map(upd));
     setAnnuals(prev => (prev?.books ? { ...prev, books: prev.books.map(upd) } : prev));
     setSpecials(prev => (prev?.books ? { ...prev, books: prev.books.map(upd) } : prev));
+    setPlacement(prev => (prev ? { ...prev, placed: prev.placed.map(x => (x.book.id === bookId ? { ...x, book: upd(x.book) } : x)) } : prev));
   };
 
   const batchMarkRead = async (completed) => {
@@ -604,7 +647,11 @@ export default function SeriesDetailComic() {
     </div>
   );
 
-  const readingBook = books.find(book => book.id === currentBookId) || books[0];
+  // The book to resume or start, in the displayed order: a placed annual or special can be next.
+  const readingEntry = readingSeq.find(x => x.book.id === currentBookId) || readingSeq.find(x => !x.placed) || readingSeq[0];
+  const readingBook = readingEntry?.book;
+  const readingLabel = readingEntry?.placed ? readingEntry.placed.label : `#${readingBook?.issue_number || readingBook?.metadata?.number || '—'}`;
+  const readHref = (book, placed) => `/read/${book.id}${placed && book.series_id !== id ? `?fromSeries=${encodeURIComponent(id)}` : ''}`;
   const resuming = !!(readingBook?.readProgress?.page > 0 && !readingBook.readProgress.completed);
   const title   = series.displayTitle || series.metadata?.title || series.name;
   // For CV searches: strip year suffix and any parens — CV search doesn't handle them well.
@@ -619,9 +666,17 @@ export default function SeriesDetailComic() {
   const showGaps = gapRows.length > 0 && (gapsShown === 'show' || (gapsShown === 'auto' && gapRows.length <= GAPS_INLINE));
   const numKey = n => { const f = parseFloat(String(n ?? '').replace(/[^\d.-]/g, '')); return Number.isFinite(f) ? f : Infinity; };
   const shelfItems = showGaps
-    ? [...books.map((book, k) => ({ book, key: numKey(book.issue_number ?? book.number), k })), ...gapRows.map((gap, k) => ({ gap, key: numKey(gap.number), k: books.length + k }))]
-        .sort((a, b) => (a.key - b.key) || (a.k - b.k))
-    : books.map(book => ({ book }));
+    ? (() => {
+        // A placed extra takes the key of the issue it follows plus a little, so gaps sort around it.
+        let last = books.length ? numKey(books[0].issue_number ?? books[0].number) - 1 : 0, rank = 0;
+        const seq = readingSeq.map((x, k) => {
+          if (!x.placed) { last = numKey(x.book.issue_number ?? x.book.number); rank = 0; return { ...x, key: last, k }; }
+          rank += 1; return { ...x, key: last + rank / 1000, k };
+        });
+        return [...seq, ...gapRows.map((gap, k) => ({ gap, key: numKey(gap.number), k: seq.length + k }))]
+          .sort((a, b) => (a.key - b.key) || (a.k - b.k));
+      })()
+    : readingSeq;
   const renderGap = g => {
     const today = new Date().toISOString().slice(0, 10);
     const label = g.unreleased ? `Out ${g.date && g.date > today ? g.date : 'soon'}`
@@ -803,8 +858,8 @@ export default function SeriesDetailComic() {
         status={status} totalIssues={totalIssues} owned={books.length} readCount={books.filter(book => book.readProgress?.completed).length} unread={series.booksUnreadCount || 0}
         genres={genres} userTags={userTags} description={description} badges={seriesBadges}
         readingBook={readingBook} resuming={resuming}
-        resumeLabel={resuming ? `▶ Resume #${readingBook?.issue_number || readingBook?.metadata?.number || '—'}` : currentBookId && currentBookId !== books[0]?.id ? `▶ Start #${readingBook?.issue_number || readingBook?.metadata?.number || '—'}` : '▶ Read First Issue'}
-        onRead={() => readingBook && navigate(`/read/${readingBook.id}`)} onDetails={() => setTab('metadata')}
+        resumeLabel={resuming ? `▶ Resume ${readingLabel}` : currentBookId && currentBookId !== books[0]?.id ? `▶ Start ${readingLabel}` : '▶ Read First Issue'}
+        onRead={() => readingBook && navigate(readHref(readingBook, readingEntry?.placed))} onDetails={() => setTab('metadata')}
         onReadFirst={books.length > 0 && (resuming || currentBookId !== books[0]?.id) ? () => navigate(`/read/${books[0].id}`) : undefined}
         tabs={(
 <div className="series-tabs">
@@ -942,7 +997,7 @@ export default function SeriesDetailComic() {
                 <div className="issues-bookshelf">
                   <div className="shelf-wall" style={{ padding:'16px 0 0' }}>
                     <div className="issues-books">
-                      {shelfItems.map(({ book, gap }, i) => gap ? renderGap(gap) : (() => {
+                      {shelfItems.map(({ book, gap, placed }, i) => gap ? renderGap(gap) : (() => {
                         const isCurrent   = book.id === currentBookId;
                         const isCompleted = !!book.readProgress?.completed;
                         const isInProgress = book.readProgress && !isCompleted && book.readProgress.page > 0;
@@ -952,7 +1007,7 @@ export default function SeriesDetailComic() {
                           : 0;
                         const isSelected = selected.has(book.id);
                         return (
-                        <div key={book.id} className={`issue-book${isCurrent ? ' issue-book--current' : ''}`} style={{ width: ISSUE_W }}>
+                        <div key={book.id} className={`issue-book${isCurrent ? ' issue-book--current' : ''}${placed ? ' issue-book--placed' : ''}`} style={{ width: ISSUE_W }}>
                           {isCurrent && <div className="issue-tagrow"><span /><span className="issue-here">▶ Reading</span></div>}
                           {/* Cover + hover overlay */}
                           <div className={`issue-cover issue-cover-hoverable${book.events?.length ? ' has-event-strip' : ''}`} style={{ width: ISSUE_W, height: ISSUE_H, outline: isSelected ? '2px solid var(--td-yellow)' : 'none', outlineOffset: 2 }}
@@ -987,11 +1042,12 @@ export default function SeriesDetailComic() {
                             {isCurrent && <div className="issue-bookmark" title="Continue reading here" />}
 
                             {/* ⋮: read / unread, add to a reading order (2026-11-04); hidden in select mode */}
-                            {!selectMode && <IssueCardMenu bookId={book.id} label={issueLabel(book)} read={isCompleted} onChanged={c => issueReadChanged(book.id, c)} />}
+                            {!selectMode && <IssueCardMenu bookId={book.id} label={placed ? `${series?.name || ''} ${placed.label}`.trim() : issueLabel(book)} read={isCompleted}
+                              onChanged={c => issueReadChanged(book.id, c)} placement={placed ? placementMenu(book.id) : null} />}
                             {/* Hover action overlay — hidden in select mode */}
                             {!selectMode && (
                               <div className="issue-hover-overlay">
-                                <button className="issue-action-btn" onClick={() => navigate(`/read/${book.id}`)}>
+                                <button className="issue-action-btn" onClick={() => navigate(readHref(book, placed))}>
                                   ▶ Read
                                 </button>
                                 <button className="issue-action-btn issue-action-btn--secondary" onClick={() => setDetailBook(book)}>
@@ -1001,8 +1057,8 @@ export default function SeriesDetailComic() {
                               </div>
                             )}
                           </div>
-                          <div className="issue-number">{book.issue_number ? `#${book.issue_number}` : `#${i+1}`}</div>
-                          <div className="issue-title">{book.metadata?.title||''}</div>
+                          <div className="issue-number">{placed ? placed.label : book.issue_number ? `#${book.issue_number}` : `#${i+1}`}</div>
+                          <div className="issue-title">{placed ? placed.title : book.metadata?.title||''}</div>
                         </div>
                         );
                       })())}
@@ -1046,7 +1102,7 @@ export default function SeriesDetailComic() {
                               {/* Timeline event strip (EventStrip.jsx, 2026-11-19) */}
                               <EventStrip bookId={book.id} events={book.events} />
                               {book.readProgress?.completed && <div className="issue-read-badge">✓</div>}
-                              <IssueCardMenu bookId={book.id} label={issueLabel(book)} read={!!book.readProgress?.completed} onChanged={c => issueReadChanged(book.id, c)} />
+                              <IssueCardMenu bookId={book.id} label={issueLabel(book)} read={!!book.readProgress?.completed} onChanged={c => issueReadChanged(book.id, c)} placement={placementMenu(book.id)} />
                               <div className="issue-hover-overlay">
                                 <button className="issue-action-btn" onClick={() => navigate(`/read/${book.id}`)}>
                                   ▶ Read
@@ -1101,7 +1157,7 @@ export default function SeriesDetailComic() {
                               {/* Timeline event strip (EventStrip.jsx, 2026-11-19) */}
                               <EventStrip bookId={book.id} events={book.events} />
                               {book.readProgress?.completed && <div className="issue-read-badge">✓</div>}
-                              <IssueCardMenu bookId={book.id} label={issueLabel(book)} read={!!book.readProgress?.completed} onChanged={c => issueReadChanged(book.id, c)} />
+                              <IssueCardMenu bookId={book.id} label={issueLabel(book)} read={!!book.readProgress?.completed} onChanged={c => issueReadChanged(book.id, c)} placement={placementMenu(book.id)} />
                               <div className="issue-hover-overlay">
                                 <button className="issue-action-btn" onClick={() => navigate(`/read/${book.id}`)}>
                                   ▶ Read

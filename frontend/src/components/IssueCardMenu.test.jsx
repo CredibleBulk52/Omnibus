@@ -49,3 +49,34 @@ test('event and run pages: the editor is behind Manage; + Add to a box stays in 
   await act(async () => [...document.querySelectorAll('.manage-menu-panel button')].find(b => b.textContent === '✎ Open Editor').click());
   expect(onEdit).toHaveBeenCalled();
 });
+
+test('issue ⋮ placement (admins): shows where the book is, pins it after an issue, to the shelf, or back to automatic', async () => {
+  const onSet = vi.fn(async () => {});
+  const placement = { status: 'In Issues after #37 · release week', pinned: false, mode: null, current: 'w37',
+    regular: [{ id: 'w36', number: '36' }, { id: 'w37', number: '37' }, { id: 'w38', number: '38' }], onSet };
+  act(() => root.render(<MemoryRouter><IssueCardMenu bookId="ann" label="Wonder Woman 2026 Annual #1" read={false} placement={placement} /></MemoryRouter>));
+  await act(async () => host.querySelector('.scm-toggle').click());
+  expect(document.querySelector('.scm-panel').textContent).toContain('In Issues after #37 · release week');
+  expect(item('⟲ Automatic placement')).toBeFalsy();                       // nothing pinned yet
+  await act(async () => item('▭ Show on shelf only').click()); await flush();
+  expect(onSet).toHaveBeenLastCalledWith({ mode: 'shelf' });
+  await act(async () => host.querySelector('.scm-toggle').click());
+  await act(async () => item('↳ Read after…').click()); await flush();
+  const select = document.querySelector('.rl-modal select');
+  expect(select.value).toBe('w37');
+  await act(async () => { select.value = 'w36'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+  await act(async () => [...document.querySelectorAll('.rl-modal button')].find(b => b.textContent === 'Save').click()); await flush();
+  expect(onSet).toHaveBeenLastCalledWith({ mode: 'after', anchorBookId: 'w36' });
+  expect(document.querySelector('.rl-modal')).toBeNull();
+  act(() => root.render(<MemoryRouter><IssueCardMenu bookId="ann" label="x" placement={{ ...placement, pinned: true, mode: 'shelf' }} /></MemoryRouter>));
+  await act(async () => host.querySelector('.scm-toggle').click());
+  expect(item('▭ Show on shelf only')).toBeFalsy();
+  await act(async () => item('⟲ Automatic placement').click()); await flush();
+  expect(onSet).toHaveBeenLastCalledWith(null);
+});
+
+test('issue ⋮ without placement (readers, other pages): no placement items', async () => {
+  act(() => root.render(<MemoryRouter><IssueCardMenu bookId="b7" label="Saga #7" read={false} onChanged={() => {}} /></MemoryRouter>));
+  await act(async () => host.querySelector('.scm-toggle').click());
+  expect(item('↳ Read after…')).toBeFalsy();
+});

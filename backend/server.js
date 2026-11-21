@@ -3315,19 +3315,34 @@ app.get('/api/books/:id/adjacent', requireAuth, (req, res) => {
     return res.json(withLabels({ prev: fmt(issues[idx - 1]), next: fmt(issues[idx + 1]), context: runContext }));
   }
 
-  // Series context fallback
-  const siblings = db.prepare(`
-    SELECT id, COALESCE(title, filename) AS display_title, sort_order
-    FROM scanned_books WHERE series_id = ? ORDER BY sort_order
-  `).all(book.series_id);
-
-  const idx = siblings.findIndex(b => b.id === bookId);
-  const ser = db.prepare('SELECT name FROM scanned_series WHERE id = ?').get(book.series_id);
-  const serContext = { kind: 'series', id: book.series_id, name: ser?.name || 'Series', position: idx === -1 ? null : idx + 1, total: siblings.length };
+  // Series context (2026-11-21, seriesPlacement.js): the series' displayed reading order — regular
+  // issues with the annuals and specials placed after the issue they follow. Opened from a parent
+  // series' Issues (?seriesId=), a linked book (Amazons Attack on Wonder Woman) reads in that order.
+  // A book left on the shelf reads among its folder's other shelf books, in shelf order.
+  const fromSeries = req.query.seriesId ? String(req.query.seriesId) : null;
+  let ctxId = book.series_id;
+  let order = null;
+  if (fromSeries && fromSeries !== book.series_id) {
+    const theirs = seriesPlacement.sequence(fromSeries);
+    if (theirs && theirs.includes(bookId)) { ctxId = fromSeries; order = theirs; }
+  }
+  if (!order) order = seriesPlacement.sequence(book.series_id) || [];
+  if (!order.includes(bookId)) {
+    const placed = new Set(order);
+    order = db.prepare('SELECT id FROM scanned_books WHERE series_id = ? ORDER BY sort_order, filename').all(book.series_id)
+      .map(r => r.id).filter(id => id === bookId || !placed.has(id));
+  }
+  const idx = order.indexOf(bookId);
+  const ser = db.prepare('SELECT name FROM scanned_series WHERE id = ?').get(ctxId);
+  const serContext = { kind: 'series', id: ctxId, name: ser?.name || 'Series', position: idx === -1 ? null : idx + 1, total: order.length };
   if (idx === -1) return res.json({ prev: null, next: null, context: serContext });
 
-  const fmt = b => b ? { id: b.id, title: b.display_title } : null;
-  res.json(withLabels({ prev: fmt(siblings[idx - 1]), next: fmt(siblings[idx + 1]), context: serContext }));
+  const fmt = id => {
+    if (!id) return null;
+    const b = db.prepare('SELECT id, COALESCE(title, filename) AS display_title FROM scanned_books WHERE id = ?').get(id);
+    return b ? { id: b.id, title: b.display_title } : null;
+  };
+  res.json(withLabels({ prev: fmt(order[idx - 1]), next: fmt(order[idx + 1]), context: serContext }));
 });
 
 // Reader end-of-issue card: series name, issue number and the issue's own
@@ -11568,6 +11583,9 @@ async function requestRowFor(src, owner, issue) {
 const problemReports = require('./problemReports')({ app, db, requireAuth, requireAdmin, logger });
 // ─── Series grouping routes: shelfRoutes.js (2026-11-19) ─────────────
 // Specials shelves panel, the Shelf Sorter, the series page's shelf routes, the rules' startup and hourly runs.
+// Annuals and specials in a series' reading order (seriesPlacement.js, 2026-11-21; claude/SERIES_READING_ORDER.md).
+const seriesPlacement = require('./seriesPlacement').registerPlacementRoutes({ app, db, requireAuth, requireAdmin,
+  members: id => seriesGrouping.members(id), parseComicInfo, withEventMarkers });
 require('./shelfRoutes').registerShelfRoutes({ ai, aiModels, aiRouting, app, db, getSetting, hasAiProvider, logger, metron, metronToken, minisOn, requireAdmin, requireAuth,
   seriesGroupOf, seriesGrouping, setAiJobOutcome, shelvesMode, shelvesOn });
 

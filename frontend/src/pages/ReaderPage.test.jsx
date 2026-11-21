@@ -55,3 +55,9 @@ test('swipe turns the page on a wide tablet in desktop-site mode, not while pinc
   expect(page()).toBe('Page 2');
  }finally{window.innerWidth=width;delete window.visualViewport;}
 });
+test('opened from a series Issues grid (placed book of another series): neighbours and next keep that series',async()=>{
+ await act(async()=>root.render(<MemoryRouter initialEntries={['/read/start?fromSeries=ww']}><Location/><Routes><Route path="/read/:bookId" element={<ReaderPage/>}/></Routes></MemoryRouter>));
+ expect(fetch.mock.calls.some(([u])=>u==='/api/books/start/adjacent?seriesId=ww')).toBe(true);
+ await key('ArrowRight');await act(async()=>host.querySelector('.next-panel').click());await act(async()=>vi.advanceTimersByTime(350));
+ expect(host.querySelector('output').textContent).toBe('/read/core?fromSeries=ww');
+});

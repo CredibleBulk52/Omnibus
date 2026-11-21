@@ -94,12 +94,16 @@ export default function ReaderPage() {
   const canonRunId = new URLSearchParams(location.search).get('canonRunId');
   const restart = new URLSearchParams(location.search).get('restart') === '1';
   const listId     = new URLSearchParams(location.search).get('listId');
+  // Opened from a series' Issues (2026-11-21): a placed book of another series (a linked mini or
+  // annual volume) reads in that series' order (seriesPlacement.js).
+  const fromSeries = new URLSearchParams(location.search).get('fromSeries');
   // Query string that keeps the reading context (event / Top Shelf run / reading list) across issues.
   // The same context, sent with each progress save so Continue Reading on the home page
   // can offer the next issue in this event / run / list (readingContexts.js).
   const ctxSave = eventId ? { kind: 'event', id: eventId, minTier: eventPath } : canonRunId ? { kind: 'run', id: canonRunId } : listId ? { kind: 'list', id: listId } : null;
   const ctxSaveRef = useRef(ctxSave); ctxSaveRef.current = ctxSave;
-  const ctxQs = eventId ? `?eventId=${encodeURIComponent(eventId)}&minTier=${eventPath}` : canonRunId ? `?canonRunId=${canonRunId}` : listId ? `?listId=${listId}` : '';
+  const ctxQs = eventId ? `?eventId=${encodeURIComponent(eventId)}&minTier=${eventPath}` : canonRunId ? `?canonRunId=${canonRunId}` : listId ? `?listId=${listId}`
+    : fromSeries ? `?fromSeries=${encodeURIComponent(fromSeries)}` : '';
   const [listOpen, setListOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [asst, setAsst] = useState(null);   // Comic Book Guy status (enabled, name, avatar)
@@ -261,6 +265,8 @@ export default function ReaderPage() {
       ? `/api/books/${bookId}/adjacent?canonRunId=${canonRunId}`
       : listId
       ? `/api/books/${bookId}/adjacent?listId=${listId}`
+      : fromSeries
+      ? `/api/books/${bookId}/adjacent?seriesId=${encodeURIComponent(fromSeries)}`
       : `/api/books/${bookId}/adjacent`;
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 3000);
@@ -269,7 +275,7 @@ export default function ReaderPage() {
       .then(d => { setAdjacent(d); setAdjacentLoading(false); })
       .catch(() => { setAdjacentLoading(false); })
       .finally(() => clearTimeout(t));
-  }, [bookId, eventId, eventPath, canonRunId, listId]);
+  }, [bookId, eventId, eventPath, canonRunId, listId, fromSeries]);
 
   // ── Fullscreen sync ───────────────────────────────────────────
   useEffect(() => {
@@ -722,6 +728,7 @@ export default function ReaderPage() {
     if (eventId) navigate(`/events/${eventId}?minTier=${eventPath}`);
     else if (canonRunId) navigate(`/canon/run/${canonRunId}`);
     else if (listId) navigate(`/reading-lists/${listId}`);
+    else if (fromSeries) navigate(`/series/${fromSeries}`, { replace: true });
     else if (seriesId) navigate(`/series/${seriesId}`, { replace: true });
     else navigate(-1);
   };
