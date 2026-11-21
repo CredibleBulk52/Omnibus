@@ -25,6 +25,15 @@ The Omnibus logo was created by the project owner. The default assistant image u
 
 Bangers, Boogaloo, DM Sans, Comic Neue and Bowlby One SC are requested from Google Fonts, rather than bundled as font binaries. If fonts are distributed locally in a future release, retain the exact families' license and copyright files. https://developers.google.com/fonts/
 
+## Comic data sources
+
+Store dates (the `<StoreDate>` element Omnibus writes into ComicInfo.xml) come from Comic Vine and Metron through their APIs, under their terms. For books neither has a date for, `scripts/store_dates.py` also uses:
+
+- **The Grand Comics Database** (https://www.comics.org/): on-sale dates from its data distribution. All portions of the Grand Comics Database™, except where noted otherwise, are copyrighted by the GCD and licensed under a Creative Commons Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0, https://creativecommons.org/licenses/by-sa/4.0/). Omnibus does not include GCD data; an administrator downloads the dump from comics.org and the script builds a local index from it. Dates derived from it are stored in the administrator's own files and database.
+- **Marvel Database** (https://marvel.fandom.com/) and **DC Database** (https://dc.fandom.com/): release and publication dates read from issue pages through the MediaWiki API. Community content on Fandom is available under CC BY-SA unless otherwise noted.
+
+If data derived from these sources is ever redistributed (for example a shared database export), it must carry this attribution and be shared under the same licence.
+
 ## Collected native notices
 
 The container includes `/usr/share/doc/omnibus/native/`: collected Alpine and sharp-libvips source notices, a version and provenance index, and a README describing unresolved gaps. The build verifies notice-file integrity. Changes to covered dependency versions produce review warnings and a persistent status file, rather than blocking the build. This is a partial collection; consult its README before treating the image review as complete.

@@ -17,6 +17,8 @@ Run inside the Omnibus container (docker exec omnibus python3 /app/scripts/store
            the background lane, metron_pace). Progress is kept: run it again to continue.
   report   What collect found: dates per source, disagreements, books without a date. --csv FILE.
   probe    Show what Metron's issue list holds for --series and how it matches the books.
+  collect-wiki / collect-gcd  Third and fourth sources for books still without a date (Marvel and DC
+           wikis; the Grand Comics Database's on-sale dates from a local index of its SQLite dump).
   write    Add <StoreDate> to each book collect dated. Pauses the metadata routine and restores it
            afterwards. Edits each archive in place: a new ComicInfo.xml and index are added at the end
            of the file and nothing before is changed; if the check afterwards fails, the file is cut
@@ -488,6 +490,14 @@ def cmd_report(args):
     print(f"Disagreements between sources: {n}")
     for r in st.execute("SELECT c.*, d.path FROM conflicts c LEFT JOIN dates d USING (book_id) LIMIT 20"):
         print(f"  {os.path.basename(r['path'] or r['book_id'])}: {r['source_a']} {r['date_a']} vs {r['source_b']} {r['date_b']}")
+    try:
+        wt = st.execute("SELECT wiki, result, COUNT(*) n FROM wiki_tried GROUP BY wiki, result ORDER BY wiki, n DESC").fetchall()
+    except sqlite3.OperationalError:
+        wt = []
+    if wt:
+        print("Wiki lookups (collect-wiki):")
+        for r in wt:
+            print(f"  {r['wiki']:<7} {r['result']:<22} {r['n']}")
     w = st.execute("SELECT result, COUNT(*) n FROM written GROUP BY result").fetchall()
     if w:
         print("Written: " + ", ".join(f"{r['result']} {r['n']}" for r in w))
@@ -502,9 +512,22 @@ def cmd_report(args):
 
 # ─── write ───────────────────────────────────────────────────────────
 
+COMICINFO_NAME = re.compile(r"(^|[/\\])comicinfo\.xml$", re.I)
+
+
 def root_comicinfo(z):
-    roots = [i for i in z.infolist() if "/" not in i.filename and i.filename.lower() == "comicinfo.xml"]
-    return roots[0] if len(roots) == 1 else None
+    """The ComicInfo.xml member Omnibus's reader uses (comicInfoFiles.js), when that choice is clear:
+    a single non-empty top-level copy, else the one non-empty copy anywhere (many archives keep the
+    pages and ComicInfo.xml in a folder). None when there is none or the choice is ambiguous.
+    The edit keeps the member's own path, so a nested ComicInfo.xml is updated where it is."""
+    found = [i for i in z.infolist() if not i.is_dir() and COMICINFO_NAME.search(i.filename)]
+    roots = [i for i in found if not re.search(r"[/\\]", i.filename)]
+    filled = [i for i in found if i.file_size > 0 and z.read(i).strip()]
+    if len(roots) == 1 and roots[0] in filled:
+        return roots[0]
+    if len(filled) == 1 and len(roots) <= 1:
+        return filled[0]
+    return None
 
 
 def add_store_date(xml, d):
@@ -594,7 +617,7 @@ def append_store_date(path, d):
     with zipfile.ZipFile(path) as z:
         ci = root_comicinfo(z)
         if ci is None:
-            return "no single top-level ComicInfo.xml"
+            return "no single ComicInfo.xml Omnibus would read"
         try:
             xml = z.read(ci).decode("utf-8")
         except UnicodeDecodeError:
@@ -889,8 +912,29 @@ MONTHS = {m: i for i, m in enumerate(["january", "february", "march", "april", "
 
 
 def wiki_field(text, name):
+    """A template field's value, without editors' notes (<!-- GCD -->) or references (2026-11-20: a note
+    after "Day = 5" hid every such DC date)."""
     m = re.search(r"^\|\s*" + re.escape(name) + r"\s*=\s*(.*?)\s*$", text or "", re.M)
-    return m.group(1).strip() if m else ""
+    if not m:
+        return ""
+    v = re.sub(r"<!--.*?-->", "", m.group(1))
+    v = re.sub(r"<ref[^>]*/>|<ref[^>]*>.*?</ref>", "", v)
+    return v.strip()
+
+
+def dc_published(text):
+    """DC Database: Pubyear-Pubmonth-Day when all three are given (the Grand Comics Database's published
+    date, recorded on the page), else None."""
+    y, mo, d = wiki_field(text, "Pubyear"), month_num(wiki_field(text, "Pubmonth")), wiki_field(text, "Day")
+    if y.isdigit() and mo and d.isdigit():
+        return valid_date(f"{int(y):04d}-{mo:02d}-{int(d):02d}")
+    return None
+
+
+def cover_close(a, b, months=2):
+    """Two (year, month) cover dates at most `months` apart (databases differ, e.g. Comic Vine Dec 1990
+    vs the Grand Comics Database Oct 1990 for Hawk and Dove Annual #1)."""
+    return bool(a and b) and abs((a[0] * 12 + a[1]) - (b[0] * 12 + b[1])) <= months
 
 
 def month_num(v):
@@ -1057,26 +1101,39 @@ class WikiClient:
         self.last = time.time()
 
     def get(self, wiki, params):
+        """MediaWiki's "maxlag" answer (HTTP 200 with error code maxlag and Retry-After: the wiki's
+        servers are behind) is a request to pause, not a refusal: waited out, up to 30 in a row
+        (2026-11-20: three of them stopped the first full run). Other errors count toward stopping."""
         import requests
+        lagged = 0
         while True:
             self._wait()
             self.requests += 1
+            r, err, code = None, "", ""
             try:
                 r = requests.get(WIKIS[wiki], timeout=30, headers={"User-Agent": WIKI_UA},
                                  params={**params, "format": "json", "formatversion": 2, "maxlag": 5})
+                data = r.json() if "json" in r.headers.get("content-type", "") else {}
             except Exception as e:
-                r, err = None, str(e)
-            if r is not None and r.ok and "error" not in (r.json() if r.headers.get("content-type", "").startswith("application/json") else {}):
+                data, err = {}, str(e)
+            if isinstance(data.get("error"), dict):
+                code = str(data["error"].get("code") or "")
+            if r is not None and r.ok and not code:
                 self.fails = 0
-                return r.json()
+                return data
+            try:
+                wait = max(5, min(int(r.headers.get("Retry-After", 60)), 600)) if r is not None else 60
+            except ValueError:
+                wait = 60
+            if code == "maxlag" and lagged < 30:
+                lagged += 1
+                if lagged in (1, 10, 20):
+                    log(f"  wiki: its servers are lagging (maxlag); pausing {wait} s at a time")
+                time.sleep(wait)
+                continue
             self.fails += 1
-            wait = 60
-            if r is not None:
-                try:
-                    wait = max(5, min(int(r.headers.get("Retry-After", 60)), 600))
-                except ValueError:
-                    pass
-            log(f"  wiki: {'HTTP ' + str(r.status_code) if r is not None else err}; waiting {wait} s")
+            what = f"error {code}: {data['error'].get('info', '')[:120]}" if code else (f"HTTP {r.status_code}" if r is not None else err)
+            log(f"  wiki: {what}; waiting {wait} s")
             if self.fails >= 3:
                 raise RuntimeError("the wiki refused or failed three times in a row; run collect-wiki again later (progress is kept)")
             time.sleep(wait)
@@ -1106,7 +1163,10 @@ def cmd_collect_wiki(args):
     db, st = app_db(), state_db()
     st.executescript("""CREATE TABLE IF NOT EXISTS wiki_tried (book_id TEXT PRIMARY KEY, wiki TEXT, result TEXT, at TEXT);
                         CREATE TABLE IF NOT EXISTS wiki_volumes (wiki TEXT, name TEXT, cover_year INTEGER, vol INTEGER, PRIMARY KEY (wiki, name, cover_year)); -- cover_year: the ComicInfo Volume (start year)""")
-    tried = {r[0] for r in st.execute("SELECT book_id FROM wiki_tried")}
+    if "page" not in [r[1] for r in st.execute("PRAGMA table_info(wiki_volumes)")]:
+        st.execute("ALTER TABLE wiki_volumes ADD COLUMN page TEXT")  # the wiki's title for the series
+    retry = ("no Day", "no published-on date", "cover month differs", "no ReleaseDate", "no volume") if args.retry else ()
+    tried = {r[0] for r in st.execute("SELECT book_id, result FROM wiki_tried") if r[1] not in retry}
     rows = st.execute("SELECT book_id FROM dates WHERE store_date IS NULL").fetchall()
     ids = [r[0] for r in rows if r[0] not in tried]
     books = []
@@ -1138,25 +1198,30 @@ def cmd_collect_wiki(args):
         for n, key in enumerate(keys, 1):
             wiki, name, volume_year, folder = key
             items = groups[key]
-            vol = wiki_volume(w, st, wiki, name, volume_year or f"folder:{folder}", items)
+            vol, page = wiki_volume(w, st, wiki, name, volume_year or f"folder:{folder}", items, retry=args.retry)
             found = 0
             if vol:
                 for i in range(0, len(items), 50):
                     part = items[i:i + 50]
-                    titles = {f"{name} Vol {vol} {num}": b for num, b in part}
+                    titles = {f"{page} Vol {vol} {num}": b for num, b in part}
                     pages = w.pages(wiki, list(titles))
                     for title, b in titles.items():
                         text = next((t for k, t in pages.items() if k and k.lower() == title.lower()), None)
                         d, why = None, "no page"
                         if text:
-                            if wiki_cover(text) != book_cover(b["comicinfo"]):
+                            # The volume is confirmed by an exact cover match (wiki_volume), so a page of
+                            # that volume with this number is this issue; covers may differ by up to two
+                            # months between databases.
+                            if not cover_close(wiki_cover(text), book_cover(b["comicinfo"])):
                                 why = "cover month differs"
                             elif wiki == "marvel":
                                 d = parse_long_date(wiki_field(text, "ReleaseDate"))
                                 why = "dated" if d else "no ReleaseDate"
+                            elif dc_published(text):
+                                d, why = dc_published(text), "dated"
                             elif wiki_field(text, "Day").isdigit():
                                 d = w.published_on(wiki, title)
-                                why = "dated" if d else "no published-on date"
+                                why = "dated (page sentence)" if d else "no published-on date"
                             else:
                                 why = "no Day"
                         if d:
@@ -1178,31 +1243,48 @@ def cmd_collect_wiki(args):
     log("Next: write (adds StoreDate to these books and saves them in Omnibus's database).")
 
 
-def wiki_volume(w, st, wiki, name, volume_year, items):
+# Titles the wikis use for series ComicInfo names differently (spot check 2026-11-21).
+WIKI_ALIASES = {"mighty thor": ["Thor"], "mighty thor annual": ["Thor Annual"],
+                "peter parker, the spectacular spider-man": ["Spectacular Spider-Man"],
+                "peter parker, the spectacular spider-man annual": ["Spectacular Spider-Man Annual"]}
+
+
+def wiki_names(name):
+    """Page-title spellings to try: as written, without a leading "The" (the Marvel Database titles
+    "The Incredible Hulk" as "Incredible Hulk"), with an inner "the" capitalised, and known aliases."""
+    base = re.sub(r"(?i)^the\s+", "", name).strip()
+    out = [name, base, re.sub(r"\bthe\b", "The", base)] + WIKI_ALIASES.get(base.lower(), [])
+    return list(dict.fromkeys(n for n in out if n))
+
+
+def wiki_volume(w, st, wiki, name, volume_year, items, retry=False):
     """The wiki volume number holding these books (one ComicInfo Series + Volume): tries Vol 1-10 for up to
     three plain-numbered books; remembered per series name and start year."""
     # Remembered per name and start year, or per name and Omnibus series folder when the year is unknown.
     key_year = int(volume_year) if str(volume_year).isdigit() else 0
     key_name = name if key_year else f"{name}|{volume_year}"
-    row = st.execute("SELECT vol FROM wiki_volumes WHERE wiki = ? AND name = ? AND cover_year = ?", (wiki, key_name, key_year)).fetchone()
-    if row:
-        return row[0]
+    row = st.execute("SELECT vol, page FROM wiki_volumes WHERE wiki = ? AND name = ? AND cover_year = ?", (wiki, key_name, key_year)).fetchone()
+    if row and (row[0] or not retry):
+        return row[0], row[1] or name
     plain = sorted((x for x in items if re.fullmatch(r"\d+", x[0])), key=lambda x: int(x[0]))
     probes = (plain[len(plain) // 2:len(plain) // 2 + 1] + plain[:1] + plain[-1:])[:3] or items[:1]
-    vol = None
+    vol, page = None, name
     for num, b in probes:
-        cands = [f"{name} Vol {v} {num}" for v in range(1, 11)]
-        pages = w.pages(wiki, cands)
-        for v, title in enumerate(cands, 1):
+        cands = [(n, v, f"{n} Vol {v} {num}") for n in wiki_names(name) for v in range(1, 11)]
+        pages = {}
+        for i in range(0, len(cands), 50):
+            pages.update(w.pages(wiki, [c[2] for c in cands[i:i + 50]]))
+        for n, v, title in cands:
             text = next((t for k, t in pages.items() if k and k.lower() == title.lower()), None)
             if text and wiki_cover(text) == book_cover(b["comicinfo"]):
-                vol = v
+                vol, page = v, n
                 break
         if vol:
             break
-    st.execute("INSERT OR REPLACE INTO wiki_volumes VALUES (?,?,?,?)", (wiki, key_name, key_year, vol))
+    st.execute("INSERT OR REPLACE INTO wiki_volumes (wiki, name, cover_year, vol, page) VALUES (?,?,?,?,?)",
+               (wiki, key_name, key_year, vol, page))
     st.commit()
-    return vol
+    return vol, page
 
 
 def cmd_scan_check(args):
@@ -1278,6 +1360,142 @@ console.log(JSON.stringify({ reset, skipped }));
         f"still waiting for a save: {len(pending & set(marked))}. Reset: {out}")
 
 
+# ─── collect-gcd (2026-11-20) ────────────────────────────────────────
+# Fourth source for books still without a date: the Grand Comics Database's on-sale dates, from a
+# local index built from GCD's SQLite dump (gcd-index: series and non-variant, non-deleted issues with
+# a complete on_sale_date; no web requests). The DC wiki's Day/Pubmonth come from GCD. Data from the
+# Grand Comics Database (comics.org), Creative Commons Attribution; credited in THIRD_PARTY_NOTICES.md.
+def gcd_name(s):
+    s = str(s or "").lower().replace("&", " and ")
+    s = re.sub(r"^the\s+", "", s.strip())
+    return re.sub(r"[^a-z0-9]+", "", s)
+
+
+# Series GCD files under another name (spot check 2026-11-21), keyed by gcd_name().
+GCD_ALIASES = {"mightythor": "thor", "mightythorannual": "thorannual",
+               "peterparkerthespectacularspiderman": "spectacularspiderman",
+               "peterparkerthespectacularspidermanannual": "spectacularspidermanannual"}
+
+
+def gcd_publisher_ok(book_pub, gcd_pub):
+    a, b = gcd_name(book_pub), gcd_name(gcd_pub)
+    if not a or not b:
+        return True
+    a, b = re.sub(r"(comics|comic|publishing|publications|entertainment|inc|group)", "", a), \
+        re.sub(r"(comics|comic|publishing|publications|entertainment|inc|group)", "", b)
+    return bool(a and b) and (a in b or b in a)
+
+
+def build_gcd_index(dump, out):
+    """The compact index from GCD's SQLite dump (comics.org/download)."""
+    if os.path.exists(out):
+        os.remove(out)
+    c = sqlite3.connect(out)
+    c.execute("ATTACH DATABASE ? AS g", (f"file:{os.path.abspath(dump)}?mode=ro",))
+    c.executescript("""
+      CREATE TABLE series AS SELECT s.id, s.name, s.year_began, p.name AS publisher, s.country_id
+        FROM g.gcd_series s JOIN g.gcd_publisher p ON p.id = s.publisher_id
+        WHERE s.deleted = 0 AND s.id IN (SELECT DISTINCT series_id FROM g.gcd_issue
+          WHERE deleted = 0 AND variant_of_id IS NULL AND length(on_sale_date) = 10);
+      CREATE TABLE issue AS SELECT series_id, number, key_date, on_sale_date
+        FROM g.gcd_issue WHERE deleted = 0 AND variant_of_id IS NULL AND length(on_sale_date) = 10;
+      CREATE INDEX issue_series ON issue(series_id);""")
+    c.commit()
+    c.execute("DETACH DATABASE g")
+    c.execute("VACUUM")
+    c.close()
+
+
+class GcdIndex:
+    def __init__(self, path):
+        self.c = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        self.series = {}
+        for sid, name, year, pub in self.c.execute("SELECT id, name, year_began, publisher FROM series"):
+            self.series.setdefault(gcd_name(name), []).append((sid, year, pub))
+        self.issues = {}
+
+    def issues_of(self, sid):
+        if sid not in self.issues:
+            out = {}
+            for number, key, onsale in self.c.execute("SELECT number, key_date, on_sale_date FROM issue WHERE series_id = ?", (sid,)):
+                out.setdefault(norm_number(number), []).append((key, onsale))
+            self.issues[sid] = out
+        return self.issues[sid]
+
+    def date_for(self, xml):
+        """(date, why) for one book from its ComicInfo: Series, Volume (start year), Number, Publisher, cover."""
+        name, number = ci_value(xml, "Series"), norm_number(ci_value(xml, "Number"))
+        cover, vol = book_cover(xml), ci_value(xml, "Volume")
+        if not name or not number or not cover:
+            return None, "incomplete ComicInfo"
+        key, pub = gcd_name(name), ci_value(xml, "Publisher")
+        named = [c for c in self.series.get(GCD_ALIASES.get(key, key), []) if gcd_publisher_ok(pub, c[2])]
+        cands = named
+        if vol.isdigit():
+            # The ComicInfo start year can be a year off GCD's (Swamp Thing 1986 vs 1985).
+            cands = [c for c in named if c[1] == int(vol)] or [c for c in named if abs(c[1] - int(vol)) == 1]
+        if not cands:
+            # GCD splits some runs into a series per year: L.E.G.I.O.N. '93.
+            cands = [c for c in self.series.get(f"{key}{cover[0] % 100:02d}", []) if gcd_publisher_ok(pub, c[2])]
+        if not cands:
+            return None, "no series"
+        found = set()
+        for sid, _, _ in cands:
+            for key, onsale in self.issues_of(sid).get(number, []):
+                k = re.match(r"(\d{4})-(\d{2})", key or "")
+                if k and cover_close((int(k.group(1)), int(k.group(2))), cover) and valid_date(onsale):
+                    found.add(onsale)
+        if len(found) == 1:
+            return found.pop(), "dated"
+        return None, "several matches" if found else "no issue with on-sale date"
+
+
+def cmd_collect_gcd(args):
+    db, st = app_db(), state_db()
+    if args.build:
+        log(f"Building the GCD index from {args.build} …")
+        build_gcd_index(args.build, args.index)
+    if not os.path.exists(args.index):
+        log(f"No GCD index at {args.index}; build it with --build <GCD SQLite dump>")
+        return
+    st.execute("CREATE TABLE IF NOT EXISTS gcd_tried (book_id TEXT PRIMARY KEY, result TEXT, at TEXT)")
+    tried = {r[0] for r in st.execute("SELECT book_id FROM gcd_tried")} if not args.retry else set()
+    ids = [r[0] for r in st.execute("SELECT book_id FROM dates WHERE store_date IS NULL") if r[0] not in tried]
+    g = GcdIndex(args.index)
+    counts, now = {}, datetime.now().isoformat(timespec="seconds")
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        for b in db.execute(f"SELECT id, comicinfo FROM scanned_books WHERE id IN ({','.join('?' * len(part))})", part):
+            d, why = g.date_for(b["comicinfo"] or "")
+            if d:
+                st.execute("UPDATE dates SET store_date = ?, source = 'gcd', checked_at = ? WHERE book_id = ?", (d, now, b["id"]))
+            st.execute("INSERT OR REPLACE INTO gcd_tried VALUES (?,?,?)", (b["id"], why, now))
+            counts[why] = counts.get(why, 0) + 1
+        st.commit()
+    log(f"GCD: {len(ids)} undated books checked: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda x: -x[1])))
+    log("Next: write (adds StoreDate to these books and saves them in Omnibus's database).")
+
+
+def cmd_skipped(args):
+    """Read-only: for each book write skipped with the given reason, the archive's ComicInfo-like members
+    (folder, spelling, size) and how many members it has."""
+    st = state_db()
+    rows = st.execute("SELECT book_id, path, store_date, result FROM written WHERE result LIKE ? ORDER BY path",
+                      (f"%{args.reason}%",)).fetchall()
+    print(f"{len(rows)} books skipped with '{args.reason}'")
+    for r in rows:
+        print(f"\n{r['path']}  (date {r['store_date']})")
+        try:
+            with zipfile.ZipFile(r["path"]) as z:
+                infos = z.infolist()
+                hits = [i for i in infos if re.search(r"comicinfo", i.filename, re.I)]
+                print(f"  {len(infos)} members; ComicInfo-like: " + ("; ".join(f"{i.filename!r} {i.file_size} B" for i in hits) or "none"))
+                top = sorted({i.filename.split('/')[0] + ('/' if '/' in i.filename else '') for i in infos})[:6]
+                print(f"  top level: {top}")
+        except Exception as e:
+            print(f"  cannot open: {e}")
+
+
 def cmd_wiki_probe(args):
     pages, redirects, normalized = wiki_pages(args.wiki, args.titles)
     for n in normalized:
@@ -1316,6 +1534,8 @@ def main():
     w.add_argument("--limit", type=int)
     w.add_argument("--dry-run", action="store_true")
     sub.add_parser("sync-db")
+    sk = sub.add_parser("skipped")
+    sk.add_argument("--reason", default="ComicInfo.xml")
     sub.add_parser("unmark-scan")
     sc = sub.add_parser("scan-check")
     sc.add_argument("--sample", type=int, default=500)
@@ -1325,16 +1545,21 @@ def main():
     wp.add_argument("titles", nargs="+")
     wp.add_argument("--wiki", choices=sorted(WIKIS), default="dc")
     wp.add_argument("--lines", type=int, default=40)
+    cg = sub.add_parser("collect-gcd")
+    cg.add_argument("--index", default=os.path.join(os.path.dirname(DB_PATH), "gcd-index.db"))
+    cg.add_argument("--build", help="build the index first from this GCD SQLite dump")
+    cg.add_argument("--retry", action="store_true", help="check books already checked against GCD again")
     cw = sub.add_parser("collect-wiki")
     cw.add_argument("--wiki", choices=sorted(WIKIS))
     cw.add_argument("--max-series", type=int)
+    cw.add_argument("--retry", action="store_true", help="ask again for books turned down for no Day, no published-on date, cover month differs or no ReleaseDate")
     wt = sub.add_parser("wiki-trial")
     wt.add_argument("--series", action="append", required=True)
     wt.add_argument("--wiki", choices=sorted(WIKIS), required=True)
     wt.add_argument("--wiki-name", help="the series name on the wiki when it differs from Omnibus's")
     wt.add_argument("--rendered", type=int, default=30, help="DC: pages whose 'published on' sentence is read (one request each)")
     args = p.parse_args()
-    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe, "sync-db": cmd_sync_db, "unmark-scan": cmd_unmark_scan, "scan-check": cmd_scan_check, "wiki-probe": cmd_wiki_probe, "wiki-trial": cmd_wiki_trial, "collect-wiki": cmd_collect_wiki}[args.cmd](args)
+    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe, "sync-db": cmd_sync_db, "skipped": cmd_skipped, "unmark-scan": cmd_unmark_scan, "scan-check": cmd_scan_check, "wiki-probe": cmd_wiki_probe, "wiki-trial": cmd_wiki_trial, "collect-wiki": cmd_collect_wiki, "collect-gcd": cmd_collect_gcd}[args.cmd](args)
 
 
 if __name__ == "__main__":
