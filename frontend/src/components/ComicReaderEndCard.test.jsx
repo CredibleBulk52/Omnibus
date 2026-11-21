@@ -76,3 +76,17 @@ test('series reading: the next issue shows the Timeline event it is part of; eve
   await render({ context: { kind: 'event', id: 'kt', name: 'Knight Terrors' }, next, onRead: () => {}, onBackContext: () => {} });
   expect(container.querySelector('.next-event')).toBeNull();
 });
+
+test('series reading: the event callout names the event, year and role, and opens the event at that issue', async () => {
+  const next = { id: 'gl0', series_name: 'Green Lantern', issue_number: 0, events: [{ id: 'zh', name: 'Zero Hour', year: 1994, tier: 'tie-in' }] };
+  const onEvent = vi.fn(), onRead = vi.fn();
+  await render({ context: { kind: 'series', id: 'gl', name: 'Green Lantern' }, next, onRead, onEvent });
+  const side = container.querySelector('.next-row.has-event .next-event-side');
+  expect(side.textContent).toContain('Zero Hour');
+  expect(side.textContent).toContain('1994 · tie-in');
+  click(side.querySelector('.nes-link'));
+  expect(onEvent).toHaveBeenCalledWith(next.events[0], next);
+  expect(onRead).not.toHaveBeenCalled();                       // the link is not the panel
+  await render({ context: { kind: 'series', id: 'gl', name: 'Green Lantern' }, next, onRead });
+  expect(container.querySelector('.nes-link')).toBeNull();      // no handler: no link
+});

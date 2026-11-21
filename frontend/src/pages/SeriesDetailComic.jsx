@@ -212,8 +212,11 @@ export default function SeriesDetailComic() {
       if (!after.has(k)) after.set(k, []);
       after.get(k).push(x);
     }
+    // The run's order (seriesPlacement.js runOrder): #0 / #1,000,000 issues by release date.
+    const rank = new Map((placement?.regular || []).map((r, i) => [r.id, i]));
+    const run = rank.size ? [...books].sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9)) : books;
     const out = (after.get('') || []).map(x => ({ book: x.book, placed: x }));
-    for (const b of books) { out.push({ book: b }); for (const x of after.get(b.id) || []) out.push({ book: x.book, placed: x }); }
+    for (const b of run) { out.push({ book: b }); for (const x of after.get(b.id) || []) out.push({ book: x.book, placed: x }); }
     return out;
   }, [books, placement]);
   // The ⋮ menu's placement items, for admins (one shared reading order per series).
@@ -650,6 +653,7 @@ export default function SeriesDetailComic() {
   // The book to resume or start, in the displayed order: a placed annual or special can be next.
   const readingEntry = readingSeq.find(x => x.book.id === currentBookId) || readingSeq.find(x => !x.placed) || readingSeq[0];
   const readingBook = readingEntry?.book;
+  const firstIssue = readingSeq.find(x => !x.placed)?.book || books[0];   // #1, not a #0 released later
   const readingLabel = readingEntry?.placed ? readingEntry.placed.label : `#${readingBook?.issue_number || readingBook?.metadata?.number || '—'}`;
   const readHref = (book, placed) => `/read/${book.id}${placed && book.series_id !== id ? `?fromSeries=${encodeURIComponent(id)}` : ''}`;
   const resuming = !!(readingBook?.readProgress?.page > 0 && !readingBook.readProgress.completed);
@@ -670,7 +674,9 @@ export default function SeriesDetailComic() {
         // A placed extra takes the key of the issue it follows plus a little, so gaps sort around it.
         let last = books.length ? numKey(books[0].issue_number ?? books[0].number) - 1 : 0, rank = 0;
         const seq = readingSeq.map((x, k) => {
-          if (!x.placed) { last = numKey(x.book.issue_number ?? x.book.number); rank = 0; return { ...x, key: last, k }; }
+          const own = numKey(x.book.issue_number ?? x.book.number);
+          // A regular issue out of number order (#0 after #55) sits where it was read, like a placed book.
+          if (!x.placed && !(own < last)) { last = own; rank = 0; return { ...x, key: last, k }; }
           rank += 1; return { ...x, key: last + rank / 1000, k };
         });
         return [...seq, ...gapRows.map((gap, k) => ({ gap, key: numKey(gap.number), k: seq.length + k }))]
@@ -858,9 +864,9 @@ export default function SeriesDetailComic() {
         status={status} totalIssues={totalIssues} owned={books.length} readCount={books.filter(book => book.readProgress?.completed).length} unread={series.booksUnreadCount || 0}
         genres={genres} userTags={userTags} description={description} badges={seriesBadges}
         readingBook={readingBook} resuming={resuming}
-        resumeLabel={resuming ? `▶ Resume ${readingLabel}` : currentBookId && currentBookId !== books[0]?.id ? `▶ Start ${readingLabel}` : '▶ Read First Issue'}
+        resumeLabel={resuming ? `▶ Resume ${readingLabel}` : currentBookId && currentBookId !== firstIssue?.id ? `▶ Start ${readingLabel}` : '▶ Read First Issue'}
         onRead={() => readingBook && navigate(readHref(readingBook, readingEntry?.placed))} onDetails={() => setTab('metadata')}
-        onReadFirst={books.length > 0 && (resuming || currentBookId !== books[0]?.id) ? () => navigate(`/read/${books[0].id}`) : undefined}
+        onReadFirst={firstIssue && (resuming || currentBookId !== firstIssue.id) ? () => navigate(`/read/${firstIssue.id}`) : undefined}
         tabs={(
 <div className="series-tabs">
       <div className="series-tabs-list">

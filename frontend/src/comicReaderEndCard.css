@@ -66,3 +66,20 @@
   background:rgba(0,0,0,.4);border-left:3px solid var(--highlight);color:var(--highlight);font:16px 'Bangers',cursive;letter-spacing:.06em;text-transform:uppercase}
 .comic-reader-finale .next-copy > .next-event b{font-size:12px}
 .comic-reader-finale .next-copy > .next-event small{font:13px 'Boogaloo',sans-serif;color:color-mix(in srgb, var(--om-text) 80%, var(--om-base))}
+/* Wide cards: the event in the panel's empty right side, with a link to the event at that issue
+   (2026-11-21). The text lets clicks through to the panel (read next); only the link is its own. */
+.comic-reader-finale .next-row{position:relative;container-type:inline-size}
+.comic-reader-finale .next-event-side{display:none}
+@container (min-width: 620px){
+  .comic-reader-finale .next-row.has-event .next-panel{padding-right:252px}
+  .comic-reader-finale .next-row.has-event .next-panel span.next-event.next-event:not(.read-action){display:none}
+  .comic-reader-finale .next-row.has-event .next-event-side{display:flex;flex-direction:column;justify-content:center;gap:5px;position:absolute;
+    top:52px;bottom:20px;right:20px;width:212px;padding:2px 0 2px 16px;border-left:3px solid var(--highlight);pointer-events:none}
+}
+.comic-reader-finale .next-event-side .nes-cap{white-space:nowrap;font:13px 'Boogaloo',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb, var(--om-text) 78%, var(--om-base))}
+.comic-reader-finale .next-event-side .nes-cap b{color:var(--highlight);font-size:11px;margin-right:4px}
+.comic-reader-finale .next-event-side strong{font:27px/1.02 'Bangers',cursive;letter-spacing:.04em;color:var(--highlight);overflow-wrap:anywhere}
+.comic-reader-finale .next-event-side .nes-meta{font:14px 'Comic Neue',sans-serif;color:color-mix(in srgb, var(--om-text) 85%, var(--om-base))}
+.comic-reader-finale .next-event-side .nes-link{pointer-events:auto;align-self:start;margin-top:6px;padding:0;background:none;border:0;
+  font:15px 'Boogaloo',sans-serif;letter-spacing:.04em;color:var(--highlight);text-decoration:underline;text-underline-offset:3px}
+.comic-reader-finale .next-event-side .nes-link:hover{filter:brightness(1.2)}

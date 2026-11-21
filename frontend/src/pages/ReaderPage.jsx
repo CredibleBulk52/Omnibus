@@ -915,7 +915,8 @@ export default function ReaderPage() {
               loading={adjacentLoading} onRead={openIssue} onLastPage={closeEnd}
               onBackContext={() => navigate(backLink)}
               onBackSeries={(kind === 'series' && ctx?.id) || seriesId ? () => navigate(`/series/${(kind === 'series' && ctx?.id) || seriesId}`, { replace: true }) : null}
-              assistant={asst} onDiscuss={() => setAskOpen(true)} />
+              assistant={asst} onDiscuss={() => setAskOpen(true)}
+              onEvent={(ev, n) => navigate(`/events/${encodeURIComponent(ev.id)}?book=${encodeURIComponent(n.id)}`)} />
           </div>
         );
       })()}

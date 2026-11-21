@@ -3,6 +3,8 @@ import { PATH_LABELS } from './eventReadingPath';
 import { useReadingTheme } from './ReadingTheme';
 import '../comicReaderEndCard.css';
 
+const ROLES = { essential: 'essential', recommended: 'recommended', 'tie-in': 'tie-in', aftermath: 'aftermath' };
+
 export const endIssueLabel = issue => issue
   ? (issue.series_name ? `${issue.series_name}${issue.issue_number != null && issue.issue_number !== '' ? ` #${issue.issue_number}` : ''}` : issue.title || '')
   : '';
@@ -25,7 +27,7 @@ function useEventCover(context) {
 
 export default function ComicReaderEndCard({ completed, headline, issueTitle, bookId, seriesName, solicit,
   context, next, nextRecommended, nextEssential, showRec, showEss, loading, alternatives, endMessage,
-  onRead, onLastPage, onBackContext, onBackSeries, assistant, onDiscuss }) {
+  onRead, onLastPage, onBackContext, onBackSeries, assistant, onDiscuss, onEvent }) {
   const kind = context?.kind || 'series';
   const word = { series: 'series', event: 'event', list: 'list', run: 'run' }[kind] || 'series';
   const eventCover = useEventCover(context);
@@ -42,6 +44,10 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
   const hasAbout = !!(nextSolicit || nextNote);
   // Event reading: Back to series sits by the event's name and Back to event in the footer (user, 2026-10-22).
   const eventSwap = kind === 'event';
+  // Series reading: the next issue's Timeline event (2026-11-21). Wide cards show it in the panel's
+  // empty right side, with a link to the event at that issue; narrow ones as a strip under the title.
+  const nextEvent = kind === 'series' && next?.events?.length ? next.events[0] : null;
+  const moreEvents = nextEvent ? next.events.length - 1 : 0;
   const routes = alternatives || [showRec && { label: 'Next recommended', issue: nextRecommended }, showEss && { label: 'Next essential', issue: nextEssential }].filter(Boolean);
   return (
     <section className="comic-reader-finale finish-card" style={theme.style} aria-label="Finished issue">
@@ -57,6 +63,7 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
         {hasPosition && <div className="route-track" role="progressbar" aria-label={`Position in ${word}`} aria-valuemin={0} aria-valuemax={total} aria-valuenow={position}><span style={{ width: `${Math.min(100, position / total * 100)}%` }} /></div>}
       </div>}
       {loading ? <p role="status">Loading the next issue…</p> : next ? (<>
+        <div className={`next-row${nextEvent ? ' has-event' : ''}`}>
         <button className="next-panel" onClick={() => onRead(next)} aria-label={`Read next: ${endIssueLabel(next)}`}>
           <span className="caption">{kind === 'series' ? 'CONTINUED NEXT ISSUE…' : `NEXT IN THE ${word.toUpperCase()}…`}</span>
           {next.id && failedCover !== next.id
@@ -65,11 +72,18 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
           <span className="next-copy"><span className="next-heading"><strong>{endIssueLabel(next)}</strong>{kind === 'event' && next.tier && <em>{next.tier}</em>}</span>
             {next.issue_title && <span>{next.issue_title}</span>}
             {/* Series reading: the next issue is part of a Timeline event (2026-11-21). */}
-            {kind === 'series' && next.events?.length > 0 && <span className="next-event">
-              <b aria-hidden="true">◆</b> Part of {next.events[0].name}{next.events.length > 1 && <small> +{next.events.length - 1}</small>}</span>}
+            {nextEvent && <span className="next-event">
+              <b aria-hidden="true">◆</b> Part of {nextEvent.name}{moreEvents > 0 && <small> +{moreEvents}</small>}</span>}
             <span className="read-action">{kind === 'series' && next.issue_number != null ? `READ #${next.issue_number}` : 'READ NEXT'} <span>→</span></span>
           </span>
         </button>
+        {nextEvent && <aside className="next-event-side" aria-label={`Part of the event ${nextEvent.name}`}>
+          <span className="nes-cap"><b aria-hidden="true">◆</b> Part of the event</span>
+          <strong>{nextEvent.name}</strong>
+          <span className="nes-meta">{[nextEvent.year, ROLES[nextEvent.tier]].filter(Boolean).join(' · ')}{moreEvents > 0 ? ` · +${moreEvents} more` : ''}</span>
+          {onEvent && <button type="button" className="nes-link" onClick={() => onEvent(nextEvent, next)}>View in the event ↗</button>}
+        </aside>}
+        </div>
         {hasAbout && <button type="button" className="about-toggle about-next" aria-expanded={aboutOpen} onClick={() => setAboutOpen(v => !v)}>
           {aboutOpen ? '▴' : '▾'} About the next issue</button>}
         {aboutOpen && hasAbout && <div className="about-issue">

@@ -188,3 +188,16 @@ test('an ongoing that hosts an event (few of its issues in it) is placed as usua
   assert.equal(r.eventHome, false);
   assert.equal(where(r, 'ann').afterBookId, 'w37');
 });
+
+test('#0, negative and #1,000,000 issues go by release date in the run; a #0 released first stays first; 0.1 stays', () => {
+  const { db, p } = fixture();
+  const add = db.prepare('INSERT INTO scanned_books VALUES (?,?,?,?,?,?,?,?,?)');
+  add.run('w0', 'ww', 'Wonder Woman 000.cbz', '0', 'Zero Month', '<Series>Wonder Woman</Series><Number>0</Number>', 0, 0, '2026-09-23');
+  add.run('wm', 'ww', 'Wonder Woman 1000000.cbz', '1000000', 'One Million', '<Series>Wonder Woman</Series><Number>1000000</Number>', 0, 1000000, '2026-08-20');
+  add.run('w01', 'ww', 'Wonder Woman 000.1.cbz', '0.1', 'Prequel', '<Series>Wonder Woman</Series><Number>0.1</Number>', 0, 0.1, '2026-10-28');
+  const r = p.placement('ww');
+  assert.deepEqual(r.regular.map(x => x.id), ['w01', 'w36', 'wm', 'w37', 'w0', 'w38']);
+  assert.equal(where(r, 'ann').afterBookId, 'w0');                       // Sep 30: after #0 (Sep 23), before #38
+  db.prepare("UPDATE scanned_books SET store_date = '2026-01-07' WHERE id = 'w0'").run();
+  assert.equal(p.placement('ww').regular[0].id, 'w0');                   // released before the run: first
+});

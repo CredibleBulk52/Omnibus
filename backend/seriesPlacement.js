@@ -73,6 +73,24 @@ function extraLabel(book, parentNames, isAnnual, runNumbers = null) {
   return { label: number ? `${head} #${String(number).replace(/^0+(?=\d)/, '')}` : head, title };
 }
 
+// The run's own order: issue number, except special numbers that went out of sequence — #0 (Zero
+// Hour 1994, the New 52's Zero Month 2012), negative (Flashback #-1, 1997) and #1,000,000 (DC One
+// Million, 1998) — which go by release date: Green Lantern (1990) #0 after #55, a #0 released before
+// #1 stays first (user 2026-11-21: "the zero issue isn't always the first to be read"). Numbers such as
+// 0.1–0.5 are left alone: libraries use them on purpose to file a prequel first.
+function runOrder(regular) {
+  const floats = r => { const n = num(r.issue_number); return n != null && (n === 0 || n < 0 || n >= 1000000) && weekOf(r.store_date) != null; };
+  const run = regular.filter(r => !floats(r));
+  const moving = regular.filter(floats).sort((a, b) => weekOf(a.store_date) - weekOf(b.store_date));
+  for (const f of moving) {
+    const w = weekOf(f.store_date);
+    let at = -1;
+    run.forEach((r, k) => { const rw = weekOf(r.store_date); if (rw != null && rw <= w) at = k; });
+    run.splice(at + 1, 0, f);
+  }
+  return run;
+}
+
 function createSeriesPlacement({ db, members = () => [] }) {
   ensurePlacementSchema(db);
   const one = (sql, ...a) => db.prepare(sql).get(...a);
@@ -81,8 +99,8 @@ function createSeriesPlacement({ db, members = () => [] }) {
 
   function extrasOf(seriesId, series) {
     const own = all(`SELECT ${COLS} FROM scanned_books WHERE series_id = ?`, seriesId);
-    const regular = own.filter(b => !b.is_special && !ANNUAL_RE.test(b.filename))
-      .sort((a, b) => (a.sort_order - b.sort_order) || String(a.filename).localeCompare(String(b.filename)));
+    const regular = runOrder(own.filter(b => !b.is_special && !ANNUAL_RE.test(b.filename))
+      .sort((a, b) => (a.sort_order - b.sort_order) || String(a.filename).localeCompare(String(b.filename))));
     const extras = [];
     const seen = new Set(own.map(b => b.id));
     // In the folder: annuals and specials. A special whose ComicInfo series has other books here is a mini.
