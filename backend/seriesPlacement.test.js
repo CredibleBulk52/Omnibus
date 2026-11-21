@@ -127,6 +127,14 @@ test('minis may lead into #1 from up to 10 weeks before; single books 4', () => 
   assert.equal(where(r, 'kt1').title, 'Part One');                   // "Wonder Woman" subtitle is the parent: book title instead
   assert.equal(shelved(r, 'one').reason, 'long before the run');
   assert.deepEqual(p.sequence('ww'), ['kt1', 'kt2', 'w1', 'w2']);
+  // A six-issue prelude that ends three weeks before #1 leads in whole, though its #1 is months earlier.
+  const add2 = db.prepare('INSERT INTO scanned_books VALUES (?,?,?,?,?,?,?,?,?)');
+  add2.run('ed1', 'ww', 'Emerald Dawn 001.cbz', '1', '', '<Series>Emerald Dawn</Series><Number>1</Number>', 1, 9010, '2023-03-02');
+  add2.run('ed6', 'ww', 'Emerald Dawn 006.cbz', '6', '', '<Series>Emerald Dawn</Series><Number>6</Number>', 1, 9015, '2023-08-29');
+  const r2 = p.placement('ww');
+  assert.equal(where(r2, 'ed1').afterBookId, null);
+  assert.equal(where(r2, 'ed6').afterBookId, null);
+  assert.deepEqual(p.sequence('ww').slice(0, 4), ['ed1', 'kt1', 'kt2', 'ed6']);
 });
 
 test('labels for the number line', () => {
@@ -136,6 +144,12 @@ test('labels for the number line', () => {
   assert.deepEqual(extraLabel(b('Wonder Woman Annual', '03'), ww, true), { label: 'Annual #3', title: 'Book title' });
   assert.deepEqual(extraLabel(b('Amazons Attack', '1'), ww, false), { label: 'Amazons Attack #1', title: 'Book title' });
   assert.deepEqual(extraLabel(b('Wonder Woman', '1'), ww, false), { label: 'Special #1', title: 'Book title' });
+  assert.deepEqual(extraLabel(b('Green Lantern', '1000000'), ['Green Lantern'], false, new Set([1, 2])), { label: '#1000000', title: 'Book title' });
+  assert.deepEqual(extraLabel(b('Green Lantern', '1'), ['Green Lantern'], false, new Set([1, 2])), { label: 'Special #1', title: 'Book title' });
+  assert.deepEqual(extraLabel(b('Green Lantern/Adam Strange', '1'), ['Green Lantern'], false), { label: 'Green Lantern/Adam Strange #1', title: 'Book title' });
+  assert.deepEqual(extraLabel(b('Daredevil & Echo', '2'), ['Daredevil'], false), { label: 'Daredevil & Echo #2', title: 'Book title' });
+  assert.deepEqual(extraLabel(b("Uncanny X-Men '95", '1'), ['The Uncanny X-Men'], true), { label: "Uncanny X-Men '95 #1", title: 'Book title' });
+  assert.deepEqual(extraLabel(b('X-Men: Blood Hunt - Laura Kinney the Wolverine', '1'), ['X-Men'], false), { label: 'Blood Hunt #1', title: 'Laura Kinney the Wolverine' });
   assert.deepEqual(extraLabel(b('Wonder Woman Annual', '1'), ['The Amazing Spider-Man'], true), { label: 'Wonder Woman Annual #1', title: 'Book title' });
   assert.deepEqual(extraLabel(b('Amazing Spider-Man Annual', '2'), ['The Amazing Spider-Man'], true), { label: 'Annual #2', title: 'Book title' });
   assert.deepEqual(extraLabel(b('Wonder Woman Giant', '1'), ['Wonder Woman'], false), { label: 'Giant #1', title: 'Book title' });
@@ -165,4 +179,12 @@ test('routes: the placement with each placed book in the Issues shape; admins pi
   assert.equal(r.out.placed.some(x => x.bookId === 'ann'), false);
   assert.equal(call('PUT /api/series/:id/placement/:bookId', { id: 'ww', bookId: 'ann' }, { mode: 'after', anchorBookId: 'same' }).code, 400);
   assert.equal(call('DELETE /api/series/:id/placement/:bookId', { id: 'ww', bookId: 'ann' }).out.cleared, 1);
+});
+
+test('an ongoing that hosts an event (few of its issues in it) is placed as usual', () => {
+  const { db, p } = fixture({ eventHome: true });
+  db.prepare("DELETE FROM event_issues WHERE scanned_book_id = 'w38'").run();   // 1 of 3 issues in the event
+  const r = p.placement('ww');
+  assert.equal(r.eventHome, false);
+  assert.equal(where(r, 'ann').afterBookId, 'w37');
 });

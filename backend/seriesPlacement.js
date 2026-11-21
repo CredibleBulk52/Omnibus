@@ -9,8 +9,8 @@
 //   5. the same week as a regular issue: the regular issue first.
 // Stay on the shelf: reprints, books without a store date, books far outside the run (more than 4
 // weeks after the last or before the first issue; minis may lead in up to 10 weeks before #1),
-// books next to issues without a date. On an event's own series (Convergence, Secret Wars…) only
-// pins place anything: the Event page is the full reading order there.
+// books next to issues without a date. On an event's own series (Convergence, Secret Wars…; at least
+// half its issues in the events it homes) only pins place anything: the Event page is the full order.
 // The regular issues keep their order; nothing here changes numbering, totals or the shelves.
 
 const PIN_MODES = new Set(['after', 'first', 'shelf']);
@@ -44,10 +44,11 @@ const norm = s => String(s || '').toLowerCase().replace(/^the\s+/, '').replace(/
 
 // The label on the card's number line and its title line: "2026 Annual #1" / "Matriarch Special",
 // "Knight Terrors #1", "Annual #3", "Amazons Attack #1".
-function extraLabel(book, parentNames, isAnnual) {
+function extraLabel(book, parentNames, isAnnual, runNumbers = null) {
   const ci = book.comicinfo || '';
   const number = tag(ci, 'Number') || book.issue_number || '';
-  let rest = tag(ci, 'Series');
+  const full = tag(ci, 'Series');
+  let rest = full;
   for (const p of parentNames) {
     const clean = String(p || '').replace(/^the\s+/i, '');
     const body = rest.replace(/^the\s+/i, '');
@@ -56,9 +57,16 @@ function extraLabel(book, parentNames, isAnnual) {
       break;
     }
   }
+  // A team-up ("Green Lantern/Adam Strange", "Daredevil & Echo") or a year-named annual
+  // ("Uncanny X-Men '95", "Thor 1999") keeps its full name.
+  if (/^\s*(\/|&|and\s)/i.test(rest) || /^'?\d{2,4}$/.test(rest.trim())) rest = full;
   let head = rest, sub = '';
   const colon = rest.indexOf(':');
+  const dash = /\s[-–]+\s/.exec(rest);                 // "Blood Hunt - Laura Kinney the Wolverine"
   if (colon >= 0) { head = rest.slice(0, colon).trim(); sub = rest.slice(colon + 1).trim(); }
+  else if (dash && rest !== full) { head = rest.slice(0, dash.index).trim(); sub = rest.slice(dash.index + dash[0].length).trim(); }
+  const n = String(number).replace(/^0+(?=\d)/, '');
+  if (!head && !isAnnual && n && runNumbers && !runNumbers.has(num(n))) return { label: `#${n}`, title: book.title || '' };   // Green Lantern #1,000,000
   if (!head) head = isAnnual ? 'Annual' : 'Special';
   let title = book.title || '';
   if (sub && !parentNames.some(p => norm(p) === norm(sub))) title = sub.split(/\s+[-–]\s+/).pop().replace(/^the\s+/i, '');
@@ -101,6 +109,14 @@ function createSeriesPlacement({ db, members = () => [] }) {
       const books = all(`SELECT ${COLS} FROM scanned_books WHERE series_id = ?`, m.id);
       for (const b of books) if (!seen.has(b.id)) { seen.add(b.id); extras.push({ book: b, kind: 'linked', mini: books.length > 1 }); }
     }
+    // Each mini's latest release week, for the lead-in window.
+    const groupKey = x => (x.kind === 'linked' ? `s:${x.book.series_id}` : `c:${norm(tag(x.book.comicinfo, 'Series'))}`);
+    const last = new Map();
+    for (const x of extras) if (x.mini) {
+      const w = weekOf(x.book.store_date);
+      if (w != null && (!last.has(groupKey(x)) || w > last.get(groupKey(x)))) last.set(groupKey(x), w);
+    }
+    for (const x of extras) if (x.mini) x.miniLast = last.get(groupKey(x)) ?? null;
     return { regular, extras };
   }
 
@@ -122,8 +138,17 @@ function createSeriesPlacement({ db, members = () => [] }) {
     return out;
   }
 
-  function isEventHome(seriesId) {
-    try { return !!one('SELECT 1 FROM events WHERE home_series_id = ? AND COALESCE(draft, 0) = 0 LIMIT 1', seriesId); } catch { return false; }
+  // An event's own series: the home of a saved event with at least half of its issues in the events it
+  // homes (2026-11-21: Convergence, Secret Wars, House of M 89%; an ongoing that hosts an event —
+  // Green Lantern (1990) and Circle of Fire, The Amazing Spider-Man and Spider-Island — has at most 42%).
+  function isEventHome(seriesId, regular) {
+    try {
+      const evs = all('SELECT id FROM events WHERE home_series_id = ? AND COALESCE(draft, 0) = 0', seriesId).map(e => e.id);
+      if (!evs.length || !regular.length) return false;
+      const inEvent = new Set(all(`SELECT scanned_book_id AS b FROM event_issues WHERE scanned_book_id IS NOT NULL
+        AND event_id IN (${evs.map(() => '?').join(',')})`, ...evs).map(r => r.b));
+      return regular.filter(r => inEvent.has(r.id)).length * 2 >= regular.length;
+    } catch { return false; }
   }
 
   // The automatic position of one extra: { after: index of the regular issue it follows (-1 = before the
@@ -155,7 +180,10 @@ function createSeriesPlacement({ db, members = () => [] }) {
       const first = weeks.findIndex(rw => rw != null);
       if (first < 0) return { shelf: 'no dates in the run' };
       if (first > 0) return { shelf: 'next to issues without a date' };
-      return weeks[0] - w <= (x.mini ? MINI_BEFORE_WEEKS : BEFORE_WEEKS)
+      const lead = x.mini && x.miniLast != null ? x.miniLast : w;   // a mini counts from its last issue
+      // The run's earliest release, not its first issue's: #0 issues often came out years later (Zero Hour).
+      const start = Math.min(...weeks.filter(v => v != null));
+      return start - lead <= (x.mini ? MINI_BEFORE_WEEKS : BEFORE_WEEKS) && start >= lead
         ? { after: -1, evidence: 'release week' } : { shelf: 'long before the run' };
     }
     let j = i + 1;
@@ -174,8 +202,9 @@ function createSeriesPlacement({ db, members = () => [] }) {
     const weeks = regular.map(r => weekOf(r.store_date));
     const timeline = timelineOf([...regular, ...extras.map(x => x.book)].map(b => b.id));
     const pins = new Map(all('SELECT * FROM series_placement_pins WHERE series_id = ?', seriesId).map(p => [p.book_id, p]));
-    const eventHome = isEventHome(seriesId);
+    const eventHome = isEventHome(seriesId, regular);
     const parentNames = [series.name, tag(regular[0]?.comicinfo, 'Series')].filter(Boolean);
+    const runNumbers = new Set(regular.map(r => num(r.issue_number)).filter(v => v != null));
     const placed = [], shelf = [];
     for (const x of extras) {
       const pin = pins.get(x.book.id);
@@ -191,7 +220,7 @@ function createSeriesPlacement({ db, members = () => [] }) {
         pos = i === -2 ? { shelf: 'pinned issue is gone' } : { after: i, evidence: 'pin' };
       } else if (eventHome) pos = { shelf: "event series: the Event page has the full order" };
       else pos = automatic(x, regular, weeks, timeline, regIndex);
-      const label = extraLabel(x.book, parentNames, x.kind === 'annual' || ANNUAL_RE.test(x.book.filename));
+      const label = extraLabel(x.book, parentNames, x.kind === 'annual' || ANNUAL_RE.test(x.book.filename), runNumbers);
       if (pos.shelf) shelf.push({ bookId: x.book.id, reason: pos.shelf, pinned: !!pin });
       else placed.push({ bookId: x.book.id, afterBookId: pos.after >= 0 ? regular[pos.after].id : null, after: pos.after,
         evidence: pos.evidence, kind: x.kind, mini: x.mini, pinned: !!pin, ...label,
