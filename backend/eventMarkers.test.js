@@ -7,9 +7,9 @@ const { eventMarkersFor, withEventMarkers } = require('./eventMarkers');
 
 function fixture() {
   const db = new Database(':memory:');
-  db.exec(`CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT, year TEXT, draft INTEGER DEFAULT 0);
+  db.exec(`CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT, year TEXT, draft INTEGER DEFAULT 0, event_tier INTEGER);
     CREATE TABLE event_issues (id INTEGER PRIMARY KEY, event_id TEXT, scanned_book_id TEXT, tier TEXT);`);
-  const ev = db.prepare('INSERT INTO events VALUES (?,?,?,?)');
+  const ev = db.prepare('INSERT INTO events (id, name, year, draft) VALUES (?,?,?,?)');
   ev.run('kt', 'Knight Terrors', '2023', 0);
   ev.run('ap', 'Absolute Power', '2024', 0);
   ev.run('dr', 'Draft Event', '2025', 1);
@@ -27,6 +27,7 @@ test('a book lists its events, most important role first; drafts and unmatched r
   const m = eventMarkersFor(fixture(), ['b1', 'b2', 'b3', 'b4']);
   assert.deepEqual(m.get('b1').map(e => [e.name, e.tier]), [['Absolute Power', 'essential'], ['Knight Terrors', 'tie-in']]);
   assert.deepEqual(m.get('b2').map(e => [e.name, e.tier]), [['Absolute Power', 'recommended']]);
+  assert.equal(m.get('b1')[0].eventTier, null);
   assert.equal(m.has('b3'), false);
   assert.equal(m.has('b4'), false);
 });

@@ -9,13 +9,13 @@
 const ROLE_RANK = { essential: 0, recommended: 1, 'tie-in': 2, aftermath: 3 };
 const CHUNK = 500;
 
-// bookIds → Map(bookId → [{ id, name, year, tier }])
+// bookIds → Map(bookId → [{ id, name, year, tier, eventTier }])
 function eventMarkersFor(db, bookIds) {
   const ids = [...new Set((bookIds || []).filter(Boolean).map(String))];
   const out = new Map();
   for (let i = 0; i < ids.length; i += CHUNK) {
     const part = ids.slice(i, i + CHUNK);
-    const rows = db.prepare(`SELECT ei.scanned_book_id AS book_id, e.id, e.name, e.year, ei.tier
+    const rows = db.prepare(`SELECT ei.scanned_book_id AS book_id, e.id, e.name, e.year, e.event_tier, ei.tier
       FROM event_issues ei JOIN events e ON e.id = ei.event_id
       WHERE ei.scanned_book_id IN (${part.map(() => '?').join(',')}) AND COALESCE(e.draft, 0) = 0`).all(...part);
     for (const r of rows) {
@@ -23,7 +23,8 @@ function eventMarkersFor(db, bookIds) {
       const seen = list.find(x => x.id === r.id);
       // One book listed twice in the same event: keep its most important role.
       if (seen) { if ((ROLE_RANK[r.tier] ?? 9) < (ROLE_RANK[seen.tier] ?? 9)) seen.tier = r.tier; continue; }
-      list.push({ id: r.id, name: r.name, year: r.year || null, tier: r.tier || null });
+      // eventTier: 1 crisis, 2 major, 3 crossover (the Timeline's ★ badge; the reader's end card).
+      list.push({ id: r.id, name: r.name, year: r.year || null, tier: r.tier || null, eventTier: r.event_tier ?? null });
       out.set(r.book_id, list);
     }
   }

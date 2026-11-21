@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { PATH_LABELS } from './eventReadingPath';
 import { useReadingTheme } from './ReadingTheme';
+import { TierBadge } from './eventTiers';
+import { TIER_LABEL, tierColour } from './tiers';
 import '../comicReaderEndCard.css';
-
-const ROLES = { essential: 'essential', recommended: 'recommended', 'tie-in': 'tie-in', aftermath: 'aftermath' };
 
 export const endIssueLabel = issue => issue
   ? (issue.series_name ? `${issue.series_name}${issue.issue_number != null && issue.issue_number !== '' ? ` #${issue.issue_number}` : ''}` : issue.title || '')
@@ -78,9 +78,14 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
           </span>
         </button>
         {nextEvent && <aside className="next-event-side" aria-label={`Part of the event ${nextEvent.name}`}>
-          <span className="nes-cap"><b aria-hidden="true">◆</b> Part of the event</span>
+          {/* The Timeline's comic boxes: the event's ★ tier badge, the issue's role chip (tiers.js colours). */}
+          {nextEvent.eventTier ? <span className="nes-badge"><TierBadge tier={nextEvent.eventTier} /></span>
+            : <span className="nes-cap"><b aria-hidden="true">◆</b> Part of the event</span>}
           <strong>{nextEvent.name}</strong>
-          <span className="nes-meta">{[nextEvent.year, ROLES[nextEvent.tier]].filter(Boolean).join(' · ')}{moreEvents > 0 ? ` · +${moreEvents} more` : ''}</span>
+          <span className="nes-meta">
+            {TIER_LABEL[nextEvent.tier] && <span className="nes-role" style={{ '--nes-role': tierColour(nextEvent.tier) }}>{TIER_LABEL[nextEvent.tier]}</span>}
+            {[nextEvent.year, moreEvents > 0 ? `+${moreEvents} more` : null].filter(Boolean).join(' · ')}
+          </span>
           {onEvent && <button type="button" className="nes-link" onClick={() => onEvent(nextEvent, next)}>View in the event ↗</button>}
         </aside>}
         </div>

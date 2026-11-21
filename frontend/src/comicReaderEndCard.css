@@ -78,8 +78,11 @@
 }
 .comic-reader-finale .next-event-side .nes-cap{white-space:nowrap;font:13px 'Boogaloo',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb, var(--om-text) 78%, var(--om-base))}
 .comic-reader-finale .next-event-side .nes-cap b{color:var(--highlight);font-size:11px;margin-right:4px}
-.comic-reader-finale .next-event-side strong{font:27px/1.02 'Bangers',cursive;letter-spacing:.04em;color:var(--highlight);overflow-wrap:anywhere}
-.comic-reader-finale .next-event-side .nes-meta{font:14px 'Comic Neue',sans-serif;color:color-mix(in srgb, var(--om-text) 85%, var(--om-base))}
-.comic-reader-finale .next-event-side .nes-link{pointer-events:auto;align-self:start;margin-top:6px;padding:0;background:none;border:0;
-  font:15px 'Boogaloo',sans-serif;letter-spacing:.04em;color:var(--highlight);text-decoration:underline;text-underline-offset:3px}
-.comic-reader-finale .next-event-side .nes-link:hover{filter:brightness(1.2)}
+.comic-reader-finale .next-event-side .nes-badge{align-self:start;filter:drop-shadow(2px 2px 0 var(--ink,#050608))}
+.comic-reader-finale .next-event-side strong{font:29px/1 'Bangers',cursive;letter-spacing:.04em;color:var(--paper,var(--om-text));text-shadow:2px 2px 0 var(--ink,#050608);overflow-wrap:anywhere;margin-top:2px}
+.comic-reader-finale .next-event-side .nes-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:14px 'Comic Neue',sans-serif;color:color-mix(in srgb, var(--om-text) 85%, var(--om-base))}
+.comic-reader-finale .next-event-side .nes-role{display:inline-block;padding:1px 8px;background:var(--nes-role);color:#0b0b0b;border:2px solid #000;box-shadow:2px 2px 0 #000;
+  font:13px 'Bangers',cursive;letter-spacing:.1em;text-transform:uppercase;transform:skew(-4deg)}
+.comic-reader-finale .next-event-side .nes-link{pointer-events:auto;align-self:start;white-space:nowrap;margin-top:8px;padding:4px 11px;background:color-mix(in srgb, var(--om-base) 80%, black);
+  border:2px solid var(--highlight);box-shadow:3px 3px 0 #000;color:var(--highlight);font:15px 'Bangers',cursive;letter-spacing:.06em;text-transform:uppercase;transform:skew(-3deg)}
+.comic-reader-finale .next-event-side .nes-link:hover{background:var(--highlight);color:#000}
