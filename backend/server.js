@@ -2806,6 +2806,7 @@ function linkMonitoredByCv(mi, filePath) {
   logger.info('scanner', `Monitored issue linked by CV id`, { issue: mi.id, file: filePath, was: cur || null });
   return true;
 }
+const { clearContradictingMonitoredLinks } = require('./monitoredLinks');
 // Link every tagged book to its monitored issue by CV id. Idempotent and cheap:
 // runs at boot and after each library scan / folder refresh, so unchanged books
 // and newly monitored series get linked too (the scanner skips unchanged books).
@@ -2815,13 +2816,15 @@ function backfillMonitoredLinksByCv(trigger = 'startup') {
       WHERE cv_issue_id IS NOT NULL AND cv_issue_id != ''
         AND (monitored_issue_id IS NULL OR monitored_issue_id != cv_issue_id)
         AND cv_issue_id IN (SELECT id FROM monitored_issues)`).run().changes;
+    // Old number-only links that contradict the book's own Comic Vine ID (monitoredLinks.js, 2026-11-21).
+    const cleared = clearContradictingMonitoredLinks(db);
     let fixed = 0;
     const rows = db.prepare(`SELECT i.id, i.status, i.file_path, b.path AS book_path
       FROM monitored_issues i JOIN scanned_books b ON b.cv_issue_id = i.id
       WHERE (i.file_path IS NULL OR i.file_path != b.path)
       GROUP BY i.id`).all();
     for (const r of rows) if (linkMonitoredByCv(r, r.book_path)) fixed++;
-    if (n || fixed) logger.info('cv-link', `Linked books to monitored issues by CV id`, { trigger, booksLinked: n, issuesRepointed: fixed });
+    if (n || fixed || cleared) logger.info('cv-link', `Linked books to monitored issues by CV id`, { trigger, booksLinked: n, issuesRepointed: fixed, contradictingLinksCleared: cleared });
   } catch (e) { logger.warn('cv-link', 'CV-id link backfill failed', e.message); }
 }
 backfillMonitoredLinksByCv('startup');

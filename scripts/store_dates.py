@@ -113,6 +113,9 @@ def state_db():
       CREATE TABLE IF NOT EXISTS metron_series (cv_volume_id TEXT PRIMARY KEY, metron_id INTEGER, checked_at TEXT);
       CREATE TABLE IF NOT EXISTS written (book_id TEXT PRIMARY KEY, path TEXT, store_date TEXT, result TEXT, at TEXT);
       CREATE TABLE IF NOT EXISTS metron_usage (day TEXT PRIMARY KEY, calls INTEGER NOT NULL);
+      -- Books whose written StoreDate came from a wrong source (fix-monitored): bad_date is the value
+      -- in the file; collect dates them again and write replaces it, or removes it when none is found.
+      CREATE TABLE IF NOT EXISTS redo (book_id TEXT PRIMARY KEY, bad_date TEXT, reason TEXT, at TEXT);
     """)
     return conn
 
@@ -178,7 +181,12 @@ def series_matches(s, w):
 
 def books_of(db, series_id):
     return db.execute("""SELECT b.id, b.series_id, b.path, b.filename, b.issue_number, b.cv_issue_id, b.comicinfo,
-        b.is_special, b.monitored_issue_id, mi.store_date AS monitored_store, j.publication_date AS job_date,
+        b.is_special, b.monitored_issue_id,
+        -- 2026-11-21: an old scanner linked specials and annuals to the parent's issue with the same
+        -- number (Knight Terrors: Wonder Woman #1 -> Wonder Woman #1); only a link that agrees with the
+        -- book's own Comic Vine ID gives its date.
+        CASE WHEN b.monitored_issue_id = b.cv_issue_id THEN mi.store_date END AS monitored_store,
+        j.publication_date AS job_date,
         j.date_basis AS job_basis
       FROM scanned_books b LEFT JOIN monitored_issues mi ON mi.id = b.monitored_issue_id
       LEFT JOIN metadata_jobs j ON j.book_id = b.id WHERE b.series_id = ?""", (series_id,)).fetchall()
@@ -240,6 +248,7 @@ class Collector:
                 self.metron.conn = sqlite3.connect(DB_PATH, timeout=15, isolation_level=None)
             log(f"Sources: Metron {'on' if self.metron else 'off'}, Comic Vine {'on' if self.cv else 'off'}")
         self.retry_missing = args.retry_missing
+        self.redo = {r[0]: r[1] for r in self.st.execute("SELECT book_id, bad_date FROM redo")}
         # Metron allows 20 requests a minute and 5,000 a day (more for its donors). The script stops using
         # Metron for the run when Metron's limit is in force, when its daily count left falls to
         # --metron-reserve (default 1,500, kept for Omnibus), after its own --metron-budget (3,500 a
@@ -251,6 +260,8 @@ class Collector:
         self.queue, self.found_by_id = [], 0
 
     def save(self, book, d, source):
+        if d and not plausible_date(book["comicinfo"], d):
+            d, source = None, "none"                      # another series' issue; see plausible_date
         self.st.execute("INSERT OR REPLACE INTO dates VALUES (?,?,?,?,?,?,?)",
                         (book["id"], book["series_id"], str(book["cv_issue_id"]), book["path"], d, source,
                          datetime.now().isoformat(timespec="seconds")))
@@ -266,7 +277,7 @@ class Collector:
         known = {r["book_id"]: r for r in self.st.execute("SELECT book_id, store_date FROM dates WHERE series_id = ?", (s["id"],))}
         need = []
         for b in books:
-            if comicinfo_store_date(b["comicinfo"]):
+            if comicinfo_store_date(b["comicinfo"]) and b["id"] not in self.redo:
                 continue                                  # already carries one
             k = known.get(b["id"])
             if k and (k["store_date"] or not self.retry_missing):
@@ -275,7 +286,7 @@ class Collector:
                 ("monitored", valid_date(b["monitored_store"] or "")),
                 ("metadata_routine", valid_date(b["job_date"] or "") if b["job_basis"] == "store_date" else None),
                 ("cv_cache", self.cache.get(str(b["cv_issue_id"]))),
-            ) if d]
+            ) if d and plausible_date(b["comicinfo"], d)]
             if not local:
                 mi = metroninfo_date(b["path"])
                 if mi:
@@ -440,7 +451,7 @@ class Collector:
                 if ci_series and norm_name(ci_series.group(1)) == norm_name(s["name"]) and len(hits) == 1:
                     item = hits[0]
             d = valid_date((item or {}).get("store_date") or "")
-            if d:
+            if d and plausible_date(b["comicinfo"], d):
                 out[b["id"]] = (d, "metron")
         return out
 
@@ -530,6 +541,21 @@ def root_comicinfo(z):
     return None
 
 
+def replace_store_date(xml, bad, d):
+    """Change the one <StoreDate>bad</StoreDate> to d, or remove it (and its line) when d is None."""
+    hits = list(re.finditer(r"[ \t]*<StoreDate>" + re.escape(bad) + r"</StoreDate>[ \t]*\r?\n?", xml))
+    if len(hits) != 1 or xml.count("<StoreDate") != 1:
+        return None
+    h = hits[0]
+    new = xml[:h.start()] + (h.group(0).replace(bad, d) if d else "") + xml[h.end():]
+    try:
+        root = ET.fromstring(new.lstrip("\ufeff").encode("utf-8"))
+    except ET.ParseError:
+        return None
+    found = [e.text for e in root.findall("StoreDate")]
+    return new if found == ([d] if d else []) else None
+
+
 def add_store_date(xml, d):
     """Insert <StoreDate> before </ComicInfo>, matching the file's indentation. None if unsafe."""
     m = re.match(r"﻿?<\?xml[^>]*encoding\s*=\s*['\"]([^'\"]+)['\"]", xml)
@@ -612,8 +638,9 @@ def read_layout(f, size):
     return records, comment
 
 
-def append_store_date(path, d):
-    """Add <StoreDate> to the archive at path, in place. None on success, else the reason (file unchanged)."""
+def append_store_date(path, d, replace=None):
+    """Add <StoreDate> to the archive at path, in place (or, with replace, change that wrong StoreDate
+    to d, or remove it when d is None). None on success, else the reason (file unchanged)."""
     with zipfile.ZipFile(path) as z:
         ci = root_comicinfo(z)
         if ci is None:
@@ -623,7 +650,7 @@ def append_store_date(path, d):
         except UnicodeDecodeError:
             return "ComicInfo.xml is not UTF-8"
         before = [(i.filename, i.CRC, i.file_size, i.header_offset) for i in z.infolist()]
-    new_xml = add_store_date(xml, d)
+    new_xml = replace_store_date(xml, replace, d) if replace else add_store_date(xml, d)
     if new_xml is None:
         return "ComicInfo.xml not safe to edit (encoding, existing StoreDate or structure)"
     data = new_xml.encode("utf-8")
@@ -697,8 +724,10 @@ def cmd_write(args):
     db, st = app_db(), state_db()
     series_ids = {s["id"] for s in select_series(db, args.series, args.max_series)} if (args.series or args.max_series) else None
     done = ("written", "dry-run ok") if args.dry_run else ("written",)
+    redo = {r[0]: r[1] for r in st.execute("SELECT book_id, bad_date FROM redo")}
     rows = st.execute(f"""SELECT d.* FROM dates d LEFT JOIN written w USING (book_id)
-                         WHERE d.store_date IS NOT NULL AND (w.result IS NULL OR w.result NOT IN ({','.join('?' * len(done))}))
+                         WHERE (d.store_date IS NOT NULL OR d.book_id IN (SELECT book_id FROM redo))
+                           AND (w.result IS NULL OR w.result NOT IN ({','.join('?' * len(done))}))
                          ORDER BY d.path""", done).fetchall()
     rows = [r for r in rows if series_ids is None or r["series_id"] in series_ids]
     if args.limit:
@@ -727,10 +756,12 @@ def cmd_write(args):
     counts = {}
     try:
         for n, r in enumerate(rows, 1):
-            result = write_one(db, r, args.dry_run)
+            result = write_one(db, r, args.dry_run, redo.get(r["book_id"]))
             counts[result] = counts.get(result, 0) + 1
             st.execute("INSERT OR REPLACE INTO written VALUES (?,?,?,?,?)",
                        (r["book_id"], r["path"], r["store_date"], result, datetime.now().isoformat(timespec="seconds")))
+            if result == "written" and r["book_id"] in redo:
+                st.execute("DELETE FROM redo WHERE book_id = ?", (r["book_id"],))
             st.commit()
             if result not in ("written", "dry-run ok") or n % 200 == 0:
                 log(f"[{n}/{len(rows)}] {os.path.basename(r['path'])}: {result}")
@@ -761,7 +792,7 @@ def sync_db(rw, st):
         if not cur or cur[0] != r["path"]:
             skipped += 1
             continue
-        if comicinfo_store_date(cur[1]):
+        if comicinfo_store_date(cur[1]) == r["store_date"]:
             already += 1
             continue
         try:
@@ -813,15 +844,25 @@ def mark_for_rescan(rw, st):
     log(f"{len(series)} series folders marked for the next library scan. Run a library scan in Omnibus so it reads the new tags.")
 
 
-def write_one(db, r, dry_run):
+def write_one(db, r, dry_run, bad=None):
+    """bad: the wrong StoreDate this book's file carries (redo); it is replaced by r's date, or removed."""
     book = db.execute("SELECT path, comicinfo FROM scanned_books WHERE id = ?", (r["book_id"],)).fetchone()
     if not book:
         return "skipped: book no longer in the library"
     path = book["path"]
     if path != r["path"]:
         return "skipped: book moved since collect (run collect again)"
-    if comicinfo_store_date(book["comicinfo"]):
+    has = comicinfo_store_date(book["comicinfo"])
+    if bad and has != bad:
+        bad = None if not has else bad
+        if has:
+            return "skipped: StoreDate is neither the wrong one nor ours"
+    if has and not bad:
         return "skipped: already has StoreDate"
+    if bad and r["store_date"] == bad:
+        return "written"                                  # the date was right after all (confirmed)
+    if not r["store_date"] and not bad:
+        return "skipped: no date"
     try:
         before = os.stat(path)
     except OSError:
@@ -831,7 +872,7 @@ def write_one(db, r, dry_run):
         copy = os.path.join(tempfile.gettempdir(), f"storedate-{os.getpid()}.cbz")
         try:
             shutil.copyfile(path, copy)
-            reason = append_store_date(copy, r["store_date"])
+            reason = append_store_date(copy, r["store_date"], bad)
             return "skipped: " + reason if reason else "dry-run ok"
         except Exception as e:
             return f"error: {e}"
@@ -842,7 +883,7 @@ def write_one(db, r, dry_run):
         now = os.stat(path)
         if (now.st_mtime_ns, now.st_size) != (before.st_mtime_ns, before.st_size):
             return "skipped: file changed while writing"
-        reason = append_store_date(path, r["store_date"])
+        reason = append_store_date(path, r["store_date"], bad)
         return "skipped: " + reason if reason else "written"
     except Exception as e:
         return f"error: {e}"
@@ -957,6 +998,17 @@ def parse_long_date(v):
 def wiki_cover(text):
     y, mo = wiki_field(text, "Year"), month_num(wiki_field(text, "Month"))
     return (int(y), mo) if y.isdigit() and mo else None
+
+
+def plausible_date(xml, d):
+    """A store date sits from about a month after to a year before the cover month (2026-11-21: 0.3% of
+    the backfill fell outside, nearly all another series' issue: Buffy (1998) dated 2011, Black Panther
+    (2023) #4 dated 2026-12). No cover month: accepted."""
+    cov = book_cover(xml)
+    if not d or not cov:
+        return True
+    lead = (cov[0] * 12 + cov[1]) - (int(d[:4]) * 12 + int(d[5:7]))
+    return -3 <= lead <= 12
 
 
 def book_cover(xml):
@@ -1476,6 +1528,49 @@ def cmd_collect_gcd(args):
     log("Next: write (adds StoreDate to these books and saves them in Omnibus's database).")
 
 
+def cmd_fix_monitored(args):
+    """fix-dates. 2026-11-21: dates that belong to another issue. (1) Books dated from a monitored issue
+    that is not theirs. An old scanner linked specials
+    and annuals to the parent series' issue with the same number, so Knight Terrors: Wonder Woman #1 got
+    Wonder Woman #1's date. Finds every 'monitored' date whose link disagrees with the book's own Comic
+    Vine ID, forgets it so collect, collect-gcd and collect-wiki date the book again, and queues the
+    file's wrong StoreDate (if written) to be replaced or removed by write. Run before Omnibus clears
+    those links (backfillMonitoredLinksByCv), since the link is how they are found. (2) Dates far from
+    the book's cover month (plausible_date): another series' issue matched by number."""
+    db, st = app_db(), state_db()
+    rows = st.execute("SELECT book_id, path, store_date, source FROM dates WHERE store_date IS NOT NULL").fetchall()
+    now, bad, queued = datetime.now().isoformat(timespec="seconds"), [], 0
+    for r in rows:
+        b = db.execute("SELECT filename, cv_issue_id, monitored_issue_id, comicinfo FROM scanned_books WHERE id = ?",
+                       (r["book_id"],)).fetchone()
+        if not b:
+            continue
+        wrong_link = r["source"] == "monitored" and b["monitored_issue_id"] and str(b["cv_issue_id"] or "").isdigit() \
+            and str(b["cv_issue_id"]) != str(b["monitored_issue_id"])
+        why = "wrong monitored issue" if wrong_link else (None if plausible_date(b["comicinfo"], r["store_date"]) else "far from the cover month")
+        if not why:
+            continue
+        bad.append((why, b["filename"], r["store_date"], r["source"]))
+        if args.dry_run:
+            continue
+        if comicinfo_store_date(b["comicinfo"]) == r["store_date"]:
+            st.execute("INSERT OR REPLACE INTO redo VALUES (?,?,?,?)", (r["book_id"], r["store_date"], why, now))
+            queued += 1
+        for t in ("dates", "written", "gcd_tried", "wiki_tried"):
+            try:
+                st.execute(f"DELETE FROM {t} WHERE book_id = ?", (r["book_id"],))
+            except sqlite3.OperationalError:
+                pass                                      # table not made yet
+    st.commit()
+    for why, f, d, src in sorted(bad):
+        print(f"  {why}: {f}: {d} ({src})")
+    log(f"{len(bad)} wrong dates ({sum(1 for x in bad if x[0] == 'wrong monitored issue')} from another issue's monitored entry, "
+        f"{sum(1 for x in bad if x[0] != 'wrong monitored issue')} far from the cover month)"
+        + (" (dry run: nothing changed)" if args.dry_run else f"; {queued} files carry that date and will be corrected by write"))
+    if not args.dry_run and bad:
+        log("Next: collect, collect-gcd, collect-wiki, then write.")
+
+
 def cmd_skipped(args):
     """Read-only: for each book write skipped with the given reason, the archive's ComicInfo-like members
     (folder, spelling, size) and how many members it has."""
@@ -1534,6 +1629,8 @@ def main():
     w.add_argument("--limit", type=int)
     w.add_argument("--dry-run", action="store_true")
     sub.add_parser("sync-db")
+    fm = sub.add_parser("fix-dates", aliases=["fix-monitored"])
+    fm.add_argument("--dry-run", action="store_true")
     sk = sub.add_parser("skipped")
     sk.add_argument("--reason", default="ComicInfo.xml")
     sub.add_parser("unmark-scan")
@@ -1559,7 +1656,7 @@ def main():
     wt.add_argument("--wiki-name", help="the series name on the wiki when it differs from Omnibus's")
     wt.add_argument("--rendered", type=int, default=30, help="DC: pages whose 'published on' sentence is read (one request each)")
     args = p.parse_args()
-    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe, "sync-db": cmd_sync_db, "skipped": cmd_skipped, "unmark-scan": cmd_unmark_scan, "scan-check": cmd_scan_check, "wiki-probe": cmd_wiki_probe, "wiki-trial": cmd_wiki_trial, "collect-wiki": cmd_collect_wiki, "collect-gcd": cmd_collect_gcd}[args.cmd](args)
+    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe, "sync-db": cmd_sync_db, "skipped": cmd_skipped, "fix-dates": cmd_fix_monitored, "fix-monitored": cmd_fix_monitored, "unmark-scan": cmd_unmark_scan, "scan-check": cmd_scan_check, "wiki-probe": cmd_wiki_probe, "wiki-trial": cmd_wiki_trial, "collect-wiki": cmd_collect_wiki, "collect-gcd": cmd_collect_gcd}[args.cmd](args)
 
 
 if __name__ == "__main__":
