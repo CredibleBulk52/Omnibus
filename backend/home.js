@@ -12,6 +12,8 @@ const { RELEASE_DATE_SQL } = require('./pullBox');
 
 module.exports.registerHome = function registerHome(deps) {
   const missing = ['app', 'charMapCache', 'db', 'fetchAllSeries', 'getReadingContexts', 'getSeriesJsonCached', 'getSeriesRating', 'mergeSeriesWithJson', 'parseComicInfo', 'requireAuth'].filter(k => deps[k] === undefined);
+  // The series' reading order (seriesPlacement.js, 2026-11-21); optional: without it, issue order.
+  const getSeriesPlacement = deps.getSeriesPlacement || (() => null);
   if (missing.length) throw new Error(`registerHome: missing ${missing.join(', ')}`);
   const { app, charMapCache, db, fetchAllSeries, getReadingContexts, getSeriesJsonCached, getSeriesRating, mergeSeriesWithJson, parseComicInfo, requireAuth } = deps;
 
@@ -73,9 +75,13 @@ module.exports.registerHome = function registerHome(deps) {
       // A series qualifies if EITHER (a) it has an in-progress issue (page>0, not completed),
       // OR (b) at least one issue is completed AND a later un-started issue exists.
       // Series dismissed by the user are skipped unless new activity has occurred since dismissal.
+      // A book read from another series' Issues (reading context 'series:<id>': a linked mini or
+      // annual volume in that series' reading order, 2026-11-21) counts for that series.
+      const SID = `CASE WHEN rp.context LIKE 'series:%' AND EXISTS (SELECT 1 FROM scanned_series x WHERE x.id = substr(rp.context, 8))
+        THEN substr(rp.context, 8) ELSE sb.series_id END`;
       const seriesProgress = db.prepare(`
         SELECT
-          sb.series_id,
+          ${SID} AS series_id,
           -- Activity = reading in the reader. Issues marked read in bulk (read
           -- history) still count as read when choosing the next issue below.
           MAX(CASE WHEN COALESCE(rp.marked, 0) = 0 AND (rp.completed = 1 OR rp.page > 0) THEN rp.updated_at ELSE NULL END) AS last_activity,
@@ -84,9 +90,9 @@ module.exports.registerHome = function registerHome(deps) {
           MAX(CASE WHEN rp.completed = 1 THEN sb.sort_order ELSE -1 END) AS max_completed_sort
         FROM read_progress rp
         JOIN scanned_books sb ON sb.id = rp.book_id
-        JOIN scanned_series ss ON ss.id = sb.series_id
+        JOIN scanned_series ss ON ss.id = ${SID}
         WHERE rp.user_id = ? ${libFilter}
-        GROUP BY sb.series_id
+        GROUP BY ${SID}
         HAVING last_activity IS NOT NULL AND (has_in_progress = 1 OR has_completed = 1)
         ORDER BY last_activity DESC
       `).all(userId, ...libParams);
@@ -105,10 +111,37 @@ module.exports.registerHome = function registerHome(deps) {
         FROM read_progress rp
         JOIN scanned_books sb ON sb.id = rp.book_id
         JOIN scanned_series ss ON ss.id = sb.series_id
-        WHERE rp.user_id = ? AND sb.series_id = ?
+        WHERE rp.user_id = ? AND ${SID} = ?
           AND rp.completed = 0 AND rp.page > 0
         ORDER BY rp.updated_at DESC LIMIT 1
       `);
+      // The next book in the series' displayed order: the first not started after the last one read.
+      const seriesPlacement = getSeriesPlacement();
+      const progressOf = db.prepare('SELECT book_id, page, completed FROM read_progress WHERE user_id = ? AND book_id IN (SELECT value FROM json_each(?))');
+      const bookRow = db.prepare(`SELECT sb.*, ss.name as seriesName, ss.id as seriesId, 0 as page FROM scanned_books sb
+        JOIN scanned_series ss ON ss.id = sb.series_id WHERE sb.id = ?`);
+      const nextInOrder = seriesId => {
+        let order = null;
+        try { order = seriesPlacement ? seriesPlacement.order(seriesId) : null; } catch { order = null; }
+        if (!order || !order.length) return undefined;                // no order: issue order below
+        const progress = new Map(progressOf.all(userId, JSON.stringify(order.map(x => x.id))).map(r => [String(r.book_id), r]));
+        let last = -1;
+        order.forEach((x, i) => { if (progress.get(String(x.id))?.completed) last = i; });
+        for (let i = last + 1; last >= 0 && i < order.length; i++) {
+          const p = progress.get(String(order[i].id));
+          if (!p || (!p.completed && !(p.page > 0))) return { id: order[i].id, placed: order[i].placed };
+        }
+        return null;
+      };
+      // A card for a placed book: its label ("2026 Annual #1"), and, for another series' book, the
+      // series it is read from (Read now keeps that order; View series goes to that series).
+      const asSeriesCard = (book, seriesId, placed) => {
+        if (!book) return null;
+        const out = { ...book };
+        if (String(book.series_id) !== String(seriesId)) { out.readQs = `?fromSeries=${encodeURIComponent(seriesId)}`; out.seriesId = seriesId; }
+        else if (placed?.label) out.placedLabel = placed.label;     // its own series' extra: "2026 Annual #1"
+        return out;
+      };
       const pickNextUnstartedBook = db.prepare(`
         SELECT sb.*, ss.name as seriesName, ss.id as seriesId, 0 as page
         FROM scanned_books sb
@@ -133,9 +166,14 @@ module.exports.registerHome = function registerHome(deps) {
 
         let book = null;
         if (sp.has_in_progress) {
-          book = pickInProgressBook.get(userId, sp.series_id);
+          const b = pickInProgressBook.get(userId, sp.series_id);
+          let placed = null;
+          try { placed = b && seriesPlacement ? (seriesPlacement.order(sp.series_id) || []).find(x => String(x.id) === String(b.id))?.placed || null : null; } catch {}
+          book = asSeriesCard(b, sp.series_id, placed);
         } else if (sp.has_completed) {
-          book = pickNextUnstartedBook.get(userId, sp.series_id, sp.max_completed_sort);
+          const n = nextInOrder(sp.series_id);
+          book = n === undefined ? pickNextUnstartedBook.get(userId, sp.series_id, sp.max_completed_sort)
+            : n ? asSeriesCard(bookRow.get(n.id), sp.series_id, n.placed) : null;
         }
         if (book) inProgress.push({ ...book, _activity: sp.last_activity });
         if (inProgress.length >= 30) break;

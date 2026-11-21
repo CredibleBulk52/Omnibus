@@ -64,6 +64,9 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
             : <span className="issue-stamp"><small>ISSUE</small><b>{next.issue_number ?? '→'}</b></span>}
           <span className="next-copy"><span className="next-heading"><strong>{endIssueLabel(next)}</strong>{kind === 'event' && next.tier && <em>{next.tier}</em>}</span>
             {next.issue_title && <span>{next.issue_title}</span>}
+            {/* Series reading: the next issue is part of a Timeline event (2026-11-21). */}
+            {kind === 'series' && next.events?.length > 0 && <span className="next-event">
+              <b aria-hidden="true">◆</b> Part of {next.events[0].name}{next.events.length > 1 && <small> +{next.events.length - 1}</small>}</span>}
             <span className="read-action">{kind === 'series' && next.issue_number != null ? `READ #${next.issue_number}` : 'READ NEXT'} <span>→</span></span>
           </span>
         </button>

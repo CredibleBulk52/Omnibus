@@ -61,3 +61,8 @@
 .comic-reader-finale .about-issue span{display:block;color:var(--highlight);font:13px 'Bangers',cursive;letter-spacing:.06em;margin-bottom:2px}
 .comic-reader-finale .about-next{display:block;margin:8px 0 12px;padding:0}
 .comic-reader-finale .about-next+.about-issue{margin-top:0}
+/* The next issue is part of a Timeline event (series reading, 2026-11-21): the grid's ◆ marker. */
+.comic-reader-finale .next-copy > span.next-event:not(.read-action):not(.next-heading){align-self:start;display:inline-flex;align-items:baseline;gap:6px;margin-top:2px;padding:3px 9px 2px;
+  background:rgba(0,0,0,.4);border-left:3px solid var(--highlight);color:var(--highlight);font:16px 'Bangers',cursive;letter-spacing:.06em;text-transform:uppercase}
+.comic-reader-finale .next-copy > .next-event b{font-size:12px}
+.comic-reader-finale .next-copy > .next-event small{font:13px 'Boogaloo',sans-serif;color:color-mix(in srgb, var(--om-text) 80%, var(--om-base))}

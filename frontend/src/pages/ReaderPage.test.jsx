@@ -61,3 +61,12 @@ test('opened from a series Issues grid (placed book of another series): neighbou
  await key('ArrowRight');await act(async()=>host.querySelector('.next-panel').click());await act(async()=>vi.advanceTimersByTime(350));
  expect(host.querySelector('output').textContent).toBe('/read/core?fromSeries=ww');
 });
+test('end card Back to series returns to the series the book was read from, not its own',async()=>{
+ global.fetch=vi.fn(async url=>({ok:true,json:async()=>url.includes('/adjacent')?{prev:null,next:{id:'ww3',series_name:'Wonder Woman',issue_number:3},context:{kind:'series',id:'ww',name:'Wonder Woman',position:5,total:48}}
+  :url.endsWith('/pages')?{count:1}:url.includes('/read-progress/')?{page:0,completed:true}:{id:'aa1',series_id:'aa',series_name:'Amazons Attack',issue_number:1}}));
+ await act(async()=>root.render(<MemoryRouter initialEntries={['/read/aa1?fromSeries=ww']}><Location/><Routes><Route path="/read/:bookId" element={<ReaderPage/>}/><Route path="/series/:id" element={<div>Series</div>}/></Routes></MemoryRouter>));
+ await key('ArrowRight');
+ const back=[...host.querySelectorAll('footer button')].find(b=>b.textContent.includes('Back to series'));
+ await act(async()=>back.click());
+ expect(host.querySelector('output').textContent).toBe('/series/ww');
+});

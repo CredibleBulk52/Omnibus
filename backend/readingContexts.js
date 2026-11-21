@@ -9,7 +9,10 @@
 // Tables: reading_contexts (one row per user and context) and read_progress.context
 // (the context an issue was last read through; NULL = read on its own).
 
-const KINDS = new Set(['event', 'run', 'list']);
+// 'series' (2026-11-21): a book read from another series' Issues — a linked mini or annual volume
+// placed in that series' reading order (seriesPlacement.js). It makes no card of its own: Home's
+// series card for that series counts the book and offers the next one in its order.
+const KINDS = new Set(['event', 'run', 'list', 'series']);
 const TIERS = new Set(['essential', 'recommended', 'all']);
 const inTier = (tier, path) => path === 'all' || tier === 'essential' || (path === 'recommended' && tier === 'recommended');
 
@@ -38,7 +41,7 @@ function create({ db, readingLists }) {
   function record(userId, bookId, ctx, { page, completed }) {
     if (!userId) return;
     db.prepare('UPDATE read_progress SET context = ? WHERE user_id = ? AND book_id = ?').run(ctx ? ctx.key : null, userId, String(bookId));
-    if (!ctx || (!(page > 0) && !completed)) return;    // opening an issue is not reading it
+    if (!ctx || ctx.kind === 'series' || (!(page > 0) && !completed)) return;    // opening an issue is not reading it
     db.prepare(`INSERT INTO reading_contexts (user_id, ctx, kind, ref_id, min_tier, last_book_id, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id, ctx) DO UPDATE SET min_tier = excluded.min_tier, last_book_id = excluded.last_book_id, updated_at = excluded.updated_at`)

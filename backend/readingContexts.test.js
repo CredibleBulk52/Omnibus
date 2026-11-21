@@ -34,10 +34,18 @@ function setup() {
   return { db, rc, read };
 }
 
-test('parse accepts only event / run / list contexts with safe ids', () => {
+test('parse accepts only event / run / list / series contexts with safe ids', () => {
   assert.deepEqual(parse({ kind: 'event', id: 'zh', minTier: 'essential' }), { kind: 'event', id: 'zh', minTier: 'essential', key: 'event:zh' });
   assert.equal(parse({ kind: 'list', id: 9, minTier: 'essential' }).minTier, null);
-  for (const bad of [null, {}, { kind: 'series', id: 'x' }, { kind: 'list', id: '../1' }, { kind: 'run', id: '' }]) assert.equal(parse(bad), null);
+  assert.deepEqual(parse({ kind: 'series', id: 'ss_1c46' }), { kind: 'series', id: 'ss_1c46', minTier: null, key: 'series:ss_1c46' });
+  for (const bad of [null, {}, { kind: 'shelf', id: 'x' }, { kind: 'series', id: '../1' }, { kind: 'list', id: '../1' }, { kind: 'run', id: '' }]) assert.equal(parse(bad), null);
+});
+
+test('series context (a book read from another series\' Issues): the progress row says so, no card of its own', () => {
+  const { rc, read, db } = setup();
+  read('va20', 22, true, { kind: 'series', id: 'ss_ww' });
+  assert.equal(rc.cards('u').cards.length, 0);
+  assert.equal(db.prepare("SELECT context FROM read_progress WHERE user_id = 'u' AND book_id = 'va20'").get().context, 'series:ss_ww');
 });
 
 test('event card: the next issue in event order, across series, following the reading path', () => {

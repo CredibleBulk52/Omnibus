@@ -64,3 +64,15 @@ test('selected path exposes one-time detours at the end without changing the pri
  expect(container.querySelector('.next-panel')).toBeNull();
  act(()=>container.querySelector('.route').click());expect(onRead).toHaveBeenCalledWith(extra);
 });
+
+test('series reading: the next issue shows the Timeline event it is part of; event reading does not repeat it', async () => {
+  const next = { id: 'kt1', series_name: 'Knight Terrors: Wonder Woman', issue_number: 1, events: [{ id: 'kt', name: 'Knight Terrors' }, { id: 'x', name: 'Other' }] };
+  await render({ context: { kind: 'series', id: 'ww', name: 'Wonder Woman', position: 1, total: 48 }, next, onRead: () => {} });
+  const note = container.querySelector('.next-panel .next-event');
+  expect(note.textContent).toContain('Part of Knight Terrors');
+  expect(note.textContent).toContain('+1');
+  await render({ context: { kind: 'series', id: 'ww', name: 'Wonder Woman' }, next: { ...next, events: [] }, onRead: () => {} });
+  expect(container.querySelector('.next-event')).toBeNull();
+  await render({ context: { kind: 'event', id: 'kt', name: 'Knight Terrors' }, next, onRead: () => {}, onBackContext: () => {} });
+  expect(container.querySelector('.next-event')).toBeNull();
+});

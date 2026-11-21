@@ -234,14 +234,16 @@ function createSeriesPlacement({ db, members = () => [] }) {
       pins: Object.fromEntries([...pins.values()].map(p => [p.book_id, { mode: p.mode, anchorBookId: p.anchor_book_id || null }])) };
   }
 
-  // The displayed sequence: regular issues with the placed extras after their anchors (book ids).
-  function sequence(seriesId) {
+  // The displayed order: regular issues with the placed extras after their anchors —
+  // [{ id, placed }] (placed: the extra's entry with its label, or null for a regular issue).
+  function order(seriesId) {
     const p = placement(seriesId);
     if (!p) return null;
-    const out = p.placed.filter(x => x.after < 0).map(x => x.bookId);
-    p.regular.forEach((r, i) => { out.push(r.id); for (const x of p.placed) if (x.after === i) out.push(x.bookId); });
+    const out = p.placed.filter(x => x.after < 0).map(x => ({ id: x.bookId, placed: x }));
+    p.regular.forEach((r, i) => { out.push({ id: r.id, placed: null }); for (const x of p.placed) if (x.after === i) out.push({ id: x.bookId, placed: x }); });
     return out;
   }
+  const sequence = seriesId => order(seriesId)?.map(x => x.id) ?? null;
 
   function setPin(seriesId, bookId, { mode, anchorBookId } = {}, userId = null) {
     if (!PIN_MODES.has(mode)) throw Object.assign(new Error('mode must be after, first or shelf'), { status: 400 });
@@ -259,7 +261,7 @@ function createSeriesPlacement({ db, members = () => [] }) {
   }
   const clearPin = (seriesId, bookId) => db.prepare('DELETE FROM series_placement_pins WHERE series_id = ? AND book_id = ?').run(seriesId, bookId).changes;
 
-  return { placement, sequence, setPin, clearPin };
+  return { placement, order, sequence, setPin, clearPin };
 }
 
 // Routes (2026-11-21). GET for any signed-in reader (the series page's Issues grid); pins for admins:

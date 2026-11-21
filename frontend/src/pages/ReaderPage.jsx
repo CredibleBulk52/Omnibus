@@ -100,7 +100,8 @@ export default function ReaderPage() {
   // Query string that keeps the reading context (event / Top Shelf run / reading list) across issues.
   // The same context, sent with each progress save so Continue Reading on the home page
   // can offer the next issue in this event / run / list (readingContexts.js).
-  const ctxSave = eventId ? { kind: 'event', id: eventId, minTier: eventPath } : canonRunId ? { kind: 'run', id: canonRunId } : listId ? { kind: 'list', id: listId } : null;
+  const ctxSave = eventId ? { kind: 'event', id: eventId, minTier: eventPath } : canonRunId ? { kind: 'run', id: canonRunId } : listId ? { kind: 'list', id: listId }
+    : fromSeries ? { kind: 'series', id: fromSeries } : null;   // Home counts the book for that series
   const ctxSaveRef = useRef(ctxSave); ctxSaveRef.current = ctxSave;
   const ctxQs = eventId ? `?eventId=${encodeURIComponent(eventId)}&minTier=${eventPath}` : canonRunId ? `?canonRunId=${canonRunId}` : listId ? `?listId=${listId}`
     : fromSeries ? `?fromSeries=${encodeURIComponent(fromSeries)}` : '';
@@ -913,7 +914,7 @@ export default function ReaderPage() {
               alternatives={alternatives} endMessage={endMessage}
               loading={adjacentLoading} onRead={openIssue} onLastPage={closeEnd}
               onBackContext={() => navigate(backLink)}
-              onBackSeries={seriesId ? () => navigate(`/series/${seriesId}`, { replace: true }) : null}
+              onBackSeries={(kind === 'series' && ctx?.id) || seriesId ? () => navigate(`/series/${(kind === 'series' && ctx?.id) || seriesId}`, { replace: true }) : null}
               assistant={asst} onDiscuss={() => setAskOpen(true)} />
           </div>
         );

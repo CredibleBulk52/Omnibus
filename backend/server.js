@@ -1440,7 +1440,7 @@ for (const sql of [
 ]) { try { db.prepare(sql).run(); } catch {} }
 
 const { STORE_DATE_SQL } = require('./storeDate');
-const { withEventMarkers } = require('./eventMarkers');
+const { withEventMarkers, eventMarkersFor } = require('./eventMarkers');
 // ─── Schema migrations (safe to run on every startup) ────────────
 // SQLite has no ALTER TABLE IF NOT EXISTS — just catch duplicate-column errors
 [
@@ -3342,7 +3342,10 @@ app.get('/api/books/:id/adjacent', requireAuth, (req, res) => {
     const b = db.prepare('SELECT id, COALESCE(title, filename) AS display_title FROM scanned_books WHERE id = ?').get(id);
     return b ? { id: b.id, title: b.display_title } : null;
   };
-  res.json(withLabels({ prev: fmt(order[idx - 1]), next: fmt(order[idx + 1]), context: serContext }));
+  const out = withLabels({ prev: fmt(order[idx - 1]), next: fmt(order[idx + 1]), context: serContext });
+  // The next issue's Timeline events, for the end card's note (eventMarkers.js, 2026-11-21).
+  if (out.next?.id) { try { const ev = eventMarkersFor(db, [out.next.id]).get(out.next.id); if (ev?.length) out.next.events = ev; } catch {} }
+  res.json(out);
 });
 
 // Reader end-of-issue card: series name, issue number and the issue's own
@@ -5498,7 +5501,7 @@ app.get('/api/books/in-progress', requireAuth, (req, res) => {
 
 // ─── Home: home.js (2026-11-19) ───────────────────────────────────
 // GET /api/home/v2, /api/home/discover, the older /api/home and the Continue Reading dismissals.
-require('./home').registerHome({ app, charMapCache, db, fetchAllSeries, getReadingContexts: () => readingContexts, getSeriesJsonCached, getSeriesRating, mergeSeriesWithJson, parseComicInfo, requireAuth });
+require('./home').registerHome({ app, charMapCache, db, fetchAllSeries, getReadingContexts: () => readingContexts, getSeriesPlacement: () => seriesPlacement, getSeriesJsonCached, getSeriesRating, mergeSeriesWithJson, parseComicInfo, requireAuth });
 
 // ─── SERVE FRONTEND ───────────────────────────────────────────────
 
