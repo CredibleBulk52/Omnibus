@@ -67,19 +67,23 @@
 .comic-reader-finale .next-copy > .next-event b{font-size:12px}
 .comic-reader-finale .next-copy > .next-event small{font:13px 'Boogaloo',sans-serif;color:color-mix(in srgb, var(--om-text) 80%, var(--om-base))}
 /* Wide cards: the event in the panel's empty right side, with a link to the event at that issue
-   (2026-11-21). The text lets clicks through to the panel (read next); only the link is its own. */
+   (2026-11-21). The text lets clicks through to the panel (read next); only the link is its own.
+   The card is at most 620px wide, so its panel is about 576px: the callout starts at 520px. */
 .comic-reader-finale .next-row{position:relative;container-type:inline-size}
 .comic-reader-finale .next-event-side{display:none}
-@container (min-width: 620px){
-  .comic-reader-finale .next-row.has-event .next-panel{padding-right:252px}
+@container (min-width: 520px){
+  /* The panel and the callout share one grid cell: the panel grows to fit a long event name.
+     (The grid is .next-grid: a container query cannot style the container itself.) */
+  .comic-reader-finale .next-row.has-event > .next-grid{display:grid}
+  .comic-reader-finale .next-row.has-event .next-grid > .next-panel{grid-area:1/1;padding-right:200px}
   .comic-reader-finale .next-row.has-event .next-panel span.next-event.next-event:not(.read-action){display:none}
-  .comic-reader-finale .next-row.has-event .next-event-side{display:flex;flex-direction:column;justify-content:center;gap:5px;position:absolute;
-    top:52px;bottom:20px;right:20px;width:212px;padding:2px 0 2px 16px;border-left:3px solid var(--highlight);pointer-events:none}
+  .comic-reader-finale .next-row.has-event .next-grid > .next-event-side{grid-area:1/1;justify-self:end;align-self:center;position:relative;z-index:1;
+    display:flex;flex-direction:column;gap:5px;width:172px;margin:68px 18px 20px 0;padding:2px 0 2px 13px;border-left:3px solid var(--highlight);pointer-events:none}
 }
 .comic-reader-finale .next-event-side .nes-cap{white-space:nowrap;font:13px 'Boogaloo',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb, var(--om-text) 78%, var(--om-base))}
 .comic-reader-finale .next-event-side .nes-cap b{color:var(--highlight);font-size:11px;margin-right:4px}
 .comic-reader-finale .next-event-side .nes-badge{align-self:start;filter:drop-shadow(2px 2px 0 var(--ink,#050608))}
-.comic-reader-finale .next-event-side strong{font:29px/1 'Bangers',cursive;letter-spacing:.04em;color:var(--paper,var(--om-text));text-shadow:2px 2px 0 var(--ink,#050608);overflow-wrap:anywhere;margin-top:2px}
+.comic-reader-finale .next-event-side strong{font:25px/1 'Bangers',cursive;letter-spacing:.04em;color:var(--paper,var(--om-text));text-shadow:2px 2px 0 var(--ink,#050608);overflow-wrap:anywhere;margin-top:2px}
 .comic-reader-finale .next-event-side .nes-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font:14px 'Comic Neue',sans-serif;color:color-mix(in srgb, var(--om-text) 85%, var(--om-base))}
 .comic-reader-finale .next-event-side .nes-role{display:inline-block;padding:1px 8px;background:var(--nes-role);color:#0b0b0b;border:2px solid #000;box-shadow:2px 2px 0 #000;
   font:13px 'Bangers',cursive;letter-spacing:.1em;text-transform:uppercase;transform:skew(-4deg)}

@@ -63,7 +63,7 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
         {hasPosition && <div className="route-track" role="progressbar" aria-label={`Position in ${word}`} aria-valuemin={0} aria-valuemax={total} aria-valuenow={position}><span style={{ width: `${Math.min(100, position / total * 100)}%` }} /></div>}
       </div>}
       {loading ? <p role="status">Loading the next issue…</p> : next ? (<>
-        <div className={`next-row${nextEvent ? ' has-event' : ''}`}>
+        <div className={`next-row${nextEvent ? ' has-event' : ''}`}><div className="next-grid">
         <button className="next-panel" onClick={() => onRead(next)} aria-label={`Read next: ${endIssueLabel(next)}`}>
           <span className="caption">{kind === 'series' ? 'CONTINUED NEXT ISSUE…' : `NEXT IN THE ${word.toUpperCase()}…`}</span>
           {next.id && failedCover !== next.id
@@ -88,7 +88,7 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
           </span>
           {onEvent && <button type="button" className="nes-link" onClick={() => onEvent(nextEvent, next)}>View in the event ↗</button>}
         </aside>}
-        </div>
+        </div></div>
         {hasAbout && <button type="button" className="about-toggle about-next" aria-expanded={aboutOpen} onClick={() => setAboutOpen(v => !v)}>
           {aboutOpen ? '▴' : '▾'} About the next issue</button>}
         {aboutOpen && hasAbout && <div className="about-issue">
