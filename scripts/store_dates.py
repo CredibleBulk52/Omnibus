@@ -116,6 +116,10 @@ def state_db():
       -- Books whose written StoreDate came from a wrong source (fix-monitored): bad_date is the value
       -- in the file; collect dates them again and write replaces it, or removes it when none is found.
       CREATE TABLE IF NOT EXISTS redo (book_id TEXT PRIMARY KEY, bad_date TEXT, reason TEXT, at TEXT);
+      -- The bytes each clean-ending rewrite replaced (rewrite_ending): size before, where it cut, the old
+      -- tail and an old ComicInfo.xml's local name; enough to put a file back exactly.
+      CREATE TABLE IF NOT EXISTS endings_backup (book_id TEXT, path TEXT, size INTEGER, cut INTEGER, tail BLOB,
+        orphan INTEGER, orphan_name BLOB, at TEXT);
     """)
     return conn
 
@@ -584,11 +588,10 @@ def add_store_date(xml, d):
     return new if len(hits) == 1 and hits[0].text == d else None
 
 
-# In-place edit (user's choice, 2026-11-19): append a new ComicInfo.xml and a new central directory
-# at the end of the archive; nothing before the old end of file is changed, so cutting the file back
-# to its old length restores it exactly. Readers that use the central directory (Omnibus, Komga,
-# Kavita, 7-Zip, Python's zipfile) see the new ComicInfo.xml; the old one stays as a few KB of unused
-# bytes. A reader that walks the local headers front to back still sees the old one (no StoreDate).
+# In-place edit (user's choice, 2026-11-19): the pages are never moved. 2026-11-21: the first version
+# appended a new ComicInfo.xml, index and end record after the archive's own; 7-Zip reads the first end
+# record, so it (and Omnibus's retag, which extracts with 7-Zip) saw the old ComicInfo.xml. Now the
+# ending is rewritten in place (rewrite_ending, below): one ComicInfo.xml, one index, one end record.
 # Skipped: ZIP64 archives (over 4 GB or 65,535 members), multi-disk archives, anything unexpected.
 LOC_SIG, CEN_SIG, EOCD_SIG = b"PK\x03\x04", b"PK\x01\x02", b"PK\x05\x06"
 CEN = struct.Struct("<4sHHHHHHIIIHHHHHII")
@@ -638,6 +641,176 @@ def read_layout(f, size):
     return records, comment
 
 
+def end_record_ending_at(f, end):
+    """The ZIP end record that ends exactly at offset `end` (its comment included): (cd_offset, cd_size,
+    entries) or None. An appended StoreDate edit left the archive's earlier end record right where its
+    new ComicInfo.xml begins."""
+    lo = max(0, end - EOCD.size - 65535)
+    f.seek(lo)
+    buf = f.read(end - lo)
+    i = buf.rfind(EOCD_SIG)
+    while i >= 0:
+        if i + EOCD.size <= len(buf):
+            sig, disk, cd_disk, n_disk, n, cd_size, cd_off, clen = EOCD.unpack_from(buf, i)
+            if i + EOCD.size + clen == len(buf) and cd_off + cd_size == lo + i:
+                return cd_off, cd_size, n
+        i = buf.rfind(EOCD_SIG, 0, i)
+    return None
+
+
+def cd_entry(f, cd_off, cd_size, raw_name):
+    """The central directory record (CEN tuple) of member `raw_name` in the index at cd_off, or None."""
+    f.seek(cd_off)
+    cd = f.read(cd_size)
+    p = 0
+    while p + CEN.size <= len(cd) and cd[p:p + 4] == CEN_SIG:
+        h = CEN.unpack_from(cd, p)
+        if cd[p + CEN.size:p + CEN.size + h[10]] == raw_name:
+            return h
+        p += CEN.size + h[10] + h[11] + h[12]
+    return None
+
+
+def local_entry_end(f, off, csize, flags):
+    """Where the member whose local header is at `off` ends (data descriptor included)."""
+    f.seek(off)
+    head = f.read(LOC.size)
+    if len(head) < LOC.size or head[:4] != LOC_SIG:
+        raise Skip("damaged local header")
+    h = LOC.unpack(head)
+    end = off + LOC.size + h[9] + h[10] + csize
+    if flags & 0x8:                                   # data descriptor after the data
+        f.seek(end)
+        end += 16 if f.read(4) == b"PK\x07\x08" else 12
+    return end
+
+
+# Clean ending (2026-11-21). The first `write` appended a new ComicInfo.xml, index and end record after the
+# archive's own index and end record. Readers that use the last index (Omnibus, Python, Komga) saw the new
+# ComicInfo.xml; 7-Zip 23 stopped at the earlier end record, warned "data after the end of archive",
+# reported success and extracted the old ComicInfo.xml, so Omnibus's retag refused to replace such files
+# ("Extraction/build changed source paths or payloads"). A ZIP has to end with exactly one index and end
+# record. So the ending is rewritten in place instead: from where the archive's own index began (or from
+# its old ComicInfo.xml, when that was the last member) the file gets the new ComicInfo.xml, one index and
+# one end record. The pages are not moved. An old ComicInfo.xml that sits before other members stays as
+# unused bytes; its local name is changed to ComicInfo.old, so readers that scan from the front skip it.
+# The bytes replaced are kept (endings_backup) and restored if the result does not check out.
+def rewrite_ending(path, ci, data, check):
+    """Write `data` as ComicInfo.xml member `ci` (a ZipInfo of the current archive) with a clean ending.
+    check(path) -> None or a reason; on a reason the file is put back. Returns (None, backup) or (reason, None)."""
+    size = os.path.getsize(path)
+    with open(path, "r+b") as f:
+        try:
+            records, comment = read_layout(f, size)
+        except Skip as e:
+            return str(e), None
+        hits = [r for r in records if r["name"] == ci.filename]
+        if len(hits) != 1:
+            return "central directory does not match the archive listing", None
+        cur = hits[0]
+        raw_name, h = cur["raw_name"], cur["h"]
+        f.seek(size - EOCD.size - len(comment))
+        cd_now = EOCD.unpack(f.read(EOCD.size))[6]
+        # Follow earlier appended edits back to the archive's own index and its own ComicInfo.xml.
+        base, ci_off, ci_size, ci_flags = cd_now, h[16], h[8], h[3]
+        while True:
+            prior = end_record_ending_at(f, ci_off)
+            if not prior:
+                break
+            ph = cd_entry(f, prior[0], prior[1], raw_name)
+            if ph is None:
+                return "earlier index has no ComicInfo.xml", None
+            base, ci_off, ci_size, ci_flags = prior[0], ph[16], ph[8], ph[3]
+        try:
+            ci_end = local_entry_end(f, ci_off, ci_size, ci_flags)
+        except Skip as e:
+            return str(e), None
+        cut = ci_off if ci_end == base else base
+        orphan = None if cut == ci_off else ci_off
+        flags = h[3] & 0x800
+        crc = zlib.crc32(data) & 0xFFFFFFFF
+        local = LOC.pack(LOC_SIG, 20, flags, 0, h[5], h[6], crc, len(data), len(data), len(raw_name), 0) + raw_name
+        entry = CEN.pack(CEN_SIG, h[1], 20, flags, 0, h[5], h[6], crc, len(data), len(data), len(raw_name), 0,
+                         len(cur["comment"]), 0, h[14], h[15], cut) + raw_name + cur["comment"]
+        cd = b"".join(entry if r is cur else r["raw"] for r in records)
+        cd_off = cut + len(local) + len(data)
+        if cd_off + len(cd) + EOCD.size + len(comment) >= 0xFFFFFFFF:
+            return "archive would need ZIP64", None
+        tail = local + data + cd + EOCD.pack(EOCD_SIG, 0, 0, len(records), len(records), len(cd), cd_off, len(comment)) + comment
+        f.seek(cut)
+        backup = {"size": size, "cut": cut, "tail": f.read(size - cut), "orphan": orphan, "orphan_name": None}
+        if orphan is not None:
+            f.seek(orphan + LOC.size)
+            backup["orphan_name"] = f.read(len(raw_name))
+        try:
+            f.seek(cut)
+            f.write(tail)
+            f.truncate(cut + len(tail))
+            if orphan is not None and raw_name.lower().endswith(b".xml"):
+                f.seek(orphan + LOC.size + len(raw_name) - 3)
+                f.write(b"old")                        # ComicInfo.xml -> ComicInfo.old, unused bytes
+            f.flush()
+            os.fsync(f.fileno())
+        except BaseException:
+            restore_ending(f, backup)
+            raise
+    reason = check(path)
+    if reason:
+        with open(path, "r+b") as f:
+            restore_ending(f, backup)
+        return reason + " (restored)", None
+    return None, backup
+
+
+def restore_ending(f, b):
+    """Put back the bytes rewrite_ending replaced (and an old ComicInfo.xml's local name)."""
+    f.seek(b["cut"])
+    f.write(b["tail"])
+    f.truncate(b["size"])
+    if b.get("orphan") is not None and b.get("orphan_name"):
+        f.seek(b["orphan"] + LOC.size)
+        f.write(b["orphan_name"])
+    f.flush()
+    os.fsync(f.fileno())
+
+
+SEVEN_ZIP = shutil.which("7z") or shutil.which("7za") or shutil.which("7zz")
+
+
+def seven_zip_check(path, ci_name, expect_xml):
+    """7-Zip (what Omnibus's retag extracts CBZ files with) must read the archive without warnings and
+    give the expected ComicInfo.xml. None when fine or when 7-Zip is not installed."""
+    if not SEVEN_ZIP:
+        return None
+    try:
+        # A listing reads the index and end record only (7z t would decompress every page): it is where
+        # 7-Zip reports "There are data after the end of archive".
+        t = subprocess.run([SEVEN_ZIP, "l", path], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+        out = t.stdout + t.stderr
+        if t.returncode != 0 or "WARNING" in out.upper() or "after the end" in out.lower():
+            return "check failed: 7-Zip warns: " + " ".join(l.strip() for l in out.splitlines() if l.strip() and ("WARN" in l.upper() or "rror" in l or "after the end" in l))[:160]
+        x = subprocess.run([SEVEN_ZIP, "x", "-so", path, ci_name], capture_output=True, timeout=120)
+        if x.returncode != 0 or x.stdout != expect_xml:
+            return "check failed: 7-Zip extracts a different ComicInfo.xml"
+    except Exception as e:
+        return f"check failed: 7-Zip: {e}"
+    return None
+
+
+def appended_layout(path):
+    """True when the archive still carries an earlier end record before its ComicInfo.xml (first `write`)."""
+    with zipfile.ZipFile(path) as z:
+        ci = root_comicinfo(z)
+        if ci is None:
+            return False
+        off = ci.header_offset
+    with open(path, "rb") as f:
+        return end_record_ending_at(f, off) is not None
+
+
+LAST_ENDING = {}   # path -> the bytes rewrite_ending replaced (kept in endings_backup by write)
+
+
 def append_store_date(path, d, replace=None):
     """Add <StoreDate> to the archive at path, in place (or, with replace, change that wrong StoreDate
     to d, or remove it when d is None). None on success, else the reason (file unchanged)."""
@@ -654,48 +827,17 @@ def append_store_date(path, d, replace=None):
     if new_xml is None:
         return "ComicInfo.xml not safe to edit (encoding, existing StoreDate or structure)"
     data = new_xml.encode("utf-8")
-    size = os.path.getsize(path)
-    with open(path, "r+b") as f:
-        try:
-            records, comment = read_layout(f, size)
-        except Skip as e:
-            return str(e)
-        hits = [r for r in records if r["name"] == ci.filename]
-        if len(hits) != 1 or len(records) != len(before):
-            return "central directory does not match the archive listing"
-        old = hits[0]
-        h = old["h"]
-        flags = h[3] & 0x800                     # keep the UTF-8 name flag only
-        crc = zlib.crc32(data) & 0xFFFFFFFF
-        local = LOC.pack(LOC_SIG, 20, flags, 0, h[5], h[6], crc, len(data), len(data), len(old["raw_name"]), 0) + old["raw_name"]
-        entry = CEN.pack(CEN_SIG, h[1], 20, flags, 0, h[5], h[6], crc, len(data), len(data), len(old["raw_name"]), 0,
-                         len(old["comment"]), 0, h[14], h[15], size) + old["raw_name"] + old["comment"]
-        cd = b"".join(entry if r is old else r["raw"] for r in records)
-        cd_off = size + len(local) + len(data)
-        if cd_off + len(cd) + EOCD.size + len(comment) >= 0xFFFFFFFF:
-            return "archive would need ZIP64"
-        tail = local + data + cd + EOCD.pack(EOCD_SIG, 0, 0, len(records), len(records), len(cd), cd_off, len(comment)) + comment
-        try:
-            f.seek(size)
-            f.write(tail)
-            f.flush()
-            os.fsync(f.fileno())
-        except BaseException:
-            f.truncate(size)
-            f.flush()
-            raise
-    reason = verify_append(path, before, ci.filename, d)
+    reason, backup = rewrite_ending(path, ci, data,
+        lambda p: verify_append(p, before, ci.filename, d, data) or seven_zip_check(p, ci.filename, data))
     if reason:
-        with open(path, "r+b") as f:
-            f.truncate(size)
-            f.flush()
-            os.fsync(f.fileno())
-        return reason + " (restored)"
+        return reason
+    LAST_ENDING[path] = backup
     return None
 
 
-def verify_append(path, before, ci_name, d):
-    """Same members in the same order; every other member's CRC, size and position unchanged; the date reads back."""
+def verify_append(path, before, ci_name, d, data=None):
+    """Same members in the same order; every other member's CRC, size and position unchanged; the date reads
+    back (and, with data, ComicInfo.xml is exactly that)."""
     try:
         with zipfile.ZipFile(path) as z:
             after = z.infolist()
@@ -703,7 +845,8 @@ def verify_append(path, before, ci_name, d):
                 return "check failed: member list changed"
             for (name, crc, fsize, off), i in zip(before, after):
                 if name == ci_name:
-                    if comicinfo_store_date(z.read(i).decode("utf-8")) != d:
+                    got = z.read(i)
+                    if comicinfo_store_date(got.decode("utf-8")) != d or (data is not None and got != data):
                         return "check failed: StoreDate not read back"
                 elif (crc, fsize, off) != (i.CRC, i.file_size, i.header_offset):
                     return f"check failed: {name} changed"
@@ -762,6 +905,7 @@ def cmd_write(args):
                        (r["book_id"], r["path"], r["store_date"], result, datetime.now().isoformat(timespec="seconds")))
             if result == "written" and r["book_id"] in redo:
                 st.execute("DELETE FROM redo WHERE book_id = ?", (r["book_id"],))
+            save_ending(st, r["book_id"], r["path"])
             st.commit()
             if result not in ("written", "dry-run ok") or n % 200 == 0:
                 log(f"[{n}/{len(rows)}] {os.path.basename(r['path'])}: {result}")
@@ -1528,6 +1672,152 @@ def cmd_collect_gcd(args):
     log("Next: write (adds StoreDate to these books and saves them in Omnibus's database).")
 
 
+def save_ending(st, book_id, path):
+    """Keep the bytes the last rewrite of `path` replaced (endings_backup), for an exact rollback."""
+    b = LAST_ENDING.pop(path, None)
+    if b:
+        st.execute("INSERT INTO endings_backup VALUES (?,?,?,?,?,?,?,?)", (book_id, path, b["size"], b["cut"], b["tail"],
+                   b["orphan"], b["orphan_name"], datetime.now().isoformat(timespec="seconds")))
+
+
+def pause_routine(rw):
+    """Pause Omnibus's metadata routine and wait for its current batch: (previous paused value) or None."""
+    before = rw.execute("SELECT paused FROM metadata_maintenance_control WHERE id = 1").fetchone()[0]
+    rw.execute("UPDATE metadata_maintenance_control SET paused = 1 WHERE id = 1")
+    log("Metadata routine paused")
+    for _ in range(120):
+        if not routine_running(rw):
+            return before
+        log("Waiting for the routine's current batch to finish…")
+        time.sleep(10)
+    rw.execute("UPDATE metadata_maintenance_control SET paused = ? WHERE id = 1", (before,))
+    log("The routine is still running after 20 minutes; nothing changed")
+    return None
+
+
+def cmd_fix_endings(args):
+    """2026-11-21: give every file the first `write` edited one clean ending (rewrite_ending). Until then
+    7-Zip, and Omnibus's retag through it, read the archive's earlier index and its old ComicInfo.xml. The
+    ComicInfo.xml with the store date is kept exactly; the pages are not moved; the replaced bytes are kept
+    in endings_backup; each file is checked with Python's zip reader and 7-Zip and put back if either
+    disagrees. Omnibus's database gets the new file size and time when it was in step with the file."""
+    db, st = app_db(), state_db()
+    rows = st.execute("SELECT book_id, path, store_date FROM written WHERE result = 'written' ORDER BY path").fetchall()
+    # --shard K/N: this worker takes every Nth book from the K-th (K = 1..N), so N workers never touch
+    # the same file. Workers leave the metadata routine alone: pause it before and resume it after.
+    shard = None
+    if args.shard:
+        k, n_ = (int(x) for x in args.shard.split("/"))
+        if not 1 <= k <= n_:
+            raise SystemExit("--shard K/N needs 1 <= K <= N")
+        rows = rows[k - 1::n_]
+        shard = (k, n_)
+    if args.match:
+        # --match TEXT: only books whose path (as written) contains TEXT, to retry a few failures.
+        want = [m.lower() for m in args.match]
+        rows = [r for r in rows if any(m in (r["path"] or "").lower() for m in want)]
+    if args.limit:
+        rows = rows[:args.limit]
+    log(f"{len(rows)} written books to check{f' (worker {shard[0]} of {shard[1]})' if shard else ''}; "
+        f"7-Zip {'found: ' + SEVEN_ZIP if SEVEN_ZIP else 'NOT FOUND (only Python checks)'}")
+    rw = sqlite3.connect(DB_PATH, timeout=30, isolation_level=None)
+    paused_before = None
+    if not args.dry_run and not shard:
+        paused_before = pause_routine(rw)
+        if paused_before is None:
+            return
+    counts = {}
+    try:
+        for n, r in enumerate(rows, 1):
+            # The book's current path: a file moved or renamed since write still has the old ending.
+            # (A retag rebuilds the file cleanly, usually under a new name: "already clean".)
+            cur = db.execute("SELECT path FROM scanned_books WHERE id = ?", (r["book_id"],)).fetchone()
+            path = cur["path"] if cur and cur["path"] and os.path.exists(cur["path"]) else r["path"]
+            try:
+                if not os.path.exists(path):
+                    result = "file missing"
+                elif not appended_layout(path):
+                    result = "already clean"
+                elif args.dry_run:
+                    result = "would repair"
+                else:
+                    with zipfile.ZipFile(path) as z:
+                        ci = root_comicinfo(z)
+                        data = z.read(ci)
+                        before = [(i.filename, i.CRC, i.file_size, i.header_offset) for i in z.infolist()]
+                    st0 = os.stat(path)
+                    d = comicinfo_store_date(data.decode("utf-8", "replace"))
+                    reason, backup = rewrite_ending(path, ci, data,
+                        lambda p: verify_append(p, before, ci.filename, d, data) or seven_zip_check(p, ci.filename, data))
+                    if reason:
+                        result = "failed: " + reason
+                    else:
+                        LAST_ENDING[path] = backup
+                        save_ending(st, r["book_id"], path)
+                        st1 = os.stat(path)
+                        rw.execute("UPDATE scanned_books SET file_mtime = ?, file_size = ? WHERE id = ? AND path = ? AND file_mtime = ? AND file_size = ?",
+                                   (st1.st_mtime_ns // 1_000_000, st1.st_size, r["book_id"], path, st0.st_mtime_ns // 1_000_000, st0.st_size))
+                        result = "repaired"
+            except Exception as e:
+                result = f"error: {e}"
+            counts[result] = counts.get(result, 0) + 1
+            st.commit()
+            if result not in ("repaired", "already clean", "would repair") or n % 500 == 0:
+                log(f"[{n}/{len(rows)}] {os.path.basename(path)}: {result}")
+    except KeyboardInterrupt:
+        log("Stopped; progress kept (run again to continue)")
+    finally:
+        if paused_before is not None:
+            rw.execute("UPDATE metadata_maintenance_control SET paused = ? WHERE id = 1", (paused_before,))
+            log(f"Metadata routine {'left paused (it was paused before)' if paused_before else 'resumed'}")
+    log("Result: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda x: -x[1])))
+
+
+def cmd_check_endings(args):
+    """Read-only (2026-11-21): every file `write` edited, at its current path, must open in Python's zip
+    reader with one end record (no earlier index left), give 7-Zip no warnings, and its ComicInfo.xml must
+    carry the store date that was written, the same in Python and 7-Zip. Lists the files that do not.
+    (Two fix-endings runs overlapped on 2026-11-21; this confirms none of their files was hurt.)"""
+    db, st = app_db(), state_db()
+    rows = st.execute("SELECT book_id, path, store_date FROM written WHERE result = 'written' ORDER BY path").fetchall()
+    if args.limit:
+        rows = rows[:args.limit]
+    log(f"{len(rows)} written books to check; 7-Zip {'found' if SEVEN_ZIP else 'NOT FOUND (Python only)'}")
+    counts, bad = {}, []
+    for n, r in enumerate(rows, 1):
+        cur = db.execute("SELECT path FROM scanned_books WHERE id = ?", (r["book_id"],)).fetchone()
+        path = cur["path"] if cur and cur["path"] and os.path.exists(cur["path"]) else r["path"]
+        try:
+            if not os.path.exists(path):
+                result = "file missing"
+            else:
+                with zipfile.ZipFile(path) as z:
+                    ci = root_comicinfo(z)
+                    data = z.read(ci) if ci else b""
+                    z.testzip() if args.full else None
+                d = comicinfo_store_date(data.decode("utf-8", "replace")) if ci else None
+                if ci is None:
+                    result = "problem: no ComicInfo.xml Omnibus would read"
+                elif appended_layout(path):
+                    result = "not repaired yet (earlier index left)"
+                elif d is None:
+                    result = "ok, no StoreDate (changed since: retag or another tool)"
+                else:
+                    reason = seven_zip_check(path, ci.filename, data)
+                    result = ("problem: " + reason) if reason else "ok"
+        except Exception as e:
+            result = f"problem: {type(e).__name__}: {e}"
+        counts[result.split(":")[0] if result.startswith("problem") else result] = counts.get(result.split(":")[0] if result.startswith("problem") else result, 0) + 1
+        if result.startswith("problem") or result.startswith("not repaired"):
+            bad.append((path, result))
+            log(f"[{n}/{len(rows)}] {path}: {result}")
+        elif n % 2000 == 0:
+            log(f"[{n}/{len(rows)}] checked")
+    log("Result: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda x: -x[1])))
+    if bad:
+        log(f"{len(bad)} files need a look (listed above)")
+
+
 def cmd_fix_monitored(args):
     """fix-dates. 2026-11-21: dates that belong to another issue. (1) Books dated from a monitored issue
     that is not theirs. An old scanner linked specials
@@ -1629,6 +1919,14 @@ def main():
     w.add_argument("--limit", type=int)
     w.add_argument("--dry-run", action="store_true")
     sub.add_parser("sync-db")
+    ce = sub.add_parser("check-endings")
+    ce.add_argument("--limit", type=int)
+    ce.add_argument("--full", action="store_true", help="also test every page's CRC (reads whole files: slow)")
+    fe = sub.add_parser("fix-endings")
+    fe.add_argument("--dry-run", action="store_true")
+    fe.add_argument("--limit", type=int)
+    fe.add_argument("--shard", help="K/N: worker K of N (each takes every Nth book; the routine is left alone)")
+    fe.add_argument("--match", action="append", help="only books whose path contains this text (repeatable)")
     fm = sub.add_parser("fix-dates", aliases=["fix-monitored"])
     fm.add_argument("--dry-run", action="store_true")
     sk = sub.add_parser("skipped")
@@ -1656,7 +1954,7 @@ def main():
     wt.add_argument("--wiki-name", help="the series name on the wiki when it differs from Omnibus's")
     wt.add_argument("--rendered", type=int, default=30, help="DC: pages whose 'published on' sentence is read (one request each)")
     args = p.parse_args()
-    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe, "sync-db": cmd_sync_db, "skipped": cmd_skipped, "fix-dates": cmd_fix_monitored, "fix-monitored": cmd_fix_monitored, "unmark-scan": cmd_unmark_scan, "scan-check": cmd_scan_check, "wiki-probe": cmd_wiki_probe, "wiki-trial": cmd_wiki_trial, "collect-wiki": cmd_collect_wiki, "collect-gcd": cmd_collect_gcd}[args.cmd](args)
+    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe, "sync-db": cmd_sync_db, "skipped": cmd_skipped, "fix-dates": cmd_fix_monitored, "fix-endings": cmd_fix_endings, "check-endings": cmd_check_endings, "fix-monitored": cmd_fix_monitored, "unmark-scan": cmd_unmark_scan, "scan-check": cmd_scan_check, "wiki-probe": cmd_wiki_probe, "wiki-trial": cmd_wiki_trial, "collect-wiki": cmd_collect_wiki, "collect-gcd": cmd_collect_gcd}[args.cmd](args)
 
 
 if __name__ == "__main__":
