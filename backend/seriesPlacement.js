@@ -185,9 +185,9 @@ function createSeriesPlacement({ db, members = () => [] }) {
       for (const r of regular) for (const p of timeline.get(r.id) || []) if (p.event === ev.event) regs.push({ i: regIndex.get(r.id), ord: p.ord });
       if (!regs.length) continue;
       const before = regs.filter(r => r.ord < ev.ord).sort((a, c) => c.ord - a.ord)[0];
-      if (before) return { after: before.i, evidence: 'timeline', ord: ev.ord };
+      if (before) return { after: before.i, evidence: 'timeline', ord: ev.ord, event: ev.event };
       const first = regs.sort((a, c) => a.ord - c.ord)[0];
-      return { after: first.i - 1, evidence: 'timeline', ord: ev.ord };
+      return { after: first.i - 1, evidence: 'timeline', ord: ev.ord, event: ev.event };
     }
     if (/\breprint/i.test(`${tag(b.comicinfo, 'Summary')} ${tag(b.comicinfo, 'Notes')}`)) return { shelf: 'reprint' };
     const w = weekOf(b.store_date);
@@ -242,11 +242,26 @@ function createSeriesPlacement({ db, members = () => [] }) {
       if (pos.shelf) shelf.push({ bookId: x.book.id, reason: pos.shelf, pinned: !!pin });
       else placed.push({ bookId: x.book.id, afterBookId: pos.after >= 0 ? regular[pos.after].id : null, after: pos.after,
         evidence: pos.evidence, kind: x.kind, mini: x.mini, pinned: !!pin, ...label,
-        sortKey: [x.book.store_date || '9999-99-99', pos.ord ?? 0, String(x.book.filename || '')] });
+        sortKey: [x.book.store_date || '9999-99-99', pos.ord ?? 0, String(x.book.filename || ''), pos.event ?? null] });
     }
-    // Several extras after one issue: by date, then Timeline order, then filename.
+    // Several extras after one issue: by date, then Timeline order, then filename (and see below).
     placed.sort((a, b) => (a.after - b.after) || (a.sortKey[0] < b.sortKey[0] ? -1 : a.sortKey[0] > b.sortKey[0] ? 1 : 0)
       || (a.sortKey[1] - b.sortKey[1]) || a.sortKey[2].localeCompare(b.sortKey[2]));
+    // Books placed after one issue by the same Timeline follow that Timeline among themselves: they swap
+    // within the places they hold, so a late-shipping finale stays before its epilogue (Captain America:
+    // Reborn #6 before Who Will Wield the Shield?) and the other books keep their date order around them.
+    const sameTimeline = new Map();
+    placed.forEach((p, i) => {
+      if (p.evidence !== 'timeline' || p.sortKey[3] == null) return;
+      const k = `${p.after}|${p.sortKey[3]}`;
+      if (!sameTimeline.has(k)) sameTimeline.set(k, []);
+      sameTimeline.get(k).push(i);
+    });
+    for (const idx of sameTimeline.values()) {
+      if (idx.length < 2) continue;
+      const items = idx.map(i => placed[i]).sort((a, b) => (a.sortKey[1] - b.sortKey[1]) || a.sortKey[2].localeCompare(b.sortKey[2]));
+      idx.forEach((i, k) => { placed[i] = items[k]; });
+    }
     placed.forEach(p => { delete p.sortKey; });
     return { seriesId, eventHome, regular: regular.map(r => ({ id: r.id, number: r.issue_number })), placed, shelf,
       pins: Object.fromEntries([...pins.values()].map(p => [p.book_id, { mode: p.mode, anchorBookId: p.anchor_book_id || null }])) };

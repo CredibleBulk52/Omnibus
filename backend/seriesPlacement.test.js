@@ -201,3 +201,28 @@ test('#0, negative and #1,000,000 issues go by release date in the run; a #0 rel
   db.prepare("UPDATE scanned_books SET store_date = '2026-01-07' WHERE id = 'w0'").run();
   assert.equal(p.placement('ww').regular[0].id, 'w0');                   // released before the run: first
 });
+
+test('books after one issue from the same Timeline keep its order though a finale shipped late; others stay by date', () => {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE scanned_series (id TEXT PRIMARY KEY, name TEXT, monitored_series_id TEXT);
+    CREATE TABLE scanned_books (id TEXT PRIMARY KEY, series_id TEXT, filename TEXT, issue_number TEXT, title TEXT, comicinfo TEXT,
+      is_special INTEGER DEFAULT 0, sort_order REAL, store_date TEXT);
+    CREATE TABLE series_annual_links (parent_series_id TEXT, annual_series_id TEXT);
+    CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT, year INTEGER, draft INTEGER DEFAULT 0, home_series_id TEXT);
+    CREATE TABLE event_issues (id INTEGER PRIMARY KEY, event_id TEXT, scanned_book_id TEXT, sort_order INTEGER);`);
+  db.prepare('INSERT INTO scanned_series VALUES (?,?,?)').run('cap', 'Captain America', null);
+  const add = db.prepare('INSERT INTO scanned_books VALUES (?,?,?,?,?,?,?,?,?)');
+  const ci = (series, n) => `<ComicInfo><Series>${series}</Series><Number>${n}</Number></ComicInfo>`;
+  add.run('c600', 'cap', 'Captain America 600.cbz', '600', '', ci('Captain America', 600), 0, 600, '2009-06-17');
+  add.run('c601', 'cap', 'Captain America 601.cbz', '601', '', ci('Captain America', 601), 0, 601, '2009-08-26');
+  add.run('c602', 'cap', 'Captain America 602.cbz', '602', '', ci('Captain America', 602), 0, 602, '2010-01-27');
+  const reborn = ['2009-09-02', '2009-09-30', '2009-10-21', '2009-11-04', '2009-11-25', '2010-01-27'];
+  reborn.forEach((d, k) => add.run(`r${k + 1}`, 'cap', `Captain America Reborn 00${k + 1}.cbz`, String(k + 1), '', ci('Captain America: Reborn', k + 1), 1, 9000 + k, d));
+  add.run('wws', 'cap', 'Captain America Reborn Who Will Wield the Shield 001.cbz', '1', '', ci('Captain America: Who Will Wield the Shield?', 1), 1, 9010, '2010-01-20');
+  add.run('xs', 'cap', 'Captain America Special 001.cbz', '1', '', ci('Captain America Special', 1), 1, 9011, '2009-12-02');   // no Timeline
+  db.prepare('INSERT INTO events VALUES (?,?,?,?,?)').run('reb', 'Captain America: Reborn', 2009, 0, null);
+  const ei = db.prepare('INSERT INTO event_issues (event_id, scanned_book_id, sort_order) VALUES (?,?,?)');
+  ['c600', 'c601', 'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'wws'].forEach((id, k) => ei.run('reb', id, k + 1));
+  const p = createSeriesPlacement({ db, members: () => [] });
+  assert.deepEqual(p.sequence('cap'), ['c600', 'c601', 'r1', 'r2', 'r3', 'r4', 'r5', 'xs', 'r6', 'wws', 'c602']);
+});
