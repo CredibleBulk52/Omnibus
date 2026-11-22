@@ -53,6 +53,25 @@ function pageDate(f) {
 const LINK = /\{\{\s*cl?\s*\|\s*([^|}]+?)\s*(?:\|[^}]*)?\}\}|\[\[([^|\]]+?)(?:\|[^\]]*)?\]\]/g;
 const BEFORE = /(?:continu\w*|concludes?|picks?\s+up|leads?)\s+(from|in|into)\b|\b(follows|following|preceded by|prelude to|leads into)\b/gi;
 
+// Read an explicitly enumerated two-issue continuation. Wiki markup may spell
+// out only one volume, with the other issue rendered as a short "#117" link.
+function consecutivePair(clause) {
+  const refs = [];
+  const plain = clause.replace(LINK, (markup, a, b) => {
+    const ref = parseTitle(a || b);
+    if (!ref) return a || b;
+    refs.push(ref);
+    return /\|\s*#\d+\s*(?:\]\]|\}\})$/.test(markup) ? '#' + ref.issue : ref.series + ' #' + ref.issue;
+  }).replace(/'{2,}/g, '').trim();
+  const m = /^(?:([^#;\n]+?)\s+)?#(\d+)\s*(?:,?\s+and\s+|&\s*)(?:([^#;\n]+?)\s+)?#(\d+)\s*[.;!]?$/i.exec(plain);
+  if (!m || !refs.length || Number(m[4]) !== Number(m[2]) + 1) return null;
+  const name = s => wikiName(s).toLowerCase();
+  const first = refs[0];
+  if ((m[1] && name(m[1]) !== name(first.series)) || (m[3] && name(m[3]) !== name(first.series))
+    || refs.some(r => r.vol !== first.vol || name(r.series) !== name(first.series))) return null;
+  return [m[2], m[4]].map(issue => ({ ...first, issue, dir: 'in' }));
+}
+
 // The story's issues a page names: [{ dir: 'from' | 'in', series, vol, issue }] plus its Event name.
 function parsePage(text) {
   const f = fields(text || '');
@@ -71,6 +90,7 @@ function parsePage(text) {
   // before it, with no other link between ("from X, and continues in Y"). "in X and Y" gives both.
   const prose = Object.entries(f).filter(([k]) => /^(Notes|Synopsis\d*)$/.test(k)).map(([, v]) => v).join('\n');
   const marks = [];
+  const pairs = [];
   BEFORE.lastIndex = 0;
   let c;
   while ((c = BEFORE.exec(prose))) {
@@ -83,6 +103,14 @@ function parsePage(text) {
     const subject = /(?:['’]s|(?<=s)['’]|\b(?:his|her|their))\s+(?:own\s+)?(?:story(?:line)?|journey|adventures?|chronology|appearances?)\b(?:\s+(?:is|was|are|were|will|be|then|next|chronologically|directly))*$/i.exec(before);
     const owner = subject && before.slice(0, subject.index).replace(/\]\]|\}\}/g, '').trimEnd();
     const personal = subject && !/\b(?:issue|chapter|crossover|event|series|arc|comic|book|backup|feature)$/i.test(owner);
+    if (!personal && dir === 'in') {
+      const clause = prose.slice(c.index + c[0].length).split(/[\n;]/, 1)[0].split(/\.\s+/, 1)[0];
+      const pair = consecutivePair(clause);
+      if (pair) {
+        pairs.push(pair);
+        for (const ref of pair) add('in', pageTitle(ref.series, ref.vol, ref.issue));
+      }
+    }
     marks.push({ at: c.index, end: c.index + c[0].length, cue: dir, list: personal ? characterLinks : links });
   }
   LINK.lastIndex = 0;
@@ -101,7 +129,7 @@ function parsePage(text) {
   // The story: the Event field, else the notes' 'part two of "Black Circle: Urban Knights"' / 'Part II of V in [[The Siege …]]'.
   const named = /\bpart\s+[\w]+(?:\s+of\s+[\w]+)?\s+(?:of|in)\s+(?:the\s+story\s+)?(?:["“]([^"”]{3,80})["”]|\[\[([^|\]]+)(?:\|[^\]]*)?\]\])/i.exec(prose);
   const event = String(f.Event || f.Event1 || (named ? named[1] || named[2] : '') || '').replace(/\[\[([^|\]]+)(?:\|([^\]]*))?\]\]/g, (_, a, b) => b || a).replace(/\s*\(Event\)\s*$/i, '').trim() || null;
-  return { links, characterLinks, event, date: pageDate(f), title: f.Title || null };
+  return { links, pairs, characterLinks, event, date: pageDate(f), title: f.Title || null };
 }
 
 // Does a page's date fit a book's store date? (cover dates run up to ~3 months after sale)

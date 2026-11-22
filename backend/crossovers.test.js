@@ -371,6 +371,34 @@ test('a finale can name its previous chapter and several characters’ next appe
   assert.deepEqual(page.characterLinks.map(l => l.issue), ['13', '10', '18']);
 });
 
+test('a wiki note can send the reader through two consecutive issues of the same guest series', async () => {
+  const W = require('./crossoverWiki');
+  const lib = library(), { db } = lib;
+  const title = 'Green Lantern Vol 7 40';
+  const note = "The story continues in ''New Titans'' #116 and [[New Titans Vol 1 117|#117]].";
+  const parse = s => W.parsePage('| Notes = ' + s);
+  assert.deepEqual(parse(note).pairs[0].map(r => r.issue), ['116', '117']);
+  assert.equal(parse(note.replace('#116', '#114')).pairs.length, 0);
+  assert.equal(parse(note.replace('The story', "Kyle's story")).pairs.length, 0);
+  assert.equal(parse('Story continues in {{c|New Titans Vol 1 116}} or {{c|New Titans Vol 1 117}}.').pairs.length, 0);
+  assert.equal(parse('Story continues in {{c|New Titans Vol 2 116}} and {{c|New Titans Vol 1 117}}.').pairs.length, 0);
+  const axios = { get: async () => ({ data: { query: { pages: { 1: { title, revisions: [{ slots: { main: {
+    '*': '| Month = December\n| Year = 2026\n| Notes = ' + note,
+  } } }] } } } } }) };
+  db.exec(`INSERT INTO scanned_series (id,name,year) VALUES ('nt','The New Titans',1988);
+    INSERT INTO scanned_books(id,series_id,issue_number,store_date) VALUES
+      ('nt116','nt','116','2026-11-01'),('nt117','nt','117','2026-12-01');
+    UPDATE scanned_books SET comicinfo='<Publisher>DC Comics</Publisher>' WHERE id='gl40'`);
+  const x = create(lib, { axios });
+  db.prepare('INSERT INTO crossover_wiki_books VALUES (?,?,?,?,?)').run('gl40', Date.now(), title, 1, 1);
+  await x.wikiPass();
+  assert.equal(x.wikiState.error, null);
+  assert.equal(x.nextFor('gl40').id, 'nt116');
+  assert.deepEqual(x.placementFor('gl').map(r => r.bookId), ['nt116', 'nt117']);
+  db.prepare("UPDATE crossover_links SET hidden=1 WHERE to_book_id='nt117'").run();
+  assert.deepEqual(x.placementFor('gl').map(r => r.bookId), ['nt116']);
+});
+
 test('the fan wiki pass: finds each series\' volume by date, reads pages 50 at a time, stores links, reads each issue once', async () => {
   const lib = library();
   const page = (title, notes, month, year) => `{{DC Database:Comic Template\n| Title = x\n| Month = ${month}\n| Year = ${year}\n| Notes = ${notes}\n}}`;
@@ -419,7 +447,7 @@ test('the fan wiki pass: finds each series\' volume by date, reads pages 50 at a
   wiki[title] = page(title, personal, 'December', 2026);
   await x.wikiPass({ maxRequests: 50 });
   assert.equal(x.nextFor('gl40'), null);
-  assert.equal(lib.db.prepare("SELECT story_reviewed FROM crossover_wiki_books WHERE book_id = 'gl40'").get().story_reviewed, 1);
+  assert.equal(lib.db.prepare("SELECT story_reviewed FROM crossover_wiki_books WHERE book_id = 'gl40'").get().story_reviewed, 2);
 });
 
 test('fan wiki volumes: other spellings when the first finds none (The Flash, Atom and Hawkman); old notes and reversed dates', async () => {

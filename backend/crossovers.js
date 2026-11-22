@@ -50,6 +50,9 @@ function schema(db) {
     hidden INTEGER NOT NULL DEFAULT 0)`);
   db.exec('CREATE INDEX IF NOT EXISTS idx_crossover_links_from ON crossover_links(from_book_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_crossover_links_to ON crossover_links(to_book_id)');
+  db.exec(`CREATE TABLE IF NOT EXISTS crossover_wiki_pairs (
+    book_id TEXT NOT NULL, first_key TEXT NOT NULL, second_key TEXT NOT NULL,
+    PRIMARY KEY (book_id, first_key, second_key))`);
   db.exec(`CREATE TABLE IF NOT EXISTS crossover_checks (
     book_id TEXT PRIMARY KEY, checked_at INTEGER NOT NULL, result TEXT, cost REAL)`);
   // Fan wikis (crossoverWiki.js): each series' wiki volume (vol 0 = not found) and each issue read.
@@ -409,6 +412,10 @@ function createCrossovers(deps = {}) {
     FROM scanned_books b JOIN scanned_series s ON s.id = b.series_id WHERE b.id = ?`);
   const linksOut = db.prepare('SELECT * FROM crossover_links WHERE from_book_id = ? AND hidden = 0');
   const linksIn = db.prepare('SELECT * FROM crossover_links WHERE to_book_id = ? AND hidden = 0');
+  const pairedNext = db.prepare(`SELECT b.* FROM crossover_wiki_pairs p
+    JOIN crossover_links a ON a.key = p.first_key AND a.hidden = 0
+    JOIN crossover_links b ON b.key = p.second_key AND b.hidden = 0
+    WHERE p.book_id = ? AND a.to_book_id = ? AND a.from_book_id = p.book_id AND b.from_book_id = p.book_id`);
   const sharedEvent = db.prepare(`SELECT 1 FROM event_issues a JOIN event_issues b ON b.event_id = a.event_id JOIN events e ON e.id = a.event_id
     WHERE a.scanned_book_id = ? AND b.scanned_book_id = ? AND COALESCE(e.draft, 0) = 0 LIMIT 1`);
   const dateOf = id => (id ? bookInfo.get(id)?.store_date : null);
@@ -519,7 +526,7 @@ function createCrossovers(deps = {}) {
     const walk = (anchor, dir) => {
       const chain = [], visited = new Set([anchor]);
       let cur = anchor;
-      for (let i = 0; i < 20; i++) {
+      while (chain.length < 20) {
         const n = stepOf(cur, dir);
         if (!n) break;
         if (!n.owned) {   // not this series' own next issue (its missing issues show already)
@@ -531,6 +538,19 @@ function createCrossovers(deps = {}) {
         if (visited.has(n.id) || series(n.id) === seriesId) break;
         visited.add(n.id);
         chain.push(n);
+        if (dir === 'in' && codeOn() && chain.length < 20) {
+          const pairs = pairedNext.all(cur, n.id);
+          const pair = pairs.length === 1 && pairs[0];
+          const id = pair?.to_book_id;
+          if (id && !visited.has(id) && series(id) === series(n.id) && series(id) !== seriesId
+            && !sharedEvent.get(cur, id) && !sharedEvent.get(n.id, id)
+            && !(sequence(seriesId) || []).includes(id)) {
+            chain.push({ ...label(id, pair.to_series, pair.to_issue), story: pair.story, linkIds: [pair.id] });
+            visited.add(id);
+            cur = id;
+            continue;
+          }
+        }
         cur = n.id;
       }
       if (dir === 'from') chain.reverse();
@@ -636,8 +656,8 @@ function createCrossovers(deps = {}) {
       // Series with no wiki volume cost no requests (their issues are only marked again).
       const since = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString().slice(0, 10);
       const done = new Set(db.prepare(`SELECT w.book_id FROM crossover_wiki_books w LEFT JOIN scanned_books b ON b.id = w.book_id
-        WHERE (w.story_reviewed = 1 OR w.links = 0) AND NOT (b.store_date >= ? AND w.checked_at < ?)`).all(since, Date.now() - 7 * 86400000).map(r => r.book_id));
-      const review = new Map(db.prepare('SELECT book_id, page FROM crossover_wiki_books WHERE story_reviewed = 0 AND links > 0 AND page IS NOT NULL')
+        WHERE (w.story_reviewed >= 2 OR w.links = 0) AND NOT (b.store_date >= ? AND w.checked_at < ?)`).all(since, Date.now() - 7 * 86400000).map(r => r.book_id));
+      const review = new Map(db.prepare('SELECT book_id, page FROM crossover_wiki_books WHERE story_reviewed < 2 AND links > 0 AND page IS NOT NULL')
         .all().map(r => [r.book_id, r.page]));
       const pubOf = new Map();
       for (const b of lib.books) if (b.publisher && !pubOf.has(b.series_id)) pubOf.set(b.series_id, b.publisher);
@@ -659,7 +679,9 @@ function createCrossovers(deps = {}) {
       }
       const getVol = db.prepare('SELECT name, vol FROM crossover_wiki_series WHERE key = ?');
       const putVol = db.prepare('INSERT OR REPLACE INTO crossover_wiki_series (key, wiki, name, vol, checked_at) VALUES (?, ?, ?, ?, ?)');
-      const mark = db.prepare('INSERT OR REPLACE INTO crossover_wiki_books (book_id, checked_at, page, links, story_reviewed) VALUES (?, ?, ?, ?, 1)');
+      const mark = db.prepare('INSERT OR REPLACE INTO crossover_wiki_books (book_id, checked_at, page, links, story_reviewed) VALUES (?, ?, ?, ?, 2)');
+      const clearPairs = db.prepare('DELETE FROM crossover_wiki_pairs WHERE book_id = ?');
+      const addPair = db.prepare('INSERT OR IGNORE INTO crossover_wiki_pairs VALUES (?, ?, ?)');
       const retire = db.prepare("DELETE FROM crossover_links WHERE key = ? AND source = 'wiki' AND proof = ? AND hidden = 0");
       // 1. Volumes not known yet (crossoverWiki.findVolumes: Vol 1–10, then other spellings of the name).
       const unknown = [...groups.values()].filter(g => getVol.get(g.key) == null);
@@ -710,6 +732,11 @@ function createCrossovers(deps = {}) {
                   for (const ref of parsed.links) {
                     const row = wikiRow(lib, q.b, ref, parsed.event, proof);
                     if (row && saveExternal(row).changes) n++;
+                  }
+                  clearPairs.run(q.b.id);
+                  for (const pair of parsed.pairs) {
+                    const [first, second] = pair.map(ref => wikiRow(lib, q.b, ref, parsed.event, proof));
+                    if (first && second) addPair.run(q.b.id, first.key, second.key);
                   }
                 }
               }
