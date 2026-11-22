@@ -9,18 +9,25 @@ const when = ms => (ms ? new Date(ms).toLocaleDateString(undefined, { month: 'sh
 export default function CrossoverSettings() {
   const [st, setSt] = useState(null);
   const [err, setErr] = useState('');
+  const [startingRefresh, setStartingRefresh] = useState(false);
   const load = useCallback(() => fetch('/api/admin/crossovers').then(r => r.json()).then(setSt).catch(e => setErr(e.message)), []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    if (!st?.run?.running) return undefined;
+    if (!st?.run?.running && !st?.wiki?.running) return undefined;
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
-  }, [st?.run?.running, load]);
+  }, [st?.run?.running, st?.wiki?.running, load]);
   const post = async (path, body) => {
     setErr('');
-    const r = await fetch(`/api/admin/crossovers${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) setErr(d.error || 'Request failed'); else setSt(d.status || d);
+    try {
+      const r = await fetch(`/api/admin/crossovers${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+      const d = await r.json();
+      if (!r.ok) setErr(d.error || 'Request failed'); else setSt(d.status || d);
+    } catch (e) { setErr(e.message); }
+  };
+  const refresh = async () => {
+    setStartingRefresh(true);
+    try { await post('/refresh', { wiki: true }); } finally { setStartingRefresh(false); }
   };
   if (!st) return <p className="form-hint">{err || 'Loading…'}</p>;
   const run = st.run || {};
@@ -30,6 +37,12 @@ export default function CrossoverSettings() {
       <label className="xo-switch"><input type="checkbox" checked={st.code} onChange={e => post('/switches', { code: e.target.checked })} /> Free sources: issue text and fan wikis</label>
       <p className="form-hint xo-indent">Summaries that name the other issue ("Continued in Superman #50"), story titles with part numbers in two series ("First Light, Part 1" / "Part Two"), and the DC and Marvel fan wikis' "continues from / in" notes (read from Fandom, about 1,500 pages a night until the library is done, then only new issues). Rebuilt every night.
         {st.code && <> <b>{st.links.summary + st.links.title + st.links.wiki}</b> links ({st.links.summary} from summaries, {st.links.title} from titles, {st.links.wiki} from wikis{st.wiki ? `; ${st.wiki.read} issues read on the wikis${st.wiki.running ? ', reading now…' : ''}` : ''}).</>}</p>
+      {st.code && <div className="xo-row xo-indent">
+        <button type="button" className="adm-btn" onClick={refresh} disabled={startingRefresh || st.wiki?.running}>Refresh free crossover links</button>
+        <span role="status" className="form-hint">{startingRefresh ? 'Starting refresh…' : st.wiki?.running
+          ? `Refreshing wiki links · ${st.wiki.books} issues checked`
+          : st.wiki?.finishedAt && (st.wiki.error ? `Wiki refresh stopped: ${st.wiki.error}` : `Last wiki refresh: ${st.wiki.books} issues checked.`)}</span>
+      </div>}
       <label className="xo-switch"><input type="checkbox" checked={st.ai} disabled={run.running && !st.ai} onChange={e => post('/switches', { ai: e.target.checked })} /> AI web check (paid, needs an AI key)</label>
       {!st.ai ? <p className="form-hint xo-indent">One Web Search question per new issue, about {money(st.perBook)} each. Off: no AI spending{st.links.web ? `; the ${st.links.web} links found earlier are hidden` : ''}.</p> : <div className="xo-indent">
       <p><b>{st.links.web}</b> links from web checks{st.links.waiting ? <> ({st.links.waiting} waiting for an issue you don't have)</> : null}</p>

@@ -896,7 +896,16 @@ function createCrossovers(deps = {}) {
   });
   app.post('/api/admin/crossovers/stop', requireAdmin, (req, res) => { state.stop = true; res.json(status()); });
   app.post('/api/admin/crossovers/refresh', requireAdmin, (req, res) => {
-    try { res.json({ ...refreshFree(), status: status() }); } catch (e) { res.status(500).json({ error: e.message }); }
+    try {
+      if (req.body?.wiki !== true) return res.json({ ...refreshFree(), status: status() });
+      if (!codeOn()) return res.status(409).json({ error: 'Enable free crossover sources to refresh them.' });
+      if (wikiState.running) return res.json({ status: status() });
+      const local = refreshFree();
+      // Include previously checked pages with crossover evidence, even for older releases.
+      db.prepare('UPDATE crossover_wiki_books SET story_reviewed = 0 WHERE links > 0 AND page IS NOT NULL').run();
+      void wikiPass();
+      res.json({ ...local, status: status() });
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
   // A wrong link (issue page, admins): hidden for good; the nightly rebuild keeps it hidden.
   app.post('/api/admin/crossovers/hide', requireAdmin, (req, res) => {

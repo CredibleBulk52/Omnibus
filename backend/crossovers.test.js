@@ -390,8 +390,12 @@ test('a wiki note can send the reader through two consecutive issues of the same
       ('nt116','nt','116','2026-11-01'),('nt117','nt','117','2026-12-01');
     UPDATE scanned_books SET comicinfo='<Publisher>DC Comics</Publisher>' WHERE id='gl40'`);
   const x = create(lib, { axios });
-  db.prepare('INSERT INTO crossover_wiki_books VALUES (?,?,?,?,?)').run('gl40', Date.now(), title, 1, 1);
-  await x.wikiPass();
+  db.prepare('INSERT INTO crossover_wiki_books VALUES (?,?,?,?,?)').run('gl40', Date.now(), title, 1, 2);
+  const refresh = lib.app.routes['POST /api/admin/crossovers/refresh'];
+  let response;
+  refresh({ body: { wiki: true } }, { json(value) { response = value; } });
+  assert.equal(response.status.wiki.running, true);
+  while (x.wikiState.running) await new Promise(r => setTimeout(r, 5));
   assert.equal(x.wikiState.error, null);
   assert.equal(x.nextFor('gl40').id, 'nt116');
   assert.deepEqual(x.placementFor('gl').map(r => r.bookId), ['nt116', 'nt117']);
