@@ -48,6 +48,21 @@ function fixture({ eventHome = false } = {}) {
 const where = (res, id) => res.placed.find(x => x.bookId === id);
 const shelved = (res, id) => res.shelf.find(x => x.bookId === id);
 
+test('place an undated linked mini as a group and still allow individual pins', () => {
+  const { db, p } = fixture();
+  db.exec("UPDATE scanned_books SET store_date = NULL, filename = CASE id WHEN 'aa1' THEN 'Z.cbz' ELSE 'A.cbz' END WHERE series_id = 'aa'");
+  assert.ok(shelved(p.placement('ww'), 'aa1'));
+  assert.throws(() => p.setLinkedPins('ww', 'aa', { mode: 'after', anchorBookId: 'absent' }));
+  assert.throws(() => p.setLinkedPins('aa', 'ww', { mode: 'first' }));
+  assert.deepEqual(p.placement('ww').pins, {});
+  p.setLinkedPins('ww', 'aa', { mode: 'after', anchorBookId: 'w37' });
+  const order = p.sequence('ww');
+  assert.deepEqual(order.slice(order.indexOf('aa1'), order.indexOf('aa1') + 2), ['aa1', 'aa2']);
+  assert.equal(where(p.placement('ww'), 'aa2').afterBookId, 'w37');
+  p.setPin('ww', 'aa2', { mode: 'first' });
+  assert.equal(p.sequence('ww')[0], 'aa2');
+});
+
 test('weeks start on Monday', () => {
   assert.equal(weekOf('2026-09-14'), weekOf('2026-09-20'));       // Monday and Sunday
   assert.equal(weekOf('2026-09-21'), weekOf('2026-09-14') + 1);

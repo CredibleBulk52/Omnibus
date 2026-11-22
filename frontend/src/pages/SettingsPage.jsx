@@ -2,7 +2,6 @@ import { BrandingEditor } from '../components/BrandingSettings';
 import { useConfirm } from '../components/Confirm';
 import '../comicSettings.css';
 import { Navigate, Link } from 'react-router-dom';
-import CrossoverSettings from '../components/CrossoverSettings';
 import PageHeader from '../components/PageHeader';
 import Modal from '../components/Modal';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -1529,7 +1528,7 @@ export default function SettingsPage() {
           Manage folders, scans and metadata in <Link to="/library">Library</Link>.
         </p>
         {group('connections', 'Connections', 'Metadata and download services · connection tests · Comic Vine usage', <><ConnectionsSection compact /><CvUsagePanel /></>)}
-        {group('ai', 'AI & Comic Book Guy', 'Provider keys, model choices, assistant behaviour and usage', <AiModelsSettings compact><details className="ai-disclosure"><summary><strong>Comic Book Guy</strong><span>Assistant, limits, avatar &amp; usage</span></summary><AssistantSettings compact /></details><details className="ai-disclosure"><summary><strong>Crossover links</strong><span>Story continues in another series · schedule &amp; cost</span></summary><CrossoverSettings /></details></AiModelsSettings>)}
+        {group('ai', 'AI & Comic Book Guy', 'Provider keys, model choices, assistant behaviour and usage', <AiModelsSettings compact><details className="ai-disclosure"><summary><strong>Comic Book Guy</strong><span>Assistant, limits, avatar &amp; usage</span></summary><AssistantSettings compact /></details></AiModelsSettings>)}
         {group('people', 'People', 'Users, access control and single sign-on', <><UsersSection /><AccessControlSection /><OIDCSection /></>)}
         {group('backups', 'Backups', 'Nightly database backups, a second copy, restore · API key encryption', <BackupsSection />)}
         {group('system', 'System', 'Restart and live logs', <><RestartSection /><LogsSection /></>)}

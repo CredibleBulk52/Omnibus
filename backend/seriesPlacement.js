@@ -128,8 +128,12 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
     }
     // Series on the Specials shelf (series grouping): one-shots, and minis of two or more books.
     for (const m of members(seriesId) || []) {
-      const books = all(`SELECT ${COLS} FROM scanned_books WHERE series_id = ?`, m.id);
-      for (const b of books) if (!seen.has(b.id)) { seen.add(b.id); extras.push({ book: b, kind: 'linked', mini: books.length > 1 }); }
+      const books = runOrder(all(`SELECT ${COLS} FROM scanned_books WHERE series_id = ?
+        ORDER BY COALESCE(sort_order, CAST(issue_number AS REAL)), filename, id`, m.id));
+      for (const [index, b] of books.entries()) if (!seen.has(b.id)) {
+        seen.add(b.id);
+        extras.push({ book: b, kind: 'linked', mini: books.length > 1, seriesIndex: index });
+      }
     }
     // Each mini's latest release week, for the lead-in window.
     const groupKey = x => (x.kind === 'linked' ? `s:${x.book.series_id}` : `c:${norm(tag(x.book.comicinfo, 'Series'))}`);
@@ -251,7 +255,9 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
       if (pos.shelf) shelf.push({ bookId: x.book.id, reason: pos.shelf, pinned: !!pin });
       else placed.push({ bookId: x.book.id, afterBookId: pos.after >= 0 ? regular[pos.after].id : null, after: pos.after,
         evidence: pos.evidence, kind: x.kind, mini: x.mini, pinned: !!pin, ...label,
-        sortKey: [x.book.store_date || '9999-99-99', pos.ord ?? 0, String(x.book.filename || ''), pos.event ?? null] });
+        sortKey: pin && x.kind === 'linked' && x.mini
+          ? ['9999-99-99', 0, `${x.book.series_id}/${String(x.seriesIndex).padStart(8, '0')}`, null]
+          : [x.book.store_date || '9999-99-99', pos.ord ?? 0, String(x.book.filename || ''), pos.event ?? null] });
     }
     // Crossover issues from other series (crossovers.js): after the issue they continue, before the one
     // they lead into. A pin moves or shelves one like any extra; a book already placed is not added twice.
@@ -354,7 +360,13 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
   }
   const clearPin = (seriesId, bookId) => db.prepare('DELETE FROM series_placement_pins WHERE series_id = ? AND book_id = ?').run(seriesId, bookId).changes;
 
-  return { placement, order, sequence, setPin, clearPin };
+  const setLinkedPins = db.transaction((seriesId, linkedId, pin, userId) => {
+    if (!members(seriesId)?.some(m => m.id === linkedId)) throw Object.assign(new Error('This series is no longer on the Specials shelf'), { status: 404 });
+    const books = all('SELECT id FROM scanned_books WHERE series_id = ?', linkedId);
+    if (!books.length) throw Object.assign(new Error('No scanned issues to place'), { status: 400 });
+    for (const b of books) setPin(seriesId, b.id, pin, userId);
+  });
+  return { placement, order, sequence, setPin, clearPin, setLinkedPins };
 }
 
 // Routes (2026-11-21). GET for any signed-in reader (the series page's Issues grid); pins for admins:
@@ -395,6 +407,9 @@ function registerPlacementRoutes({ app, db, requireAuth, requireAdmin, members, 
   });
   app.delete('/api/series/:id/placement/:bookId', requireAdmin, (req, res) => {
     try { res.json({ ok: true, cleared: placement.clearPin(req.params.id, req.params.bookId) }); } catch (e) { fail(res, e); }
+  });
+  app.put('/api/series/:id/placement/linked/:linkedId', requireAdmin, (req, res) => {
+    try { placement.setLinkedPins(req.params.id, req.params.linkedId, req.body || {}, req.user?.sub || null); res.json({ ok: true }); } catch (e) { fail(res, e); }
   });
   return placement;
 }

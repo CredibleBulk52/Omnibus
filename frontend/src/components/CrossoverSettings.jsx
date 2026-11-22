@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 
-// Settings › AI & Comic Book Guy › Crossover links (2026-11-22, backend/crossovers.js; claude/CROSSOVERS.md).
+// Library > Crossover links.
 // Summary links are free and rebuilt nightly. The web check costs a little per new issue, so it is off
 // until chosen here: weekly, monthly, or "Check now" (the estimate is shown first).
 const money = usd => (usd >= 1 ? `$${usd.toFixed(2)}` : `${Math.max(0.1, Math.round(usd * 1000) / 10)}¢`);

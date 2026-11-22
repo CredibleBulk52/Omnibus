@@ -239,7 +239,7 @@ export default function SeriesDetailComic() {
   useEffect(() => { if (hasCrossMissing) loadCrossRequests(); }, [hasCrossMissing, loadCrossRequests]);
   // The ⋮ menu's placement items, for admins (one shared reading order per series; Reading order view).
   const placementMenu = bookId => {
-    if (!placement || !ordered || !isAdmin()) return null;
+    if (!placement || !isAdmin()) return null;
     const placed = placement.placed.find(x => x.bookId === bookId);
     const shelf = placement.shelf.find(x => x.bookId === bookId);
     if (!placed && !shelf) return null;
@@ -1193,7 +1193,9 @@ export default function SeriesDetailComic() {
         })()}
 
         {/* ── Specials ── */}
-        {tab === 'specials' && <LinkedSeriesShelf homeId={id} members={grouping.members} onChanged={reloadGrouping} />}
+        {tab === 'specials' && <LinkedSeriesShelf key={id} homeId={id} members={grouping.members} regular={placement?.regular}
+          onChanged={() => { reloadGrouping(); loadPlacement(); }}
+          onPlaced={async () => { await loadPlacement(); chooseView('reading'); setTab('issues'); }} />}
         {tab === 'specials' && (
           specialsLoading
             ? <div className="loading"><div className="spinner" /><span>Loading specials…</span></div>
