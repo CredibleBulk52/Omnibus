@@ -11588,6 +11588,8 @@ const seriesAnnuals = require('./seriesAnnuals').createSeriesAnnuals({ app, db, 
 // same request service as reading lists (downloadRequests.js).
 async function requestRowFor(src, owner, issue) {
   if (src === 'event' || src === 'run') return editorIssueRow(src, owner, issue) || null;
+  // A crossover part not in the library (crossovers.js, 2026-11-22): the missing side of the link.
+  if (src === 'crossover') return crossovers ? crossovers.missingRow(Number(issue)) : null;
   if (src === 'series') {
     const c = await withTimeout(fillContext(owner, GAPS_VOLUME), 20000);
     if (c.status) return null;

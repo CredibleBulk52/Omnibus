@@ -255,11 +255,23 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
     }
     // Crossover issues from other series (crossovers.js): after the issue they continue, before the one
     // they lead into. A pin moves or shelves one like any extra; a book already placed is not added twice.
+    // Parts not in the library go to `missing` (shown like other missing issues; same order keys).
+    const missing = [];
     if (crossovers) {
       const taken = new Set([...placed.map(p => p.bookId), ...shelf.map(p => p.bookId), ...regIndex.keys()]);
       let list = [];
       try { list = crossoversFor(seriesId) || []; } catch { list = []; }
       for (const c of list) {
+        if (c.missing) {   // a part not in the library: shown as a missing issue after its anchor
+          const after = c.afterBookId != null ? regIndex.get(c.afterBookId) : regIndex.has(c.beforeBookId) ? regIndex.get(c.beforeBookId) - 1 : undefined;
+          if (after === undefined || missing.some(m => m.linkId === c.missing.linkId)) continue;
+          const n = String(c.missing.issue_number || '').replace(/^0+(?=\d)/, '');
+          missing.push({ linkId: c.missing.linkId, after, afterBookId: after >= 0 ? regular[after].id : null, kind: 'crossover',
+            series_name: c.missing.series_name, number: n, label: `${c.missing.series_name}${n ? ` #${n}` : ''}`,
+            title: c.missing.story ? `Crossover · ${c.missing.story}` : 'Crossover',
+            sortKey: [c.chainDate || '9999-99-99', c.seq ?? 0, '', null] });
+          continue;
+        }
         if (taken.has(c.bookId)) continue;
         const book = one(`SELECT ${COLS} FROM scanned_books WHERE id = ?`, c.bookId);
         if (!book) continue;
@@ -296,8 +308,21 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
       const items = idx.map(i => placed[i]).sort((a, b) => (a.sortKey[1] - b.sortKey[1]) || a.sortKey[2].localeCompare(b.sortKey[2]));
       idx.forEach((i, k) => { placed[i] = items[k]; });
     }
+    // Missing crossover parts take their place among the placed books after the same issue: `order` is the
+    // position in one list sorted the same way (after, date, story order).
+    const cmp = (a, b) => (a.after - b.after) || (a.sortKey[0] < b.sortKey[0] ? -1 : a.sortKey[0] > b.sortKey[0] ? 1 : 0) || (a.sortKey[1] - b.sortKey[1]);
+    const byAnchor = new Map();
+    placed.forEach((p, i) => { p.order = i * 10; });
+    for (const m of missing) {
+      // After the last placed book it sorts after (or at the front of the group).
+      const group = placed.filter(p => p.after === m.after);
+      const before = group.filter(p => cmp(p, m) <= 0).pop();
+      m.order = before ? before.order + 1 + (byAnchor.get(before) || 0) : (group[0] ? group[0].order - 5 : (m.after + 1) * 100000);
+      byAnchor.set(before, (byAnchor.get(before) || 0) + 1);
+    }
+    for (const m of missing) delete m.sortKey;
     placed.forEach(p => { delete p.sortKey; });
-    return { seriesId, eventHome, homeEvents, regular: regular.map(r => ({ id: r.id, number: r.issue_number })), placed, shelf,
+    return { seriesId, eventHome, homeEvents, regular: regular.map(r => ({ id: r.id, number: r.issue_number })), placed, shelf, missing,
       pins: Object.fromEntries([...pins.values()].map(p => [p.book_id, { mode: p.mode, anchorBookId: p.anchor_book_id || null }])) };
   }
 

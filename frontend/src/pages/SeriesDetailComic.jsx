@@ -11,7 +11,8 @@ import { ReidentifySeriesButton } from '../components/LibraryHealth';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useSeriesCache, isAdmin, InfoTip } from '../App';
 import { reportProblem } from '../components/ReportProblem';
-import MissingCover, { MissingAction } from '../components/MissingCover';
+import MissingCover, { MissingAction, REQUEST_LABEL } from '../components/MissingCover';
+import { AcquireDialog } from '../components/AcquireBox';
 import '../requestsReports.css';
 import { isOfflineSupported, isComicOffline, saveComicOffline, removeOfflineComic } from '../offlineStorage';
 import AddToListModal from '../components/AddToListModal';
@@ -212,20 +213,30 @@ export default function SeriesDetailComic() {
   const ordered = view === 'reading';
   const loadPlacement = React.useCallback(() => fetch(`/api/series/${id}/placement`)
     .then(r => (r.ok ? r.json() : null)).then(setPlacement).catch(() => setPlacement(null)), [id]);
-  const readingSeq = React.useMemo(() => {
+  // readingSeqAll: the displayed shelf, with crossover parts not in the library (placement.missing,
+  // 2026-11-22) among the placed books; readingSeq: the books only (reading, Resume, current book).
+  const readingSeqAll = React.useMemo(() => {
     const after = new Map();
-    for (const x of (ordered && placement?.placed) || []) {
-      const k = x.afterBookId || '';
-      if (!after.has(k)) after.set(k, []);
-      after.get(k).push(x);
-    }
+    const add = (k, x) => { if (!after.has(k)) after.set(k, []); after.get(k).push(x); };
+    for (const x of (ordered && placement?.placed) || []) add(x.afterBookId || '', x);
+    for (const m of (ordered && placement?.missing) || []) add(m.afterBookId || '', { crossMissing: m, order: m.order });
+    for (const list of after.values()) list.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     // The run's order (seriesPlacement.js runOrder): #0 / #1,000,000 issues by release date.
     const rank = new Map((placement?.regular || []).map((r, i) => [r.id, i]));
     const run = rank.size ? [...books].sort((a, b) => (rank.get(a.id) ?? 1e9) - (rank.get(b.id) ?? 1e9)) : books;
-    const out = (after.get('') || []).map(x => ({ book: x.book, placed: x }));
-    for (const b of run) { out.push({ book: b }); for (const x of after.get(b.id) || []) out.push({ book: x.book, placed: x }); }
+    const item = x => (x.crossMissing ? { crossMissing: x.crossMissing } : { book: x.book, placed: x });
+    const out = (after.get('') || []).map(item);
+    for (const b of run) { out.push({ book: b }); for (const x of after.get(b.id) || []) out.push(item(x)); }
     return out;
   }, [books, placement, ordered]);
+  const readingSeq = React.useMemo(() => readingSeqAll.filter(x => !x.crossMissing), [readingSeqAll]);
+  // Requests for those parts (downloadRequests 'crossover'): { linkId: status }; the Get / Request dialog.
+  const [crossRequests, setCrossRequests] = useState({});
+  const [crossAcquire, setCrossAcquire] = useState(null);
+  const loadCrossRequests = React.useCallback(() => fetch(`/api/requests/crossover/${id}/mine`).then(r => (r.ok ? r.json() : {}))
+    .then(d => setCrossRequests(d && !d.error ? d : {})).catch(() => {}), [id]);
+  const hasCrossMissing = !!(ordered && placement?.missing?.length);
+  useEffect(() => { if (hasCrossMissing) loadCrossRequests(); }, [hasCrossMissing, loadCrossRequests]);
   // The ⋮ menu's placement items, for admins (one shared reading order per series; Reading order view).
   const placementMenu = bookId => {
     if (!placement || !ordered || !isAdmin()) return null;
@@ -680,16 +691,33 @@ export default function SeriesDetailComic() {
     ? (() => {
         // A placed extra takes the key of the issue it follows plus a little, so gaps sort around it.
         let last = books.length ? numKey(books[0].issue_number ?? books[0].number) - 1 : 0, rank = 0;
-        const seq = readingSeq.map((x, k) => {
-          const own = numKey(x.book.issue_number ?? x.book.number);
+        const seq = readingSeqAll.map((x, k) => {
+          const own = x.crossMissing ? Infinity : numKey(x.book.issue_number ?? x.book.number);
           // A regular issue out of number order (#0 after #55) sits where it was read, like a placed book.
-          if (!x.placed && !(own < last)) { last = own; rank = 0; return { ...x, key: last, k }; }
+          if (!x.placed && !x.crossMissing && !(own < last)) { last = own; rank = 0; return { ...x, key: last, k }; }
           rank += 1; return { ...x, key: last + rank / 1000, k };
         });
         return [...seq, ...gapRows.map((gap, k) => ({ gap, key: numKey(gap.number), k: seq.length + k }))]
           .sort((a, b) => (a.key - b.key) || (a.k - b.k));
       })()
-    : readingSeq;
+    : readingSeqAll;
+  // A crossover part not in the library (Reading order): a missing-issue card with Get / Request.
+  const renderCrossMissing = m => {
+    const status = crossRequests[m.linkId];
+    const canDl = gaps?.can_download ?? isAdmin();
+    return (
+      <div key={`xgap-${m.linkId}`} className="issue-book issue-book--missing issue-book--placed" style={{ width: ISSUE_W }}>
+        <div className="issue-cover" style={{ width: ISSUE_W, height: ISSUE_H }}>
+          <MissingCover number={m.number} sub={m.series_name} label={REQUEST_LABEL[status] || 'Not in library'} tone={status === 'open' ? 'requested' : 'missing'}
+            actions={canDl || !status || status === 'dismissed'
+              ? <MissingAction onClick={() => setCrossAcquire(m)}>{canDl ? '⬇ Get' : '✉ Request'}</MissingAction>
+              : null} />
+        </div>
+        <div className="issue-number">{m.label}</div>
+        <div className="issue-title">{m.title}</div>
+      </div>
+    );
+  };
   const renderGap = g => {
     const today = new Date().toISOString().slice(0, 10);
     const label = g.unreleased ? `Out ${g.date && g.date > today ? g.date : 'soon'}`
@@ -980,6 +1008,8 @@ export default function SeriesDetailComic() {
       <div className="series-body">
 
         {shelfOpen && <PutOnShelfDialog seriesId={id} seriesName={title} onClose={() => setShelfOpen(false)} onDone={reloadGrouping} />}
+        {crossAcquire && <AcquireDialog base={`/api/requests/crossover/${id}/issues/${crossAcquire.linkId}`} title={`${crossAcquire.label} · ${crossAcquire.title}`}
+          issue={{ series_name: crossAcquire.series_name, issue_number: crossAcquire.number }} onClose={() => setCrossAcquire(null)} onChange={loadCrossRequests} />}
         {/* ── Issues — bookshelf layout ── */}
         {tab === 'issues' && (
           books.length === 0
@@ -1036,7 +1066,7 @@ export default function SeriesDetailComic() {
                 <div className="issues-bookshelf">
                   <div className="shelf-wall" style={{ padding:'16px 0 0' }}>
                     <div className="issues-books">
-                      {shelfItems.map(({ book, gap, placed }, i) => gap ? renderGap(gap) : (() => {
+                      {shelfItems.map(({ book, gap, placed, crossMissing }, i) => crossMissing ? renderCrossMissing(crossMissing) : gap ? renderGap(gap) : (() => {
                         const isCurrent   = book.id === currentBookId;
                         const isCompleted = !!book.readProgress?.completed;
                         const isInProgress = book.readProgress && !isCompleted && book.readProgress.page > 0;

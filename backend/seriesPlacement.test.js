@@ -253,3 +253,22 @@ test('crossover issues (crossovers.js) go after the issue they continue, or befo
   p.setPin('ww', 'b16', { mode: 'shelf' });                              // an admin can shelve a wrong one
   assert.ok(!p.sequence('ww').includes('b16'));
 });
+
+test('a crossover part not in the library is listed as missing after its issue, in story order, and is not read', () => {
+  const { db } = fixture();
+  const add = db.prepare('INSERT INTO scanned_books VALUES (?,?,?,?,?,?,?,?,?)');
+  db.prepare('INSERT INTO scanned_series VALUES (?,?,?)').run('ds', 'Darkstars', null);
+  add.run('ds34', 'ds', 'Darkstars 034.cbz', '34', 'x', '<ComicInfo><Series>Darkstars</Series><Number>34</Number></ComicInfo>', 0, 34, '2026-09-23');
+  const links = [
+    { bookId: 'ds34', afterBookId: 'w37', story: 'Siege', chainDate: '2026-09-23', seq: 0 },
+    { missing: { series_name: 'Damage', issue_number: '16', story: 'Siege', linkId: 7 }, afterBookId: 'w37', chainDate: '2026-09-23', seq: 1 },
+  ];
+  const p = createSeriesPlacement({ db, crossoversFor: id => (id === 'ww' ? links : []) });
+  const pl = p.placement('ww');
+  assert.equal(pl.missing.length, 1);
+  const m = pl.missing[0];
+  assert.deepEqual([m.label, m.title, m.afterBookId, m.linkId, m.kind], ['Damage #16', 'Crossover · Siege', 'w37', 7, 'crossover']);
+  const ds = pl.placed.find(x => x.bookId === 'ds34');
+  assert.ok(m.order > ds.order);                         // after Darkstars #34 in the story
+  assert.ok(!p.sequence('ww').includes(undefined));      // reading skips it
+});

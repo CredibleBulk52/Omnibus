@@ -36,10 +36,10 @@ export default function CrossoverSettings() {
       <div className="xo-row">
         <label className="form-label" htmlFor="xo-frequency">Check new issues</label>
         <select id="xo-frequency" className="form-input" value={st.frequency} disabled={run.running} onChange={e => post('/settings', { frequency: e.target.value })}>
-          <option value="off">Only when I click Check now</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+          <option value="off">Only when I click Check now</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
         </select>
       </div>
-      <p className="form-hint">One Web Search question per new issue (released in the last {st.lookbackDays} days), about {money(st.perBook)} each; a link is kept only when a source page names both issues. Last check: {when(st.lastRun)}{st.nextRun ? ` · next: ${when(st.nextRun)}` : ''} · {st.checked} issues checked so far, {money(st.spent)} spent.</p>
+      <p className="form-hint">One Web Search question per new issue (released in the last {st.lookbackDays} days), once per issue however often it runs (daily costs the same as weekly, just sooner), about {money(st.perBook)} each; a link is kept only when a source page names both issues. Last check: {when(st.lastRun)}{st.nextRun ? ` · next: ${when(st.nextRun)}` : ''} · {st.checked} issues checked so far, {money(st.spent)} spent.</p>
       {run.running ? <>
         <div className="xo-bar"><span style={{ width: `${run.total ? (run.done / run.total) * 100 : 0}%` }} /></div>
         <p>Issue {Math.min(run.done + 1, run.total)} of {run.total}{run.current ? <>: <b>{run.current}</b></> : null}</p>

@@ -36,7 +36,9 @@ const MAX_GAP_DAYS = 120;          // the two books of a link
 const MATCH_DAYS = 150;            // a part named by the AI → a library book released this near the asked issue
 const LOOKBACK_DAYS = 180;         // web check: issues released this recently
 const COST_PER_BOOK = 0.0011;      // USD, the pilot's average; replaced by the measured average once there are runs
-const FREQUENCIES = { off: null, weekly: 7, monthly: 30 };
+// Daily (2026-11-22): each issue is still asked once, so it costs the same as weekly and checks sooner.
+const FREQUENCIES = { off: null, daily: 1, weekly: 7, monthly: 30 };
+const RECENT_DAYS = 90;            // fan wikis: issues this recent are read again weekly
 
 function schema(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS crossover_links (
@@ -449,6 +451,8 @@ function createCrossovers(deps = {}) {
   // end card (`sequence` is the order without crossovers, so a series does not hide its own links).
   const linksOfSeries = db.prepare(`SELECT l.* FROM crossover_links l JOIN scanned_books a ON a.id = l.from_book_id JOIN scanned_books b ON b.id = l.to_book_id
     WHERE l.hidden = 0 AND (a.series_id = ? OR b.series_id = ?) AND a.series_id <> b.series_id`);
+  const linksHalfOfSeries = db.prepare(`SELECT l.* FROM crossover_links l JOIN scanned_books b ON b.id = COALESCE(l.from_book_id, l.to_book_id)
+    WHERE l.hidden = 0 AND (l.from_book_id IS NULL OR l.to_book_id IS NULL) AND b.series_id IN (?, ?)`);
   function placementFor(seriesId) {
     if (!enabled()) return [];
     const series = id => bookInfo.get(id)?.series_id;
@@ -456,29 +460,52 @@ function createCrossovers(deps = {}) {
     // the Zi Charam): from an issue of this series, follow the next part through other series until the
     // story ends or comes back to this series (and back the same way). At most 20 parts; each step is a
     // link the rules show (Timeline-covered links are not, so a long crossover in a Timeline stops here).
-    const stepOf = (id, dir) => { const f = forBook(id); return (dir === 'in' ? f.continuesIn : f.continuedFrom).find(x => x.owned && x.id) || null; };
+    // A part not in the library ends the walk; it is shown as a missing issue (user, 2026-11-22: "the way we
+    // do other missing issues in a series"), with Get / Request (downloadRequests 'crossover').
+    const stepOf = (id, dir) => {
+      const list = dir === 'in' ? forBook(id).continuesIn : forBook(id).continuedFrom;
+      return list.find(x => x.owned && x.id) || (list[0] && !list[0].owned ? list[0] : null);
+    };
     const out = [], seen = new Set();
     const walk = (anchor, dir) => {
       const chain = [], visited = new Set([anchor]);
       let cur = anchor;
       for (let i = 0; i < 20; i++) {
         const n = stepOf(cur, dir);
-        if (!n || visited.has(n.id) || series(n.id) === seriesId) break;
+        if (!n) break;
+        if (!n.owned) {   // not this series' own next issue (its missing issues show already)
+          const own = bookInfo.get(anchor);
+          const ownName = own ? T.norm(T.stripYear(own.ci_series ? T.decode(own.ci_series) : own.folder)) : null;
+          if (T.norm(T.stripYear(n.series_name)) !== ownName) chain.push(n);
+          break;
+        }
+        if (visited.has(n.id) || series(n.id) === seriesId) break;
         visited.add(n.id);
         chain.push(n);
         cur = n.id;
       }
       if (dir === 'from') chain.reverse();
       const story = chain.find(x => x.story)?.story || null;
-      const first = chain[0] ? bookInfo.get(chain[0].id)?.store_date || null : null;
+      const firstOwned = chain.find(x => x.owned);
+      const first = firstOwned ? bookInfo.get(firstOwned.id)?.store_date || null : bookInfo.get(anchor)?.store_date || null;
       chain.forEach((x, i) => {
-        const k = `${x.id}|${dir === 'in' ? 'a' : 'b'}`;
+        const k = x.owned ? `${x.id}|${dir === 'in' ? 'a' : 'b'}` : `m:${T.norm(x.series_name)}#${T.num(x.issue_number)}`;
         if (seen.has(k)) return;
         seen.add(k);
-        out.push({ bookId: x.id, ...(dir === 'in' ? { afterBookId: anchor } : { beforeBookId: anchor }), story: x.story || story, chainDate: first, seq: i });
+        const where = dir === 'in' ? { afterBookId: anchor } : { beforeBookId: anchor };
+        if (x.owned) out.push({ bookId: x.id, ...where, story: x.story || story, chainDate: first, seq: i });
+        else out.push({ missing: { series_name: x.series_name, issue_number: x.issue_number, story: x.story || story, linkId: x.linkIds[0] }, ...where, chainDate: first, seq: i });
       });
     };
     const anchors = new Set();
+    // Links with a part not in the library: the owned side is an anchor too.
+    for (const l of linksHalfOfSeries.all(seriesId, seriesId)) {
+      if (!shown(l)) continue;
+      const own = l.from_book_id || l.to_book_id, dir = l.from_book_id ? 'in' : 'from';
+      if (series(own) !== seriesId || anchors.has(`${own}|${dir}`)) continue;
+      anchors.add(`${own}|${dir}`);
+      walk(own, dir);
+    }
     for (const l of linksOfSeries.all(seriesId, seriesId)) {
       if (!shown(l)) continue;
       const mine = series(l.from_book_id) === seriesId;
@@ -489,6 +516,16 @@ function createCrossovers(deps = {}) {
     }
     // Outgoing first: a book that both follows one issue and leads into the next sits after the first.
     return out.sort((a, b) => (a.afterBookId ? 0 : 1) - (b.afterBookId ? 0 : 1));
+  }
+
+  // A crossover part not in the library, as a request row (downloadRequests 'crossover', server.js
+  // requestRowFor): the missing side of link `id`, or null when the link is gone, hidden or both owned.
+  function missingRow(id) {
+    const l = db.prepare('SELECT * FROM crossover_links WHERE id = ? AND hidden = 0').get(id);
+    if (!l || (l.from_book_id && l.to_book_id) || !sourceOn(l.source)) return null;
+    const side = l.to_book_id ? 'from' : 'to';
+    return { id: l.id, cv_issue_id: null, scanned_book_id: null, scanned_series_id: null,
+      series_name: l[`${side}_series`], issue_number: l[`${side}_issue`], volume_year: l[`${side}_year`] || null };
   }
 
   // ── Fan wikis (free; part of the code switch) ─────────────────────────
@@ -503,7 +540,12 @@ function createCrossovers(deps = {}) {
     const left = () => maxRequests - (wiki.requests() - start);
     try {
       const lib = loadLibrary(db);
-      const done = new Set(db.prepare('SELECT book_id FROM crossover_wiki_books').all().map(r => r.book_id));
+      // Read once, except issues out in the last 90 days: read again after a week, because a new issue's page
+      // and its "continues in" notes are often added to the wiki weeks after release (user, 2026-11-22).
+      // Series with no wiki volume cost no requests (their issues are only marked again).
+      const since = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString().slice(0, 10);
+      const done = new Set(db.prepare(`SELECT w.book_id FROM crossover_wiki_books w LEFT JOIN scanned_books b ON b.id = w.book_id
+        WHERE NOT (b.store_date >= ? AND w.checked_at < ?)`).all(since, Date.now() - 7 * 86400000).map(r => r.book_id));
       const pubOf = new Map();
       for (const b of lib.books) if (b.publisher && !pubOf.has(b.series_id)) pubOf.set(b.series_id, b.publisher);
       // Groups: one wiki series = folder + the book's own series name (one-shots on a shelf have their own).
@@ -676,7 +718,7 @@ function createCrossovers(deps = {}) {
   app.get('/api/admin/crossovers', requireAdmin, (req, res) => res.json(status()));
   app.post('/api/admin/crossovers/settings', requireAdmin, (req, res) => {
     const f = String(req.body?.frequency || '');
-    if (!Object.hasOwn(FREQUENCIES, f)) return res.status(400).json({ error: 'frequency must be off, weekly or monthly' });
+    if (!Object.hasOwn(FREQUENCIES, f)) return res.status(400).json({ error: 'frequency must be off, daily, weekly or monthly' });
     setSetting('crossover_check_frequency', f);
     // Turning it on counts from now, so the first scheduled run is a week or month away; "Check now" runs at once.
     if (f !== 'off' && !lastRun()) setSetting('crossover_check_last_run', String(Date.now()));
@@ -728,7 +770,7 @@ function createCrossovers(deps = {}) {
     setTimeout(() => wikiPass().catch(e => logger.error('crossovers', 'Fan wiki pass failed', e.message)), 150000).unref?.();
   }
 
-  return { forBook, nextFor, placementFor, refreshFree, wikiPass, wikiState, run, status, due, candidates, state, codeOn, aiOn };
+  return { forBook, nextFor, placementFor, missingRow, refreshFree, wikiPass, wikiState, run, status, due, candidates, state, codeOn, aiOn };
 }
 
 module.exports = { createCrossovers, schema, loadLibrary, nearest, wikiRow, summaryLinks, textLinks, titleLinks, provenLinks, linkRow, bookQuestion, volumeQuestion, EXTRACT, MAX_GAP_DAYS };

@@ -187,6 +187,11 @@ test('schedule: off by default; weekly is due a week after the last run', () => 
   assert.equal(x.due(), false);
   lib.settings.set('crossover_check_last_run', String(Date.now() - 7 * 86400000));
   assert.equal(x.due(), true);
+  lib.settings.set('crossover_check_frequency', 'daily');
+  lib.settings.set('crossover_check_last_run', String(Date.now() - 24 * 3600000));
+  assert.equal(x.due(), true);
+  lib.settings.set('crossover_check_last_run', String(Date.now() - 12 * 3600000));
+  assert.equal(x.due(), false);
 });
 
 test('two switches: code and AI each hide their own links and stop their own work', async () => {
@@ -357,6 +362,12 @@ test('the fan wiki pass: finds each series\' volume by date, reads pages 50 at a
   const n = calls.length;
   await x.wikiPass({ maxRequests: 50 });
   assert.equal(calls.length, n);   // nothing new to read
+  // A recent issue with a page is read again a week later (notes are often added after release).
+  lib.db.prepare(`UPDATE scanned_books SET store_date = date('now', '-20 days') WHERE id = 'gl40'`).run();
+  lib.db.prepare(`UPDATE crossover_wiki_books SET checked_at = ? WHERE book_id = 'gl40'`).run(Date.now() - 8 * 86400000);
+  await x.wikiPass({ maxRequests: 50 });
+  assert.equal(calls.length, n + 1);
+  assert.ok(calls.at(-1).includes('Green Lantern Vol 7 40'));
   lib.settings.set('crossover_code_enabled', '0');
   assert.equal(x.nextFor('gl40'), null);   // a free source: the code switch
 });
@@ -381,4 +392,19 @@ test('fan wiki volumes: other spellings when the first finds none (The Flash, At
   lib.db.prepare(`UPDATE scanned_books SET store_date = '2026-08-20' WHERE id = 'gl40'`).run();
   assert.equal(C.wikiRow(C.loadLibrary(lib.db), C.loadLibrary(lib.db).byId.get('glc22'), { dir: 'in', series: 'Green Lantern', issue: '40' }, null, 'p'), null);   // 83 days earlier: dropped
   assert.equal(C.wikiRow(L, gl40, { dir: 'in', series: 'Green Lantern Corps', issue: '22' }, null, 'p').to.id, 'glc22');
+});
+
+test('Reading order: a missing next part ends the chain as a missing issue; requests get its name and number', () => {
+  const lib = library(), x = create(lib);
+  addWeb(x, lib, [[{ series: 'Green Lantern Corps', issue: '22' }, { series: 'Green Lantern', issue: '41' }, 'First Light', '2026-11-11'],
+    [{ series: 'Green Lantern', issue: '40' }, { series: 'Green Lantern Corps', issue: '22' }, 'First Light', '2026-10-28']]);
+  // In Green Lantern's own grid #41 is its own missing issue (shown already), not a crossover card.
+  assert.ok(!x.placementFor('gl').some(p => p.missing));
+  const glc = x.placementFor('glc');
+  const miss = glc.find(p => p.missing);
+  assert.deepEqual([miss.afterBookId, miss.missing.series_name, miss.missing.issue_number, miss.missing.story], ['glc22', 'Green Lantern', '41', 'First Light']);
+  const row = x.missingRow(miss.missing.linkId);
+  assert.deepEqual([row.series_name, row.issue_number, row.cv_issue_id], ['Green Lantern', '41', null]);
+  lib.settings.set('crossover_ai_enabled', '0');
+  assert.equal(x.missingRow(miss.missing.linkId), null);   // its source switched off
 });

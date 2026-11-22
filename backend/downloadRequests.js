@@ -16,14 +16,16 @@
 //   event  event_issue   source_id = event id, source_issue_id = event_issues.id
 //   run    run_issue     source_id = run id,   source_issue_id = canon_run_issues.id
 //   series series_issue  source_id = scanned series id, source_issue_id = Comic Vine issue id
+//   crossover crossover_issue  source_id = scanned series id (the page it was asked from),
+//          source_issue_id = crossover_links.id (a crossover part not in the library; 2026-11-22)
 //   —      series        a series not in the library: name, year, publisher, note
 // Users see their own requests on My requests (/my-requests).
 // rowFor(src, owner, issue) → the issue row { id, cv_issue_id, scanned_book_id,
 // scanned_series_id, series_name, issue_number, volume_year } (server.js);
 // planFor(row) → the download plan for users who may download (server.js).
 
-const KIND = { list: 'list_issue', event: 'event_issue', run: 'run_issue', series: 'series_issue' };
-const SOURCES = new Set(['event', 'run', 'series']);   // lists keep their own routes (list visibility rules)
+const KIND = { list: 'list_issue', event: 'event_issue', run: 'run_issue', series: 'series_issue', crossover: 'crossover_issue' };
+const SOURCES = new Set(['event', 'run', 'series', 'crossover']);   // lists keep their own routes (list visibility rules)
 
 module.exports = function createDownloadRequests({ app, db, requireAuth, requireAdmin, getSetting, logger, IN, rowFor = null, planFor = null }) {
   db.exec(`
@@ -86,6 +88,10 @@ module.exports = function createDownloadRequests({ app, db, requireAuth, require
     if (kind === 'event_issue') return !!one('SELECT scanned_book_id FROM event_issues WHERE id = ?', Number(sourceIssueId))?.scanned_book_id;
     if (kind === 'run_issue') return !!one('SELECT scanned_book_id FROM canon_run_issues WHERE id = ?', Number(sourceIssueId))?.scanned_book_id;
     if (kind === 'series_issue') return cvOwned(cvId || sourceIssueId);
+    if (kind === 'crossover_issue') {   // the link's missing side now has its book
+      const l = one('SELECT from_book_id, to_book_id FROM crossover_links WHERE id = ?', Number(sourceIssueId));
+      return !!(l && l.from_book_id && l.to_book_id);
+    }
     return false;
   }
   const rowOwned = r => {
@@ -201,9 +207,10 @@ module.exports = function createDownloadRequests({ app, db, requireAuth, require
     if (kind === 'list_issue') return { kind, link: r.list_id ? `/reading-lists/${r.list_id}` : null, label: r.list_name || 'reading list' };
     if (kind === 'event_issue') return { kind, link: `/events/${r.source_id}`, label: one('SELECT name FROM events WHERE id = ?', String(r.source_id))?.name || 'Timeline event' };
     if (kind === 'run_issue') return { kind, link: `/canon/run/${r.source_id}`, label: one('SELECT title FROM canon_runs WHERE id = ?', Number(r.source_id))?.title || 'Top Shelf run' };
-    if (kind === 'series_issue') {
+    if (kind === 'series_issue' || kind === 'crossover_issue') {
       const ss = one('SELECT name, year FROM scanned_series WHERE id = ?', String(r.source_id));
-      return { kind, link: `/series/${r.source_id}`, label: ss ? `${ss.name}${ss.year ? ` (${ss.year})` : ''}` : 'series page' };
+      const label = ss ? `${ss.name}${ss.year ? ` (${ss.year})` : ''}` : 'series page';
+      return { kind, link: `/series/${r.source_id}`, label: kind === 'crossover_issue' ? `crossover in ${label}` : label };
     }
     return { kind, link: null, label: 'series request' };
   }
