@@ -269,6 +269,7 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
           missing.push({ linkId: c.missing.linkId, after, afterBookId: after >= 0 ? regular[after].id : null, kind: 'crossover',
             series_name: c.missing.series_name, number: n, label: `${c.missing.series_name}${n ? ` #${n}` : ''}`,
             title: c.missing.story ? `Crossover · ${c.missing.story}` : 'Crossover',
+            status: c.missing.status || null, date: c.missing.date || null,   // its Download Manager state, release date
             sortKey: [c.chainDate || '9999-99-99', c.seq ?? 0, '', null] });
           continue;
         }

@@ -494,7 +494,11 @@ function createCrossovers(deps = {}) {
         seen.add(k);
         const where = dir === 'in' ? { afterBookId: anchor } : { beforeBookId: anchor };
         if (x.owned) out.push({ bookId: x.id, ...where, story: x.story || story, chainDate: first, seq: i });
-        else out.push({ missing: { series_name: x.series_name, issue_number: x.issue_number, story: x.story || story, linkId: x.linkIds[0] }, ...where, chainDate: first, seq: i });
+        else {
+          const w = missingWhere(x.series_name, x.issue_number, bookInfo.get(anchor)?.store_date);
+          out.push({ missing: { series_name: x.series_name, issue_number: x.issue_number, story: x.story || story, linkId: x.linkIds[0],
+            status: w.status, date: w.date }, ...where, chainDate: first, seq: i });
+        }
       });
     };
     const anchors = new Set();
@@ -524,8 +528,46 @@ function createCrossovers(deps = {}) {
     const l = db.prepare('SELECT * FROM crossover_links WHERE id = ? AND hidden = 0').get(id);
     if (!l || (l.from_book_id && l.to_book_id) || !sourceOn(l.source)) return null;
     const side = l.to_book_id ? 'from' : 'to';
-    return { id: l.id, cv_issue_id: null, scanned_book_id: null, scanned_series_id: null,
-      series_name: l[`${side}_series`], issue_number: l[`${side}_issue`], volume_year: l[`${side}_year`] || null };
+    const owned = bookInfo.get(l.from_book_id || l.to_book_id);
+    const where = missingWhere(l[`${side}_series`], l[`${side}_issue`], owned?.store_date);
+    // The library folder of that series (when there is one) lets the Get box find its monitored issue.
+    return { id: l.id, cv_issue_id: where.cv_issue_id, scanned_book_id: null, scanned_series_id: where.scanned_series_id,
+      series_name: l[`${side}_series`], issue_number: l[`${side}_issue`], volume_year: where.volume_year || l[`${side}_year`] || null };
+  }
+
+  // A missing part's library folder and Download Manager state (user, 2026-11-22: Green Lantern #41 showed
+  // "not monitored" though its series is). The folder of that series name whose issues came out nearest the
+  // owned part; its monitored issue of that number: { scanned_series_id, volume_year, cv_issue_id, status, date }.
+  let folderCache = null;
+  const folders = () => {
+    if (folderCache && Date.now() - folderCache.at < 600000) return folderCache.map;
+    const map = new Map();
+    for (const r of db.prepare(`SELECT s.id, s.name, s.year, s.monitored_series_id, MIN(b.store_date) AS first, MAX(b.store_date) AS last
+      FROM scanned_series s LEFT JOIN scanned_books b ON b.series_id = s.id GROUP BY s.id`).all()) {
+      const k = T.norm(T.stripYear(r.name));
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(r);
+    }
+    folderCache = { at: Date.now(), map };
+    return map;
+  };
+  function missingWhere(series, issue, near) {
+    const none = { scanned_series_id: null, volume_year: null, cv_issue_id: null, status: null, date: null };
+    try {
+      const list = folders().get(T.norm(T.stripYear(series))) || [];
+      if (!list.length) return none;
+      const dist = f => (!near || !f.first ? 1e9 : near < f.first ? T.days(near, f.first) : near > f.last ? T.days(near, f.last) : 0);
+      const f = list.slice().sort((a, b) => dist(a) - dist(b))[0];
+      if (dist(f) > 365) return none;
+      const out = { ...none, scanned_series_id: f.id, volume_year: f.year || null };
+      if (f.monitored_series_id) {
+        const n = T.num(issue);
+        const mi = db.prepare('SELECT id, issue_number, status, store_date, release_date, is_annual FROM monitored_issues WHERE series_id = ?')
+          .all(String(f.monitored_series_id)).find(i => !i.is_annual && T.num(i.issue_number) === n);
+        if (mi) Object.assign(out, { cv_issue_id: String(mi.id), status: mi.status || null, date: mi.store_date || mi.release_date || null });
+      }
+      return out;
+    } catch { return none; }
   }
 
   // ── Fan wikis (free; part of the code switch) ─────────────────────────
@@ -699,16 +741,30 @@ function createCrossovers(deps = {}) {
     const counts = db.prepare(`SELECT SUM(source = 'summary') AS summary, SUM(source = 'title') AS title, SUM(source = 'wiki') AS wiki, SUM(source = 'web') AS web,
       SUM(source = 'web' AND (from_book_id IS NULL OR to_book_id IS NULL)) AS waiting, SUM(hidden) AS hidden FROM crossover_links`).get();
     const checked = db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(cost), 0) AS cost FROM crossover_checks').get();
-    return { code: codeOn(), ai: aiOn(), frequency: f, frequencies: Object.keys(FREQUENCIES), lastRun: last, nextRun: FREQUENCIES[f] && last ? last + FREQUENCIES[f] * 86400000 : null,
+    return { code: codeOn(), ai: aiOn(), frequency: f, frequencies: Object.keys(FREQUENCIES), lastRun: last, nextRun: nextRun(),
       pending: n, perBook: per, estimate: n * per, lookbackDays: LOOKBACK_DAYS,
       wiki: { ...wikiState, read: db.prepare('SELECT COUNT(*) AS n FROM crossover_wiki_books').get().n },
       links: { summary: counts.summary || 0, title: counts.title || 0, wiki: counts.wiki || 0, web: counts.web || 0, waiting: counts.waiting || 0, hidden: counts.hidden || 0 },
       checked: checked.n, spent: checked.cost, run: { ...state, errors: state.errors.slice(-10) } };
   }
   // The scheduled check, when it is due (called daily).
+  // The schedule runs at 4:35 each night: a check is due there when its interval, less 20 hours, has passed,
+  // so Daily after an evening "Check now" still runs the next night (2026-11-22: the settings page said
+  // "next: tomorrow" while the old one-hour slack waited two nights).
+  const SLACK = 20 * 3600000;
   function due(now = Date.now()) {
     const days = FREQUENCIES[frequency()];
-    return aiOn() && !!days && (!lastRun() || now - lastRun() >= days * 86400000 - 3600000);
+    return aiOn() && !!days && (!lastRun() || now - lastRun() >= days * 86400000 - SLACK);
+  }
+  // The first 4:35 (server time) at which due() holds.
+  function nextRun() {
+    const days = FREQUENCIES[frequency()], last = lastRun();
+    if (!aiOn() || !days || !last) return null;
+    const from = Math.max(Date.now(), last + days * 86400000 - SLACK);
+    const d = new Date(from);
+    d.setHours(4, 35, 0, 0);
+    if (d.getTime() < from) d.setDate(d.getDate() + 1);
+    return d.getTime();
   }
 
   // ── Routes ─────────────────────────────────────────────────────────

@@ -705,11 +705,17 @@ export default function SeriesDetailComic() {
   const renderCrossMissing = m => {
     const status = crossRequests[m.linkId];
     const canDl = gaps?.can_download ?? isAdmin();
+    // Not out yet, or already wanted in the Download Manager: say so, no button (like the series' own gaps).
+    const today = new Date().toISOString().slice(0, 10);
+    const unreleased = !!(m.date && m.date > today);
+    const dlState = { wanted: 'Wanted', snatched: 'Downloading', downloaded: 'Downloading', processing: 'Downloading' }[m.status];
+    const label = unreleased ? `Out ${m.date}` : dlState || REQUEST_LABEL[status] || 'Not in library';
+    const tone = dlState === 'Wanted' ? 'wanted' : status === 'open' ? 'requested' : 'missing';
     return (
       <div key={`xgap-${m.linkId}`} className="issue-book issue-book--missing issue-book--placed" style={{ width: ISSUE_W }}>
         <div className="issue-cover" style={{ width: ISSUE_W, height: ISSUE_H }}>
-          <MissingCover number={m.number} sub={m.series_name} label={REQUEST_LABEL[status] || 'Not in library'} tone={status === 'open' ? 'requested' : 'missing'}
-            actions={canDl || !status || status === 'dismissed'
+          <MissingCover number={m.number} sub={m.series_name} label={label} tone={tone}
+            actions={!unreleased && !dlState && (canDl || !status || status === 'dismissed')
               ? <MissingAction onClick={() => setCrossAcquire(m)}>{canDl ? '⬇ Get' : '✉ Request'}</MissingAction>
               : null} />
         </div>

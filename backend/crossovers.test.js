@@ -190,8 +190,13 @@ test('schedule: off by default; weekly is due a week after the last run', () => 
   lib.settings.set('crossover_check_frequency', 'daily');
   lib.settings.set('crossover_check_last_run', String(Date.now() - 24 * 3600000));
   assert.equal(x.due(), true);
-  lib.settings.set('crossover_check_last_run', String(Date.now() - 12 * 3600000));
+  lib.settings.set('crossover_check_last_run', String(Date.now() - 2 * 3600000));
   assert.equal(x.due(), false);
+  // An evening "Check now" (8.5 hours before the 4:35 run) does not hold Daily back a night.
+  lib.settings.set('crossover_check_last_run', String(Date.now() - 8.5 * 3600000));
+  assert.equal(x.due(), true);
+  const next = new Date(x.status().nextRun);
+  assert.deepEqual([next.getHours(), next.getMinutes()], [4, 35]);
 });
 
 test('two switches: code and AI each hide their own links and stop their own work', async () => {
@@ -407,4 +412,17 @@ test('Reading order: a missing next part ends the chain as a missing issue; requ
   assert.deepEqual([row.series_name, row.issue_number, row.cv_issue_id], ['Green Lantern', '41', null]);
   lib.settings.set('crossover_ai_enabled', '0');
   assert.equal(x.missingRow(miss.missing.linkId), null);   // its source switched off
+});
+
+test('a missing part in a monitored series: its folder, monitored issue, status and release date', () => {
+  const lib = library(), x = create(lib);
+  lib.db.exec(`ALTER TABLE scanned_series ADD COLUMN monitored_series_id TEXT;
+    CREATE TABLE monitored_issues (id TEXT, series_id TEXT, issue_number TEXT, status TEXT, store_date TEXT, release_date TEXT, is_annual INTEGER DEFAULT 0);
+    UPDATE scanned_series SET monitored_series_id = 'cv-gl' WHERE id = 'gl';
+    INSERT INTO monitored_issues VALUES ('cv41', 'cv-gl', '41', 'wanted', '2026-11-25', NULL, 0);`);
+  addWeb(x, lib, [[{ series: 'Green Lantern Corps', issue: '22' }, { series: 'Green Lantern', issue: '41' }, 'First Light', '2026-11-11']]);
+  const miss = x.placementFor('glc').find(p => p.missing);
+  assert.deepEqual([miss.missing.status, miss.missing.date], ['wanted', '2026-11-25']);
+  const row = x.missingRow(miss.missing.linkId);
+  assert.deepEqual([row.scanned_series_id, row.cv_issue_id, row.volume_year], ['gl', 'cv41', 2023]);
 });
