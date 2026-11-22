@@ -67,3 +67,10 @@
 }
 .event-home-note .ehn-link:hover, .event-home-note .ehn-link:focus-visible { text-decoration: underline; }
 .event-home-note .ehn-link:focus-visible { outline: 2px solid var(--td-yellow); outline-offset: 2px; }
+
+/* Issues only / Reading order (series view, 2026-11-22): a two-button switch above the Issues shelf. */
+.series-view-toggle { display: flex; align-items: center; flex-wrap: wrap; gap: 0; margin: 0 16px 12px; font: 1rem 'Boogaloo', cursive; letter-spacing: .03em; }
+.series-view-toggle button { padding: 5px 12px; cursor: pointer; font: inherit; background: var(--bg-elevated); color: var(--text-primary); border: 2px solid #000; box-shadow: 2px 2px 0 #000; }
+.series-view-toggle button + button { margin-left: -2px; }
+.series-view-toggle button.active { background: var(--td-yellow); color: #000; }
+.series-view-toggle span { margin-left: 12px; color: var(--text-secondary); }

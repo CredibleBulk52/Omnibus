@@ -188,3 +188,51 @@ test('schedule: off by default; weekly is due a week after the last run', () => 
   lib.settings.set('crossover_check_last_run', String(Date.now() - 7 * 86400000));
   assert.equal(x.due(), true);
 });
+
+test('the off switch hides every link and stops the checks; switching back on shows them again', async () => {
+  const lib = library(), x = create(lib);
+  x.refreshFree();
+  lib.settings.set('crossover_check_frequency', 'weekly');
+  lib.settings.set('crossover_check_last_run', String(Date.now() - 8 * 86400000));
+  assert.equal(x.due(), true);
+  let out = null;
+  const res = { json(d) { out = d; }, status(c) { this.code = c; return this; } };
+  lib.app.routes['POST /api/admin/crossovers/enabled']({ body: { enabled: false } }, res);
+  assert.equal(out.enabled, false);
+  assert.deepEqual(x.forBook('sup50'), { continuesIn: [], continuedFrom: [] });
+  assert.equal(x.nextFor('sup50'), null);
+  assert.equal(x.due(), false);
+  await assert.rejects(x.run('manual'), /switched off/);
+  lib.app.routes['POST /api/admin/crossovers/enabled']({ body: { enabled: true } }, res);
+  assert.equal(x.nextFor('sup50').id, 'act660');
+});
+
+test('a page naming an old issue the story looks back to is not a missing part (first web run, Swamp Thing #87 from 1989)', () => {
+  const lib = library(), x = create(lib);
+  const L = C.loadLibrary(lib.db);
+  // Superman #50 (1990) is owned: named next to Green Lantern #40 (2026), it is an old issue, not a part.
+  assert.equal(C.linkRow(L, { story: 'Time', from: { series: 'Superman', issue: '50' }, to: { series: 'Green Lantern', issue: '40' }, page: 'p' }, '2026-10-28'), null);
+  assert.equal(C.linkRow(L, { story: 'Time', from: { series: 'Superman', year: 1987, issue: '50' }, to: { series: 'Green Lantern', issue: '40' }, page: 'p' }, '2026-10-28'), null);
+  // Another volume's #50: a missing part of this story (Green Lantern (2023) #41 with Green Lantern (1990) #41 owned).
+  const row = C.linkRow(L, { story: 'Time', from: { series: 'Superman', year: 2023, issue: '50' }, to: { series: 'Green Lantern', issue: '40' }, page: 'p' }, '2026-10-28');
+  assert.equal(row.from, null);
+  assert.equal(row.to.id, 'gl40');
+  // A row stored before this rule: the nightly pass removes it.
+  lib.db.prepare(`INSERT INTO crossover_links (key, from_book_id, from_series, from_issue, to_book_id, to_series, to_issue, story, source, found_at)
+    VALUES ('w:old', NULL, 'Superman', '50', 'gl40', 'Green Lantern', '40', 'Time', 'web', 0)`).run();
+  lib.db.prepare(`INSERT INTO crossover_links (key, from_book_id, from_series, from_issue, from_year, to_book_id, to_series, to_issue, story, source, found_at)
+    VALUES ('w:new', NULL, 'Superman', '50', 2023, 'gl40', 'Green Lantern', '40', 'Time', 'web', 0)`).run();
+  x.refreshFree();
+  assert.deepEqual(lib.db.prepare(`SELECT key FROM crossover_links WHERE key LIKE 'w:%'`).all().map(r => r.key), ['w:new']);
+});
+
+test('a short story name hides a missing part only when it is the event\'s name ("DNX")', () => {
+  const lib = library(), x = create(lib);
+  lib.db.prepare(`INSERT INTO crossover_links (key, from_book_id, from_series, from_issue, to_book_id, to_series, to_issue, story, source, found_at)
+    VALUES ('w:fcbd', NULL, 'Comics Giveaway Day 2026: Armageddon / X-Men', '1', 'gl40', 'Green Lantern', '40', 'DNX', 'web', 0)`).run();
+  assert.deepEqual(names(x.forBook('gl40').continuedFrom), ['Comics Giveaway Day 2026: Armageddon / X-Men #1 (missing)']);
+  lib.db.exec(`INSERT INTO events VALUES ('dnx', 'DNX', 0); INSERT INTO event_issues (event_id, scanned_book_id, series_name, issue_number) VALUES ('dnx', 'gl40', 'Green Lantern', '40')`);
+  assert.deepEqual(x.forBook('gl40').continuedFrom, []);
+  lib.db.exec(`UPDATE events SET name = 'DNX Aftermath'`);
+  assert.equal(x.forBook('gl40').continuedFrom.length, 1);   // "DNX" is not "DNX Aftermath"
+});

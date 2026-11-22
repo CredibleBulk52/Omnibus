@@ -27,6 +27,8 @@ export default function CrossoverSettings() {
   return (
     <div className="xo-settings">
       <p className="form-hint">Links a story that continues in another series (for example Green Lantern #40 → Green Lantern Corps #22) on the reader's end card and the issue page. Timeline events, reading order and shelves are not changed.</p>
+      <label className="xo-switch"><input type="checkbox" checked={st.enabled} onChange={e => post('/enabled', { enabled: e.target.checked })} /> Show crossover links</label>
+      {!st.enabled ? <p className="form-hint">Off: readers see no crossover links, and the nightly rebuild and web check do not run. The {st.links.summary + st.links.web} links found so far are kept.</p> : <>
       <p><b>{st.links.summary}</b> links from issue summaries (free, rebuilt nightly) · <b>{st.links.web}</b> from web checks{st.links.waiting ? <> ({st.links.waiting} waiting for an issue you don't have)</> : null}</p>
       <div className="xo-row">
         <label className="form-label" htmlFor="xo-frequency">Web check for new issues</label>
@@ -48,6 +50,7 @@ export default function CrossoverSettings() {
           <button className="adm-btn adm-btn-primary" disabled={!st.pending} onClick={() => post('/run')}>Check now</button>
         </div>
       </>}
+      </>}
       {err && <p role="alert" className="xo-err">{err}</p>}
       <style>{`
         .xo-settings p { margin: 8px 0; font-size: 14px; line-height: 1.45; }
@@ -58,6 +61,7 @@ export default function CrossoverSettings() {
         .xo-bar span { display: block; height: 100%; background: var(--td-yellow); transition: width .3s; }
         .xo-errors { max-height: 120px; overflow-y: auto; font-size: 12px; color: #d9a441; padding-left: 18px; }
         .xo-err { color: #e07070; }
+        .xo-switch { display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 6px 0 10px; cursor: pointer; }
       `}</style>
     </div>
   );

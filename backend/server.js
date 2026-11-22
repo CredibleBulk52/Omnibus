@@ -3257,6 +3257,7 @@ app.get('/api/books/:id', (req, res) => {
 // ─── Adjacent books (prev/next in series or event) ───────────────
 // GET /api/books/:id/adjacent?eventId=X&canonRunId=Y&minTier=recommended
 // Returns { prev, next } in event or canon run context, falls back to series
+const { sequenceFor: sequenceForView } = require('./seriesView');
 app.get('/api/books/:id/adjacent', requireAuth, (req, res) => {
   const { eventId, canonRunId, listId, minTier } = req.query;
   const bookId = req.params.id;
@@ -3320,14 +3321,17 @@ app.get('/api/books/:id/adjacent', requireAuth, (req, res) => {
   // issues with the annuals and specials placed after the issue they follow. Opened from a parent
   // series' Issues (?seriesId=), a linked book (Amazons Attack on Wonder Woman) reads in that order.
   // A book left on the shelf reads among its folder's other shelf books, in shelf order.
+  // The reader's series view (seriesView.js, 2026-11-22): Issues only reads the regular issues in order.
   const fromSeries = req.query.seriesId ? String(req.query.seriesId) : null;
+  const view = seriesView.viewOf(req.user?.sub);
+  const seqOf = sid => sequenceForView(seriesPlacement.order(sid), view, bookId);
   let ctxId = book.series_id;
   let order = null;
   if (fromSeries && fromSeries !== book.series_id) {
-    const theirs = seriesPlacement.sequence(fromSeries);
+    const theirs = seqOf(fromSeries);
     if (theirs && theirs.includes(bookId)) { ctxId = fromSeries; order = theirs; }
   }
-  if (!order) order = seriesPlacement.sequence(book.series_id) || [];
+  if (!order) order = seqOf(book.series_id) || [];
   if (!order.includes(bookId)) {
     const placed = new Set(order);
     order = db.prepare('SELECT id FROM scanned_books WHERE series_id = ? ORDER BY sort_order, filename').all(book.series_id)
@@ -5504,7 +5508,9 @@ app.get('/api/books/in-progress', requireAuth, (req, res) => {
 
 // ─── Home: home.js (2026-11-19) ───────────────────────────────────
 // GET /api/home/v2, /api/home/discover, the older /api/home and the Continue Reading dismissals.
-require('./home').registerHome({ app, charMapCache, db, fetchAllSeries, getReadingContexts: () => readingContexts, getSeriesPlacement: () => seriesPlacement, getSeriesJsonCached, getSeriesRating, mergeSeriesWithJson, parseComicInfo, requireAuth });
+// Each reader's series view, Issues only (default) or Reading order (seriesView.js, 2026-11-22).
+const seriesView = require('./seriesView').createSeriesView({ app, db, requireAuth });
+require('./home').registerHome({ app, charMapCache, db, fetchAllSeries, getReadingContexts: () => readingContexts, getSeriesPlacement: () => seriesPlacement, getSeriesView: id => seriesView.viewOf(id), getSeriesJsonCached, getSeriesRating, mergeSeriesWithJson, parseComicInfo, requireAuth });
 
 // ─── SERVE FRONTEND ───────────────────────────────────────────────
 

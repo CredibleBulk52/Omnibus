@@ -21,6 +21,7 @@ import '../seriesDetail.css';
 import ComicSeriesHero from '../components/ComicSeriesHero';
 import { AiInfo } from '../components/AiInfo';
 import { useSeriesGrouping, ShelfHomes, LinkedSeriesShelf, PutOnShelfDialog } from '../components/seriesShelf';
+import { loadSeriesView, saveSeriesView } from '../components/seriesView';
 
 // ─── SaveOfflineBtn ───────────────────────────────────────────────
 // Per-issue download button. Shows: 📥 (not saved) → progress → ✓ (saved) → 🗑 (on hover)
@@ -203,11 +204,17 @@ export default function SeriesDetailComic() {
   // ─── Annuals and specials in the reading order (seriesPlacement.js, 2026-11-21) ───
   // Placed extras sit after the regular issue they follow; regular numbering and totals stay.
   const [placement, setPlacement] = useState(null);
+  // The reader's view (components/seriesView.js, 2026-11-22): Issues only (default) shows the regular
+  // issues; Reading order places the extras. The Continue button and the reader follow it.
+  const [view, setView] = useState('issues');
+  useEffect(() => { let on = true; loadSeriesView().then(v => { if (on) setView(v); }); return () => { on = false; }; }, []);
+  const chooseView = v => { setView(v); saveSeriesView(v).catch(() => {}); };
+  const ordered = view === 'reading';
   const loadPlacement = React.useCallback(() => fetch(`/api/series/${id}/placement`)
     .then(r => (r.ok ? r.json() : null)).then(setPlacement).catch(() => setPlacement(null)), [id]);
   const readingSeq = React.useMemo(() => {
     const after = new Map();
-    for (const x of placement?.placed || []) {
+    for (const x of (ordered && placement?.placed) || []) {
       const k = x.afterBookId || '';
       if (!after.has(k)) after.set(k, []);
       after.get(k).push(x);
@@ -218,10 +225,10 @@ export default function SeriesDetailComic() {
     const out = (after.get('') || []).map(x => ({ book: x.book, placed: x }));
     for (const b of run) { out.push({ book: b }); for (const x of after.get(b.id) || []) out.push({ book: x.book, placed: x }); }
     return out;
-  }, [books, placement]);
-  // The ⋮ menu's placement items, for admins (one shared reading order per series).
+  }, [books, placement, ordered]);
+  // The ⋮ menu's placement items, for admins (one shared reading order per series; Reading order view).
   const placementMenu = bookId => {
-    if (!placement || !isAdmin()) return null;
+    if (!placement || !ordered || !isAdmin()) return null;
     const placed = placement.placed.find(x => x.bookId === bookId);
     const shelf = placement.shelf.find(x => x.bookId === bookId);
     if (!placed && !shelf) return null;
@@ -990,6 +997,14 @@ export default function SeriesDetailComic() {
                   </div>
                 )}
 
+                {placement?.placed?.length > 0 && (
+                  <div className="series-view-toggle" role="group" aria-label="Issues view">
+                    <button type="button" aria-pressed={!ordered} className={!ordered ? 'active' : ''} onClick={() => chooseView('issues')}>Issues only</button>
+                    <button type="button" aria-pressed={ordered} className={ordered ? 'active' : ''} onClick={() => chooseView('reading')}>Reading order</button>
+                    <span>{(() => { const n = placement.placed.length, one = n === 1;
+                      return `${ordered ? `${n} annual${one ? '' : 's'} or special${one ? '' : 's'} placed` : `Reading order adds ${n} annual${one ? '' : 's'} or special${one ? '' : 's'}`} where ${one ? 'it is' : 'they are'} read`; })()}</span>
+                  </div>
+                )}
                 {gapRows.length > 0 && (
                   <div className="gap-toggle">
                     <span>{gapRows.length} issue{gapRows.length === 1 ? '' : 's'} not in the library</span>

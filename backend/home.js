@@ -14,6 +14,8 @@ module.exports.registerHome = function registerHome(deps) {
   const missing = ['app', 'charMapCache', 'db', 'fetchAllSeries', 'getReadingContexts', 'getSeriesJsonCached', 'getSeriesRating', 'mergeSeriesWithJson', 'parseComicInfo', 'requireAuth'].filter(k => deps[k] === undefined);
   // The series' reading order (seriesPlacement.js, 2026-11-21); optional: without it, issue order.
   const getSeriesPlacement = deps.getSeriesPlacement || (() => null);
+  // Each reader's series view (seriesView.js, 2026-11-22): Issues only skips the placed extras.
+  const getSeriesView = deps.getSeriesView || (() => 'reading');
   if (missing.length) throw new Error(`registerHome: missing ${missing.join(', ')}`);
   const { app, charMapCache, db, fetchAllSeries, getReadingContexts, getSeriesJsonCached, getSeriesRating, mergeSeriesWithJson, parseComicInfo, requireAuth } = deps;
 
@@ -123,6 +125,7 @@ module.exports.registerHome = function registerHome(deps) {
       const nextInOrder = seriesId => {
         let order = null;
         try { order = seriesPlacement ? seriesPlacement.order(seriesId) : null; } catch { order = null; }
+        if (order && getSeriesView(userId) === 'issues') order = order.filter(x => !x.placed);
         if (!order || !order.length) return undefined;                // no order: issue order below
         const progress = new Map(progressOf.all(userId, JSON.stringify(order.map(x => x.id))).map(r => [String(r.book_id), r]));
         let last = -1;

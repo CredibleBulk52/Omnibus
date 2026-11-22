@@ -21,6 +21,8 @@
 //     are not neighbours in the story);
 //   - links between books that share a Timeline event, or that the series' reading order already
 //     puts together, are not shown.
+// Off switch (crossover_links_enabled = '0'): nothing is shown and nothing runs (no nightly rebuild, no
+// web check); the links found so far are kept, so switching back on shows them at once.
 const T = require('./crossoverText');
 
 const NEEDS = ['app', 'db', 'ai', 'webLookup', 'readPage', 'axios', 'cron', 'getSetting', 'setSetting', 'logger', 'requireAuth', 'requireAdmin', 'sequence', 'modelCatalog'];
@@ -108,16 +110,38 @@ function summaryLinks(db, lib = loadLibrary(db)) {
 }
 
 // ── Web check (per issue) ─────────────────────────────────────────────
-const EXTRACT = notes => `Below are notes from a web search about comic book crossovers. List only stories whose chapters run across two or more DIFFERENT series (for example part 1 in Green Lantern, part 2 in Green Lantern Corps). Leave out: guest appearances, a story told within one series, large line-wide events with many tie-ins, and anything the notes are unsure about.
+// What counts (user, 2026-11-22: "crossover" means many things to a model, so spell it out). The search
+// question stays a plain question (Gemini skips searching when asked for a reply format); the extraction
+// prompt carries the full definition and examples, since it decides what is kept.
+const NOT_CROSSOVERS = 'Guest appearances, one-issue team-ups, tie-ins to big line-wide events, and stories told within a single series do not count.';
+const EXTRACT = notes => `Below are notes from a web search about a comic book issue or series. List only CROSSOVER STORIES, as defined here.
+
+A crossover story is ONE plot whose chapters are published in issues of two or more DIFFERENT series and are read in order: the story starts in one series and continues in another. Sources usually say so: "continued in", "continued from", "part 2 of 4", "concludes in", "a crossover between X and Y". Examples:
+- "First Light": Green Lantern #40 → Green Lantern Corps #22 → Green Lantern #41 → Green Lantern Corps #23
+- "The Mark of Hecate": Absolute Wonder Woman #15 → Absolute Batman #16
+- "Big Guns": Wade Wilson: Deadpool #8 → The Punisher #8 → Wade Wilson: Deadpool #9 → The Punisher #9
+
+NOT crossover stories (leave these out):
+- a guest appearance: a character appears in another series, but the plot does not continue there
+- a team-up told complete in one issue
+- tie-ins to a large line-wide event with many titles and its own event series (e.g. Infinite Crisis, Secret Wars)
+- a story told in one series only, even when it is called "Part 3"
+- an issue that refers back to older stories ("as seen in Swamp Thing #87")
+- a series that continues under a new title or in a new volume (relaunch or renumbering)
+- reprints, collected editions, connecting or variant covers, previews and backup stories advertising another title
+- anything the notes are unsure about
 
 Reply with JSON only, no other text:
 {"stories":[{"name":"story name","parts":[{"series":"series name without the year","year":2025,"issue":"22","part":2}]}]}
-Use "stories":[] when there are none. Keep the parts in reading order.
+"year" is the volume year (the year that series started, which can be long before the issue came out). List every part in reading order, including parts in the series the notes are about. Use "stories":[] when there are none.
 
 Notes:
 ${notes}`;
 
-const bookQuestion = b => `Does the story in ${b.series}${b.year ? ` (${b.year})` : ''} #${T.num(b.issue_number)} (released ${b.store_date}${b.publisher ? `, ${b.publisher}` : ''}) continue in, or continue from, an issue of a different series? If so, name the story and every issue in it with its series, volume year and issue number. Guest appearances and big line-wide events do not count.`;
+const bookQuestion = b => `Is the story in ${b.series}${b.year ? ` (${b.year})` : ''} #${T.num(b.issue_number)} (released ${b.store_date}${b.publisher ? `, ${b.publisher}` : ''}) part of a crossover: one story whose chapters run across issues of two or more different series, such as part 1 in one series and part 2 in another? If so, name the story and list every chapter in reading order with its series, volume year and issue number. ${NOT_CROSSOVERS}`;
+
+// One question for a whole volume (backfill test, 2026-11-22).
+const volumeQuestion = v => `Which stories in ${v.name} (${v.year}), published by ${v.publisher} from ${v.first.slice(0, 7)} to ${v.last.slice(0, 7)}, were crossovers: one story whose chapters ran across issues of ${v.name} and a different series, such as part 1 in ${v.name} and part 2 in another title? Name each such story and list every chapter in reading order with its series, volume year and issue number. Guest appearances, one-issue team-ups, tie-ins to big line-wide events, and stories told within ${v.name} alone do not count.`;
 
 // The proven links in one answer: neighbouring parts in different series that ONE page names together
 // (each page on its own, so a wrongly added part does not hide a link a page proves). Pure, for tests.
@@ -142,15 +166,26 @@ function provenLinks(stories, pages) {
   return out;
 }
 
+// Library books of the volume a part names: its volume year within 5 of the AI's (folder years and
+// Comic Vine's differ: Swamp Thing (1982) is filed as 1986). No year given: any.
+const sameVolume = (cands, year) => cands.filter(c => !year || !c.year || Math.abs(Number(c.year) - Number(year)) <= 5);
+
 // A proven link → a row: each end matched to the library (near the asked issue's date), both ends'
 // dates no more than MAX_GAP_DAYS apart, at least one end in the library.
 function linkRow(lib, link, anchor) {
   const end = p => {
-    const book = nearest(lib.find(p.series, p.issue), anchor, MATCH_DAYS);
-    return { book, series: T.stripYear(p.series), issue: T.num(p.issue), year: Number(p.year) || null };
+    const cands = lib.find(p.series, p.issue);
+    const book = nearest(cands, anchor, MATCH_DAYS);
+    const year = Number(p.year) || null;
+    // The library has this issue, but from another time: the page named an old issue the story looks
+    // back to (first web run: "Time Upon a Once" → Swamp Thing #80 and #87 from 1988–89), not a missing part.
+    // Only when the named volume is the one owned: Green Lantern (2023) #41 is still a missing part when
+    // Green Lantern (1990) #41 is in the library.
+    return { book, old: !book && sameVolume(cands, year).length > 0, series: T.stripYear(p.series), issue: T.num(p.issue), year };
   };
   const a = end(link.from), b = end(link.to);
   if (!a.book && !b.book) return null;
+  if (a.old || b.old) return null;
   if (a.book && b.book && (a.book.id === b.book.id || a.book.series_id === b.book.series_id && T.norm(a.series) === T.norm(b.series))) return null;
   if (a.book && b.book && T.days(a.book.store_date, b.book.store_date) > MAX_GAP_DAYS) return null;
   const k = e => e.book ? e.book.id : `${T.norm(e.series)}#${e.issue}`;
@@ -200,13 +235,17 @@ function createCrossovers(deps = {}) {
   function resolvePending(lib) {
     const rows = db.prepare(`SELECT * FROM crossover_links WHERE source = 'web' AND (from_book_id IS NULL OR to_book_id IS NULL)`).all();
     const set = db.prepare('UPDATE crossover_links SET from_book_id = ?, to_book_id = ? WHERE id = ?');
+    const drop = db.prepare('DELETE FROM crossover_links WHERE id = ?');
     let n = 0;
     for (const r of rows) {
       const other = lib.byId.get(r.from_book_id || r.to_book_id);
       if (!other?.store_date) continue;
       const side = r.from_book_id ? 'to' : 'from';
-      const b = nearest(lib.find(r[`${side}_series`], r[`${side}_issue`]), other.store_date, MAX_GAP_DAYS);
-      if (!b || b.id === other.id) continue;
+      const cands = lib.find(r[`${side}_series`], r[`${side}_issue`]).filter(b => b.id !== other.id);
+      const b = nearest(cands, other.store_date, MAX_GAP_DAYS);
+      // Owned, but released far from the other issue: an old issue the story looks back to (see linkRow).
+      if (!b && sameVolume(cands, r[`${side}_year`]).some(c => c.store_date && T.days(c.store_date, other.store_date) > MATCH_DAYS)) { drop.run(r.id); continue; }
+      if (!b) continue;
       set.run(side === 'from' ? b.id : r.from_book_id, side === 'to' ? b.id : r.to_book_id, r.id);
       n++;
     }
@@ -243,6 +282,7 @@ function createCrossovers(deps = {}) {
     try { rows = eventsOf.all(ownedId); } catch { return false; }
     const s = T.norm(T.stripYear(series)), n = T.num(issue), st = T.norm(story);
     return rows.some(r => (T.norm(T.stripYear(r.series_name)) === s && T.num(r.issue_number) === n)
+      || (st && st === T.norm(r.name))   // short names ("DNX") only when equal
       || (st.length >= 5 && T.norm(r.name).length >= 5 && (T.norm(r.name).includes(st) || st.includes(T.norm(r.name)))));
   }
 
@@ -269,8 +309,11 @@ function createCrossovers(deps = {}) {
     return { id: null, series_name: series, issue_number: issue, owned: false };
   };
 
+  const enabled = () => getSetting('crossover_links_enabled') !== '0';
+
   // { continuesIn: [...], continuedFrom: [...] } for one book; owned issues first, one entry per issue.
   function forBook(bookId) {
+    if (!enabled()) return { continuesIn: [], continuedFrom: [] };
     const pick = (rows, side) => {
       const seen = new Map();
       for (const l of rows) {
@@ -331,6 +374,7 @@ function createCrossovers(deps = {}) {
 
   async function run(trigger = 'manual', { limit = null } = {}) {
     if (state.running) throw Object.assign(new Error('A crossover check is already running'), { status: 409 });
+    if (!enabled()) throw Object.assign(new Error('Crossover links are switched off'), { status: 409 });
     const ids = limit > 0 ? candidates().slice(-limit) : candidates();   // a trial run: the newest issues
     Object.assign(state, { running: true, stop: false, done: 0, total: ids.length, found: 0, cost: 0, current: null, startedAt: Date.now(), finishedAt: null, trigger, errors: [] });
     setSetting('crossover_check_last_run', String(Date.now()));
@@ -372,7 +416,7 @@ function createCrossovers(deps = {}) {
     const counts = db.prepare(`SELECT SUM(source = 'summary') AS summary, SUM(source = 'web') AS web,
       SUM(source = 'web' AND (from_book_id IS NULL OR to_book_id IS NULL)) AS waiting, SUM(hidden) AS hidden FROM crossover_links`).get();
     const checked = db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(cost), 0) AS cost FROM crossover_checks').get();
-    return { frequency: f, frequencies: Object.keys(FREQUENCIES), lastRun: last, nextRun: FREQUENCIES[f] && last ? last + FREQUENCIES[f] * 86400000 : null,
+    return { enabled: enabled(), frequency: f, frequencies: Object.keys(FREQUENCIES), lastRun: last, nextRun: FREQUENCIES[f] && last ? last + FREQUENCIES[f] * 86400000 : null,
       pending: n, perBook: per, estimate: n * per, lookbackDays: LOOKBACK_DAYS,
       links: { summary: counts.summary || 0, web: counts.web || 0, waiting: counts.waiting || 0, hidden: counts.hidden || 0 },
       checked: checked.n, spent: checked.cost, run: { ...state, errors: state.errors.slice(-10) } };
@@ -380,7 +424,7 @@ function createCrossovers(deps = {}) {
   // The scheduled check, when it is due (called daily).
   function due(now = Date.now()) {
     const days = FREQUENCIES[frequency()];
-    return !!days && (!lastRun() || now - lastRun() >= days * 86400000 - 3600000);
+    return enabled() && !!days && (!lastRun() || now - lastRun() >= days * 86400000 - 3600000);
   }
 
   // ── Routes ─────────────────────────────────────────────────────────
@@ -400,6 +444,13 @@ function createCrossovers(deps = {}) {
     const limit = Number(req.body?.limit) || null;
     try { res.json(await run('manual', { limit: limit > 0 ? Math.min(limit, 1000) : null })); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
   });
+  // The off switch: hides every link and stops the nightly rebuild and the web check (a running check stops).
+  app.post('/api/admin/crossovers/enabled', requireAdmin, (req, res) => {
+    if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false' });
+    setSetting('crossover_links_enabled', req.body.enabled ? '1' : '0');
+    if (!req.body.enabled) state.stop = true;
+    res.json(status());
+  });
   app.post('/api/admin/crossovers/stop', requireAdmin, (req, res) => { state.stop = true; res.json(status()); });
   app.post('/api/admin/crossovers/refresh', requireAdmin, (req, res) => {
     try { res.json({ ...refreshFree(), status: status() }); } catch (e) { res.status(500).json({ error: e.message }); }
@@ -414,15 +465,16 @@ function createCrossovers(deps = {}) {
 
   // Nightly at 4:35: the free summary links, then the web check when it is due.
   cron.schedule('35 4 * * *', () => {
+    if (!enabled()) return;
     try { refreshFree(); } catch (e) { logger.error('crossovers', 'Summary links failed', e.message); }
     if (due() && !state.running) run('scheduled').catch(e => logger.error('crossovers', 'Scheduled check failed', e.message));
   });
   // First start after deploy: build the summary links once (a few seconds), off the startup path.
-  if (!db.prepare('SELECT 1 FROM crossover_links LIMIT 1').get()) {
+  if (enabled() && !db.prepare('SELECT 1 FROM crossover_links LIMIT 1').get()) {
     setTimeout(() => { try { refreshFree(); } catch (e) { logger.error('crossovers', 'Summary links failed', e.message); } }, 90000).unref?.();
   }
 
   return { forBook, nextFor, refreshFree, run, status, due, candidates, state };
 }
 
-module.exports = { createCrossovers, schema, loadLibrary, summaryLinks, provenLinks, linkRow, bookQuestion, EXTRACT, MAX_GAP_DAYS };
+module.exports = { createCrossovers, schema, loadLibrary, summaryLinks, provenLinks, linkRow, bookQuestion, volumeQuestion, EXTRACT, MAX_GAP_DAYS };
