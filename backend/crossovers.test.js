@@ -48,7 +48,7 @@ function library() {
   const db = new Database(':memory:');
   db.exec(`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
     CREATE TABLE scanned_series (id TEXT PRIMARY KEY, name TEXT, year INTEGER);
-    CREATE TABLE scanned_books (id TEXT PRIMARY KEY, series_id TEXT, issue_number TEXT, comicinfo TEXT, store_date TEXT, cv_issue_id TEXT, is_special INTEGER DEFAULT 0);
+    CREATE TABLE scanned_books (id TEXT PRIMARY KEY, series_id TEXT, issue_number TEXT, comicinfo TEXT, store_date TEXT, cv_issue_id TEXT, is_special INTEGER DEFAULT 0, title TEXT);
     CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT, draft INTEGER DEFAULT 0);
     CREATE TABLE event_issues (id INTEGER PRIMARY KEY, event_id TEXT, scanned_book_id TEXT, series_name TEXT, issue_number TEXT);`);
   const series = (id, name, year) => db.prepare('INSERT INTO scanned_series VALUES (?,?,?)').run(id, name, year);
@@ -63,7 +63,7 @@ function library() {
   book('sup50', 'sup', '50', '1990-12-04', { summary: 'Part 2 continues in Action Comics #660.' });
   book('act660', 'act', '660', '1990-12-18', { summary: 'Continued from Superman #50.' });
   book('act1', 'act', '1', '1938-04-18', { summary: 'Continued in Superman #50' });   // decades apart: no link
-  const settings = new Map();
+  const settings = new Map([['crossover_ai_enabled', '1']]);   // most tests use web links; the switch tests set their own
   const app = { routes: {}, get(p, ...f) { this.routes[`GET ${p}`] = f.at(-1); }, post(p, ...f) { this.routes[`POST ${p}`] = f.at(-1); } };
   return { db, app, settings };
 }
@@ -189,22 +189,63 @@ test('schedule: off by default; weekly is due a week after the last run', () => 
   assert.equal(x.due(), true);
 });
 
-test('the off switch hides every link and stops the checks; switching back on shows them again', async () => {
+test('two switches: code and AI each hide their own links and stop their own work', async () => {
   const lib = library(), x = create(lib);
   x.refreshFree();
+  addWeb(x, lib, [[{ series: 'Green Lantern', issue: '40' }, { series: 'Green Lantern Corps', issue: '22' }, 'First Light', '2026-10-28']]);
   lib.settings.set('crossover_check_frequency', 'weekly');
   lib.settings.set('crossover_check_last_run', String(Date.now() - 8 * 86400000));
-  assert.equal(x.due(), true);
   let out = null;
   const res = { json(d) { out = d; }, status(c) { this.code = c; return this; } };
-  lib.app.routes['POST /api/admin/crossovers/enabled']({ body: { enabled: false } }, res);
-  assert.equal(out.enabled, false);
-  assert.deepEqual(x.forBook('sup50'), { continuesIn: [], continuedFrom: [] });
-  assert.equal(x.nextFor('sup50'), null);
-  assert.equal(x.due(), false);
-  await assert.rejects(x.run('manual'), /switched off/);
-  lib.app.routes['POST /api/admin/crossovers/enabled']({ body: { enabled: true } }, res);
+  const flip = body => lib.app.routes['POST /api/admin/crossovers/switches']({ body }, res);
+  assert.equal(x.nextFor('sup50').id, 'act660');   // code (summary)
+  assert.equal(x.nextFor('gl40').id, 'glc22');     // AI (web)
+  flip({ ai: false });
+  assert.deepEqual([out.code, out.ai], [true, false]);
+  assert.equal(x.nextFor('gl40'), null);
   assert.equal(x.nextFor('sup50').id, 'act660');
+  assert.equal(x.due(), false);
+  await assert.rejects(x.run('manual'), /web check is switched off/);
+  flip({ code: false });
+  assert.equal(x.nextFor('sup50'), null);
+  assert.deepEqual(x.placementFor('sup'), []);
+  flip({ ai: true });
+  assert.equal(x.nextFor('gl40').id, 'glc22');
+  assert.equal(x.due(), true);
+  flip({ code: 'yes' });
+  assert.equal(res.code, 400);
+});
+
+test('defaults: code on and AI off on a new install; the old single switch and an install already using web checks carry over', () => {
+  const lib = library(), x = create(lib);
+  lib.settings.delete('crossover_ai_enabled');
+  assert.deepEqual([x.codeOn(), x.aiOn()], [true, false]);
+  lib.settings.set('crossover_check_frequency', 'weekly');
+  assert.equal(x.aiOn(), true);                                  // already scheduled before the switches
+  lib.settings.set('crossover_links_enabled', '0');
+  assert.deepEqual([x.codeOn(), x.aiOn()], [false, false]);       // the old switch was off
+});
+
+test('story titles link parts in different series: by part number, same publisher, 1–3 parts on, within 60 days', () => {
+  const T2 = require('./crossoverText');
+  assert.deepEqual(T2.storyParts('Rescue: The Siege of the Zi Charam, Part 2').map(p => [p.keys, p.part]), [[['rescuethesiegeofthezicharam', 'siegeofthezicharam'], 2]]);
+  assert.deepEqual(T2.storyParts('Three of A Kind Part 3; Death at the Top of the World').map(p => p.part), [3]);
+  assert.deepEqual(T2.storyParts('Chapter One: The Gathering'), []);            // no story name
+  assert.deepEqual(T2.summaryParts('&quot;Black Circle: Urban Knights&quot; Part 2 of 6. A mystery.').map(p => [p.story, p.part]), [['Black Circle: Urban Knights', 2]]);
+  assert.deepEqual(T2.summaryParts('The Siege of the Zi Charam part 3 of 5.').map(p => p.part), [3]);
+  assert.deepEqual(T2.summaryParts('Kyle is floating in space, part 3 of the plan'), []);
+  const book = (id, series_id, store_date, title, publisher = 'DC Comics') => ({ id, series_id, store_date, title, ci_title: '', publisher, series: series_id, issue_number: '1' });
+  const lib = { books: [
+    book('nt124', 'nt', '1995-06-22', 'The Siege of the Zi Charam Part 1 of 5: Prometheus Gathering'),
+    book('gl65', 'gl', '1995-06-27', 'Rescue: The Siege of the Zi Charam, Part 2', ''),          // no publisher: its series'
+    book('gl64', 'gl', '1995-05-27', 'Older', 'DC Comics'),
+    book('ds34', 'ds', '1995-07-06', 'Strangers in a Strange Land'),
+    book('a1', 'a', '2016-06-01', 'Rebirth, Part 1'), book('b1', 'b', '2016-06-08', 'Rebirth, Part 1'),   // two series' own arcs
+    book('m2', 'm', '1995-06-29', 'The Siege of the Zi Charam, Part 3', 'Marvel'),               // another publisher
+  ] };
+  const links = C.titleLinks(lib, new Map([['ds34', T2.summaryParts('The Siege of the Zi Charam part 3 of 5.')]]));
+  assert.deepEqual(links.map(l => `${l.from.id}>${l.to.id}`), ['nt124>gl65', 'gl65>ds34']);
+  assert.equal(links[0].story, 'The Siege of the Zi Charam');
 });
 
 test('a page naming an old issue the story looks back to is not a missing part (first web run, Swamp Thing #87 from 1989)', () => {
@@ -242,6 +283,6 @@ test('Reading order placements: the next part after its issue, an earlier part b
   addWeb(x, lib, [[{ series: 'Green Lantern', issue: '40' }, { series: 'Green Lantern Corps', issue: '22' }, 'First Light', '2026-10-28']]);
   assert.deepEqual(x.placementFor('gl'), [{ bookId: 'glc22', afterBookId: 'gl40', story: 'First Light' }]);
   assert.deepEqual(x.placementFor('glc'), [{ bookId: 'gl40', beforeBookId: 'glc22', story: 'First Light' }]);
-  lib.settings.set('crossover_links_enabled', '0');
+  lib.settings.set('crossover_ai_enabled', '0');                // web links: the AI switch
   assert.deepEqual(x.placementFor('gl'), []);
 });

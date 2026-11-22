@@ -58,6 +58,51 @@ function summaryMentions(comicinfo) {
   return out;
 }
 
+// ── Story titles (2026-11-22) ─────────────────────────────────────────
+// A crossover's chapters usually share a story title with a part number across series: Green Lantern
+// (2023) #40 "First Light, Part 1" and Green Lantern Corps #22 "First Light, Part Two"; Green Lantern
+// (1990) #65 "Rescue: The Siege of the Zi Charam, Part 2"; a summary's "Black Circle: Urban Knights" Part 2
+// of 6. storyParts(title) / summaryParts(summary) → [{ story, keys, part }] (keys: the story's names for matching).
+const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10, final: null };
+const partNumber = w => { const t = String(w || '').toLowerCase(); return /^\d+$/.test(t) ? Number(t) : NUMBER_WORDS[t] ?? null; };
+const PART = '(?:part|pt\\.?|chapter)\\s*(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\\b(?:\\s*of\\s*(?:\\d{1,2}|\\w+))?';
+const TITLE_RX = new RegExp(`^(.*?)[\\s,:;.\\-–—(]*\\b${PART}\\)?(?:\\s*[:\\-–—].*)?$`, 'i');
+const storyKey = s => norm(String(s || '').trim().replace(/^["“'‘]+|["”'’]+$/g, '').trim());
+function storyParts(title) {
+  const out = [];
+  for (const seg of decode(title).split(/;|\s\/\s/)) {
+    const m = TITLE_RX.exec(seg.trim());
+    if (!m) continue;
+    const story = m[1].replace(/^["“]+|["”]+$/g, '').replace(/[\s,:;.\-–—]+$/, '').trim();
+    const part = partNumber(m[2]);
+    if (part && storyKey(story).length >= 6) out.push({ story, keys: storyKeys(story), part });
+  }
+  return out;
+}
+// The story's name, and the part after its last colon ("Rescue: The Siege of the Zi Charam" also matches
+// "The Siege of the Zi Charam"); each at least 6 letters.
+const storyKeys = story => [...new Set([storyKey(story), storyKey(String(story).split(':').pop())])].filter(k => k.length >= 6);
+// In a summary only a quoted name counts: '"Black Circle: Urban Knights" Part 2 of 6', 'Part 3 of "Sacrifice"'.
+const Q = '["“]([^"”]{4,80})["”]';
+const SUMMARY_PART_RX = [new RegExp(`${Q}[\\s,:\\-–—]*${PART}`, 'gi'), new RegExp(`\\b${PART}\\s*(?:of|in)\\s*(?:the\\s*)?${Q}`, 'gi')];
+// Unquoted only when the summary opens with it and gives the total: "The Siege of the Zi Charam part 3 of 5."
+const SUMMARY_OPENING_RX = /^\s*([A-Z][^.!?"“”]{3,70}?)[\s,:\-–—]*(?:part|chapter)\s*(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*of\s*(?:\d{1,2}|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i;
+function summaryParts(summary) {
+  const text = decode(summary), out = [];
+  for (const [i, rx] of SUMMARY_PART_RX.entries()) {
+    rx.lastIndex = 0;
+    let m;
+    while ((m = rx.exec(text))) {
+      const story = (i === 0 ? m[1] : m[2]).trim(), part = partNumber(i === 0 ? m[2] : m[1]);
+      if (part && storyKey(story).length >= 6) out.push({ story, keys: storyKeys(story), part });
+    }
+  }
+  const o = SUMMARY_OPENING_RX.exec(text);
+  if (o && partNumber(o[2]) && storyKey(o[1]).length >= 6) out.push({ story: o[1].trim(), keys: storyKeys(o[1].trim()), part: partNumber(o[2]) });
+  return out;
+}
+
 // ── Page check (AI step) ──────────────────────────────────────────────
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // Does a page's text name this issue ("Green Lantern Corps #22", "Green Lantern Corps (2025) #22",
@@ -80,4 +125,4 @@ function parseJson(text) {
   try { return JSON.parse(s.slice(a, b + 1)); } catch { return null; }
 }
 
-module.exports = { norm, num, stripYear, tag, days, decode, summaryMentions, namedOnPage, parseJson, LINK_RX };
+module.exports = { norm, num, stripYear, tag, days, decode, summaryMentions, storyParts, summaryParts, namedOnPage, parseJson, LINK_RX };

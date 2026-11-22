@@ -26,14 +26,17 @@ export default function CrossoverSettings() {
   const run = st.run || {};
   return (
     <div className="xo-settings">
-      <p className="form-hint">Links a story that continues in another series (for example Green Lantern #40 → Green Lantern Corps #22) on the reader's end card and the issue page. Timeline events, reading order and shelves are not changed.</p>
-      <label className="xo-switch"><input type="checkbox" checked={st.enabled} onChange={e => post('/enabled', { enabled: e.target.checked })} /> Show crossover links</label>
-      {!st.enabled ? <p className="form-hint">Off: readers see no crossover links, and the nightly rebuild and web check do not run. The {st.links.summary + st.links.web} links found so far are kept.</p> : <>
-      <p><b>{st.links.summary}</b> links from issue summaries (free, rebuilt nightly) · <b>{st.links.web}</b> from web checks{st.links.waiting ? <> ({st.links.waiting} waiting for an issue you don't have)</> : null}</p>
+      <p className="form-hint">Links a story that continues in another series (for example Green Lantern #40 → Green Lantern Corps #22): the reader's end card, the issue page, and the series page's Reading order view. Two ways to find them; each switch also hides the links it found (they are kept for when it is switched back on).</p>
+      <label className="xo-switch"><input type="checkbox" checked={st.code} onChange={e => post('/switches', { code: e.target.checked })} /> From issue text (free)</label>
+      <p className="form-hint xo-indent">Summaries that name the other issue ("Continued in Superman #50") and story titles with part numbers in two series ("First Light, Part 1" / "Part Two"). Rebuilt every night.
+        {st.code && <> <b>{st.links.summary + st.links.title}</b> links ({st.links.summary} from summaries, {st.links.title} from titles).</>}</p>
+      <label className="xo-switch"><input type="checkbox" checked={st.ai} disabled={run.running && !st.ai} onChange={e => post('/switches', { ai: e.target.checked })} /> AI web check (paid, needs an AI key)</label>
+      {!st.ai ? <p className="form-hint xo-indent">One Web Search question per new issue, about {money(st.perBook)} each. Off: no AI spending{st.links.web ? `; the ${st.links.web} links found earlier are hidden` : ''}.</p> : <div className="xo-indent">
+      <p><b>{st.links.web}</b> links from web checks{st.links.waiting ? <> ({st.links.waiting} waiting for an issue you don't have)</> : null}</p>
       <div className="xo-row">
-        <label className="form-label" htmlFor="xo-frequency">Web check for new issues</label>
+        <label className="form-label" htmlFor="xo-frequency">Check new issues</label>
         <select id="xo-frequency" className="form-input" value={st.frequency} disabled={run.running} onChange={e => post('/settings', { frequency: e.target.value })}>
-          <option value="off">Off</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
+          <option value="off">Only when I click Check now</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
         </select>
       </div>
       <p className="form-hint">One Web Search question per new issue (released in the last {st.lookbackDays} days), about {money(st.perBook)} each; a link is kept only when a source page names both issues. Last check: {when(st.lastRun)}{st.nextRun ? ` · next: ${when(st.nextRun)}` : ''} · {st.checked} issues checked so far, {money(st.spent)} spent.</p>
@@ -50,7 +53,8 @@ export default function CrossoverSettings() {
           <button className="adm-btn adm-btn-primary" disabled={!st.pending} onClick={() => post('/run')}>Check now</button>
         </div>
       </>}
-      </>}
+      </div>}
+      {!st.code && !st.ai && <p className="form-hint">Both off: readers see no crossover links.</p>}
       {err && <p role="alert" className="xo-err">{err}</p>}
       <style>{`
         .xo-settings p { margin: 8px 0; font-size: 14px; line-height: 1.45; }
@@ -61,7 +65,8 @@ export default function CrossoverSettings() {
         .xo-bar span { display: block; height: 100%; background: var(--td-yellow); transition: width .3s; }
         .xo-errors { max-height: 120px; overflow-y: auto; font-size: 12px; color: #d9a441; padding-left: 18px; }
         .xo-err { color: #e07070; }
-        .xo-switch { display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 6px 0 10px; cursor: pointer; }
+        .xo-switch { display: flex; align-items: center; gap: 8px; font-weight: 700; margin: 14px 0 2px; cursor: pointer; }
+        .xo-indent { margin-left: 26px !important; }
       `}</style>
     </div>
   );

@@ -21,8 +21,13 @@
 //     are not neighbours in the story);
 //   - links between books that share a Timeline event, or that the series' reading order already
 //     puts together, are not shown.
-// Off switch (crossover_links_enabled = '0'): nothing is shown and nothing runs (no nightly rebuild, no
-// web check); the links found so far are kept, so switching back on shows them at once.
+// Two switches (user, 2026-11-22: admins who install from GitHub choose how the app finds links):
+//   code (crossover_code_enabled, on unless '0'): the free nightly pass over issue text and its links
+//   AI   (crossover_ai_enabled, off unless '1'): the web check, its schedule and spend, and its links
+// A switch that is off hides its source's links too (user's choice); they are kept, so switching back on
+// shows them at once. Both off: no crossover links anywhere. Before the switches there was one,
+// crossover_links_enabled: '0' there still turns both off, and an install that already scheduled or ran
+// web checks counts as AI on until the admin chooses.
 const T = require('./crossoverText');
 
 const NEEDS = ['app', 'db', 'ai', 'webLookup', 'readPage', 'axios', 'cron', 'getSetting', 'setSetting', 'logger', 'requireAuth', 'requireAdmin', 'sequence', 'modelCatalog'];
@@ -53,7 +58,7 @@ const loose = s => T.norm(String(s || '').replace(/\b(?:the|and)\b/gi, ' '));
 
 function loadLibrary(db) {
   const books = db.prepare(`SELECT b.id, b.series_id, s.name AS folder, s.year, b.issue_number, b.store_date, b.cv_issue_id,
-      ${CI_FIELD('Series')} AS ci_series, ${CI_FIELD('Publisher')} AS publisher
+      ${CI_FIELD('Series')} AS ci_series, ${CI_FIELD('Publisher')} AS publisher, b.title, ${CI_FIELD('Title')} AS ci_title
     FROM scanned_books b JOIN scanned_series s ON s.id = b.series_id`).all();
   const byKey = new Map();
   const put = (k, b) => { if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(b); };
@@ -82,14 +87,23 @@ function nearest(cands, anchor, maxDays) {
   return best && T.days(best.store_date, anchor) <= maxDays ? best : null;
 }
 
-// ── Summary links ─────────────────────────────────────────────────────
-// Every link the library's ComicInfo summaries name, ordered by release date (the wording only breaks
-// a tie: "continued from X" puts X first).
-function summaryLinks(db, lib = loadLibrary(db)) {
+// ── Links from issue text (free) ───────────────────────────────────────
+// Two clues, one pass (user, 2026-11-22: fold titles into the code matcher rather than a new tool):
+//   summary  the summary names the other issue ("Continued in SECRET SIX #29"): ordered by release date,
+//            the wording only breaking a tie ("continued from X" puts X first)
+//   title    the same story title with part numbers in two series: "First Light, Part 1" (Green Lantern
+//            #40) and "First Light, Part Two" (Green Lantern Corps #22); also a summary's quoted
+//            '"Black Circle: Urban Knights" Part 2 of 6'. Same publisher; the next part 1–3 numbers on
+//            and at most 60 days apart, so two series' own arcs that share a name ("Rebirth, Part 1" in
+//            each) are not linked; ordered by part number (Cable #75 Part 1 came out after Uncanny X-Men
+//            #376 Part 2).
+const TITLE_GAP_DAYS = 60;
+function textLinks(db, lib = loadLibrary(db)) {
   const rows = db.prepare(`SELECT b.id, b.comicinfo FROM scanned_books b WHERE b.comicinfo LIKE '%<Summary>%' AND (
       b.comicinfo LIKE '%continu%' OR b.comicinfo LIKE '%conclud%' OR b.comicinfo LIKE '%crossover%' OR b.comicinfo LIKE '%crosses over%'
       OR b.comicinfo LIKE '%chapter%' OR b.comicinfo LIKE '%part %' OR b.comicinfo LIKE '%pick% up%' OR b.comicinfo LIKE '%into%' OR b.comicinfo LIKE '%miss%')`).iterate();
   const out = new Map();
+  const summaryParts = new Map();
   for (const r of rows) {
     const a = lib.byId.get(r.id);
     if (!a?.store_date) continue;
@@ -105,8 +119,57 @@ function summaryLinks(db, lib = loadLibrary(db)) {
       const key = `s:${x.id}>${y.id}`;
       if (!out.has(key)) out.set(key, { key, from: x, to: y, story: null, source: 'summary', proof: m.phrase });
     }
+    const sm = /<Summary>([\s\S]*?)<\/Summary>/.exec(r.comicinfo || '');
+    const parts = sm ? T.summaryParts(sm[1]) : [];
+    if (parts.length) summaryParts.set(r.id, parts);
   }
+  for (const l of titleLinks(lib, summaryParts)) if (!out.has(l.key)) out.set(l.key, l);
   return [...out.values()];
+}
+const summaryLinks = textLinks;   // the earlier name (tests, scripts)
+
+function titleLinks(lib, summaryParts = new Map()) {
+  // Publisher: the book's, else its series' most common (Green Lantern (1990) #96 has none).
+  const seriesPub = new Map();
+  for (const b of lib.books) if (b.publisher) {
+    const m = seriesPub.get(b.series_id) || new Map();
+    m.set(b.publisher, (m.get(b.publisher) || 0) + 1);
+    seriesPub.set(b.series_id, m);
+  }
+  const pubOf = sid => [...(seriesPub.get(sid) || new Map())].sort((x, y) => y[1] - x[1])[0]?.[0] || '';
+  const pubKey = b => T.norm(b.publisher || pubOf(b.series_id)).slice(0, 5);
+  const groups = new Map();
+  for (const b of lib.books) {
+    if (!b.store_date) continue;
+    const parts = [...T.storyParts(b.ci_title || ''), ...T.storyParts(b.title || ''), ...(summaryParts.get(b.id) || [])];
+    for (const p of parts) for (const k of p.keys) {
+      const g = `${k}|${pubKey(b)}`;
+      if (!groups.has(g)) groups.set(g, new Map());
+      if (!groups.get(g).has(b.id)) groups.get(g).set(b.id, { b, part: p.part, story: p.story });
+    }
+  }
+  const out = [];
+  for (const g of groups.values()) {
+    const items = [...g.values()];
+    if (new Set(items.map(x => x.b.series_id)).size < 2) continue;
+    // Story names come back years later: one run of the story = releases no more than 120 days apart.
+    items.sort((x, y) => x.b.store_date.localeCompare(y.b.store_date));
+    const runs = [[items[0]]];
+    for (let i = 1; i < items.length; i++) {
+      if (T.days(items[i - 1].b.store_date, items[i].b.store_date) > 120) runs.push([]);
+      runs.at(-1).push(items[i]);
+    }
+    for (const run of runs) {
+      run.sort((x, y) => (x.part - y.part) || x.b.store_date.localeCompare(y.b.store_date));
+      for (let i = 0; i + 1 < run.length; i++) {
+        const a = run[i], c = run[i + 1], step = c.part - a.part;
+        if (a.b.series_id === c.b.series_id || step < 1 || step > 3 || T.days(a.b.store_date, c.b.store_date) > TITLE_GAP_DAYS) continue;
+        out.push({ key: `t:${a.b.id}>${c.b.id}`, from: a.b, to: c.b, story: [a.story, c.story].sort((x, y) => x.length - y.length)[0], source: 'title',
+          proof: `"${a.story}" part ${a.part} → part ${c.part}` });
+      }
+    }
+  }
+  return out;
 }
 
 // ── Web check (per issue) ─────────────────────────────────────────────
@@ -209,13 +272,13 @@ function createCrossovers(deps = {}) {
     to_year: l.to ? Number(l.to.year) || null : l.toName?.year || null,
   });
 
-  // Nightly, free: rebuild the summary links; give web links whose other issue has since arrived its book.
+  // Nightly, free: rebuild the links from issue text; give web links whose other issue has since arrived its book.
   function refreshFree() {
     const t0 = Date.now();
     const lib = loadLibrary(db);
-    const links = summaryLinks(db, lib);
+    const links = textLinks(db, lib);
     const keep = new Set(links.map(l => l.key));
-    const old = db.prepare(`SELECT key FROM crossover_links WHERE source = 'summary'`).all().map(r => r.key);
+    const old = db.prepare(`SELECT key FROM crossover_links WHERE source IN ('summary', 'title')`).all().map(r => r.key);
     let added = 0, removed = 0, resolved = 0;
     db.transaction(() => {
       for (const l of links) if (insert.run(rowOf(l)).changes && !old.includes(l.key)) added++;
@@ -226,8 +289,8 @@ function createCrossovers(deps = {}) {
       db.prepare(`UPDATE crossover_links SET from_book_id = NULL WHERE from_book_id IS NOT NULL AND from_book_id NOT IN (SELECT id FROM scanned_books)`).run();
       db.prepare(`UPDATE crossover_links SET to_book_id = NULL WHERE to_book_id IS NOT NULL AND to_book_id NOT IN (SELECT id FROM scanned_books)`).run();
     })();
-    const r = { summary: links.length, added, removed, resolved, ms: Date.now() - t0 };
-    logger.info('crossovers', 'Summary links refreshed', r);
+    const r = { summary: links.filter(l => l.source === 'summary').length, title: links.filter(l => l.source === 'title').length, added, removed, resolved, ms: Date.now() - t0 };
+    logger.info('crossovers', 'Links from issue text refreshed', r);
     return r;
   }
 
@@ -266,8 +329,8 @@ function createCrossovers(deps = {}) {
     const gap = r => T.days(dateOf(r.from_book_id), dateOf(r.to_book_id));
     const g = gap(l);
     const beats = (others) => others.every(o => o.id === l.id || samePair(o, l) || gap(o) > g || (gap(o) === g && o.id > l.id));
-    if (l.from_book_id && !beats(linksOut.all(l.from_book_id).filter(o => o.to_book_id))) return false;
-    if (l.to_book_id && !beats(linksIn.all(l.to_book_id).filter(o => o.from_book_id))) return false;
+    if (l.from_book_id && !beats(linksOut.all(l.from_book_id).filter(o => o.to_book_id && sourceOn(o.source)))) return false;
+    if (l.to_book_id && !beats(linksIn.all(l.to_book_id).filter(o => o.from_book_id && sourceOn(o.source)))) return false;
     return true;
   }
   const samePair = (a, b) => a.from_book_id === b.from_book_id && a.to_book_id === b.to_book_id;
@@ -287,6 +350,7 @@ function createCrossovers(deps = {}) {
   }
 
   function shown(l) {
+    if (!sourceOn(l.source)) return false;
     if (!l.from_book_id || !l.to_book_id) {
       const side = l.from_book_id ? 'to' : 'from';
       return !inOwnersEvent(l.from_book_id || l.to_book_id, l[`${side}_series`], l[`${side}_issue`], l.story);
@@ -309,7 +373,16 @@ function createCrossovers(deps = {}) {
     return { id: null, series_name: series, issue_number: issue, owned: false };
   };
 
-  const enabled = () => getSetting('crossover_links_enabled') !== '0';
+  const legacyOff = () => getSetting('crossover_links_enabled') === '0';
+  const codeOn = () => !legacyOff() && getSetting('crossover_code_enabled') !== '0';
+  const aiOn = () => {
+    const v = getSetting('crossover_ai_enabled');
+    if (v === '1' || v === '0') return v === '1';
+    if (legacyOff()) return false;
+    try { return (getSetting('crossover_check_frequency') || 'off') !== 'off' || !!db.prepare('SELECT 1 FROM crossover_checks LIMIT 1').get(); } catch { return false; }
+  };
+  const sourceOn = src => (src === 'web' ? aiOn() : codeOn());
+  const enabled = () => codeOn() || aiOn();
 
   // { continuesIn: [...], continuedFrom: [...] } for one book; owned issues first, one entry per issue.
   function forBook(bookId) {
@@ -340,16 +413,17 @@ function createCrossovers(deps = {}) {
     WHERE l.hidden = 0 AND (a.series_id = ? OR b.series_id = ?) AND a.series_id <> b.series_id`);
   function placementFor(seriesId) {
     if (!enabled()) return [];
-    const out = [], seen = new Set();
+    const out = [], seen = new Map();
     const series = id => bookInfo.get(id)?.series_id;
     for (const l of linksOfSeries.all(seriesId, seriesId)) {
       if (!shown(l)) continue;
       const mine = series(l.from_book_id) === seriesId;
       const other = mine ? l.to_book_id : l.from_book_id;
       const k = `${other}|${mine ? 'a' : 'b'}`;
-      if (seen.has(k)) continue;
-      seen.add(k);
-      out.push(mine ? { bookId: other, afterBookId: l.from_book_id, story: l.story || null } : { bookId: other, beforeBookId: l.to_book_id, story: l.story || null });
+      if (seen.has(k)) { if (!seen.get(k).story && l.story) seen.get(k).story = l.story; continue; }   // a title link names the story
+      const entry = mine ? { bookId: other, afterBookId: l.from_book_id, story: l.story || null } : { bookId: other, beforeBookId: l.to_book_id, story: l.story || null };
+      seen.set(k, entry);
+      out.push(entry);
     }
     // Outgoing first: a book that both follows one issue and leads into the next sits after the first.
     return out.sort((a, b) => (a.afterBookId ? 0 : 1) - (b.afterBookId ? 0 : 1));
@@ -396,13 +470,13 @@ function createCrossovers(deps = {}) {
 
   async function run(trigger = 'manual', { limit = null } = {}) {
     if (state.running) throw Object.assign(new Error('A crossover check is already running'), { status: 409 });
-    if (!enabled()) throw Object.assign(new Error('Crossover links are switched off'), { status: 409 });
+    if (!aiOn()) throw Object.assign(new Error('The AI web check is switched off'), { status: 409 });
     const ids = limit > 0 ? candidates().slice(-limit) : candidates();   // a trial run: the newest issues
     Object.assign(state, { running: true, stop: false, done: 0, total: ids.length, found: 0, cost: 0, current: null, startedAt: Date.now(), finishedAt: null, trigger, errors: [] });
     setSetting('crossover_check_last_run', String(Date.now()));
     (async () => {
       try {
-        refreshFree();
+        if (codeOn()) refreshFree();
         const lib = loadLibrary(db);
         const pageCache = new Map();
         const mark = db.prepare('INSERT OR REPLACE INTO crossover_checks (book_id, checked_at, result, cost) VALUES (?, ?, ?, ?)');
@@ -435,18 +509,18 @@ function createCrossovers(deps = {}) {
 
   function status() {
     const n = candidates().length, per = costPerBook(), f = frequency(), last = lastRun();
-    const counts = db.prepare(`SELECT SUM(source = 'summary') AS summary, SUM(source = 'web') AS web,
+    const counts = db.prepare(`SELECT SUM(source = 'summary') AS summary, SUM(source = 'title') AS title, SUM(source = 'web') AS web,
       SUM(source = 'web' AND (from_book_id IS NULL OR to_book_id IS NULL)) AS waiting, SUM(hidden) AS hidden FROM crossover_links`).get();
     const checked = db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(cost), 0) AS cost FROM crossover_checks').get();
-    return { enabled: enabled(), frequency: f, frequencies: Object.keys(FREQUENCIES), lastRun: last, nextRun: FREQUENCIES[f] && last ? last + FREQUENCIES[f] * 86400000 : null,
+    return { code: codeOn(), ai: aiOn(), frequency: f, frequencies: Object.keys(FREQUENCIES), lastRun: last, nextRun: FREQUENCIES[f] && last ? last + FREQUENCIES[f] * 86400000 : null,
       pending: n, perBook: per, estimate: n * per, lookbackDays: LOOKBACK_DAYS,
-      links: { summary: counts.summary || 0, web: counts.web || 0, waiting: counts.waiting || 0, hidden: counts.hidden || 0 },
+      links: { summary: counts.summary || 0, title: counts.title || 0, web: counts.web || 0, waiting: counts.waiting || 0, hidden: counts.hidden || 0 },
       checked: checked.n, spent: checked.cost, run: { ...state, errors: state.errors.slice(-10) } };
   }
   // The scheduled check, when it is due (called daily).
   function due(now = Date.now()) {
     const days = FREQUENCIES[frequency()];
-    return enabled() && !!days && (!lastRun() || now - lastRun() >= days * 86400000 - 3600000);
+    return aiOn() && !!days && (!lastRun() || now - lastRun() >= days * 86400000 - 3600000);
   }
 
   // ── Routes ─────────────────────────────────────────────────────────
@@ -466,11 +540,15 @@ function createCrossovers(deps = {}) {
     const limit = Number(req.body?.limit) || null;
     try { res.json(await run('manual', { limit: limit > 0 ? Math.min(limit, 1000) : null })); } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
   });
-  // The off switch: hides every link and stops the nightly rebuild and the web check (a running check stops).
-  app.post('/api/admin/crossovers/enabled', requireAdmin, (req, res) => {
-    if (typeof req.body?.enabled !== 'boolean') return res.status(400).json({ error: 'enabled must be true or false' });
-    setSetting('crossover_links_enabled', req.body.enabled ? '1' : '0');
-    if (!req.body.enabled) state.stop = true;
+  // The two switches: { code?: boolean, ai?: boolean }. Off hides that source's links and stops its work
+  // (AI off stops a running check). Switching code on builds its links at once if there are none.
+  app.post('/api/admin/crossovers/switches', requireAdmin, (req, res) => {
+    const { code, ai: aiSwitch } = req.body || {};
+    if ((code !== undefined && typeof code !== 'boolean') || (aiSwitch !== undefined && typeof aiSwitch !== 'boolean')) return res.status(400).json({ error: 'code and ai must be true or false' });
+    if (legacyOff()) setSetting('crossover_links_enabled', '1');   // the old single switch gives way to these two
+    if (code !== undefined) setSetting('crossover_code_enabled', code ? '1' : '0');
+    if (aiSwitch !== undefined) { setSetting('crossover_ai_enabled', aiSwitch ? '1' : '0'); if (!aiSwitch) state.stop = true; }
+    try { if (code && !db.prepare(`SELECT 1 FROM crossover_links WHERE source IN ('summary', 'title') LIMIT 1`).get()) refreshFree(); } catch (e) { logger.error('crossovers', 'Links from issue text failed', e.message); }
     res.json(status());
   });
   app.post('/api/admin/crossovers/stop', requireAdmin, (req, res) => { state.stop = true; res.json(status()); });
@@ -487,16 +565,19 @@ function createCrossovers(deps = {}) {
 
   // Nightly at 4:35: the free summary links, then the web check when it is due.
   cron.schedule('35 4 * * *', () => {
-    if (!enabled()) return;
-    try { refreshFree(); } catch (e) { logger.error('crossovers', 'Summary links failed', e.message); }
+    try {
+      if (codeOn()) refreshFree();
+      else if (aiOn()) db.transaction(() => resolvePending(loadLibrary(db)))();
+    } catch (e) { logger.error('crossovers', 'Links from issue text failed', e.message); }
     if (due() && !state.running) run('scheduled').catch(e => logger.error('crossovers', 'Scheduled check failed', e.message));
   });
   // First start after deploy: build the summary links once (a few seconds), off the startup path.
-  if (enabled() && !db.prepare('SELECT 1 FROM crossover_links LIMIT 1').get()) {
+  // The same when the title clue arrives (2026-11-22): no title links yet.
+  if (codeOn() && !db.prepare(`SELECT 1 FROM crossover_links WHERE source = 'title' LIMIT 1`).get()) {
     setTimeout(() => { try { refreshFree(); } catch (e) { logger.error('crossovers', 'Summary links failed', e.message); } }, 90000).unref?.();
   }
 
-  return { forBook, nextFor, placementFor, refreshFree, run, status, due, candidates, state };
+  return { forBook, nextFor, placementFor, refreshFree, run, status, due, candidates, state, codeOn, aiOn };
 }
 
-module.exports = { createCrossovers, schema, loadLibrary, summaryLinks, provenLinks, linkRow, bookQuestion, volumeQuestion, EXTRACT, MAX_GAP_DAYS };
+module.exports = { createCrossovers, schema, loadLibrary, summaryLinks, textLinks, titleLinks, provenLinks, linkRow, bookQuestion, volumeQuestion, EXTRACT, MAX_GAP_DAYS };
