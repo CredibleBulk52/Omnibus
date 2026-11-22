@@ -6,7 +6,7 @@ import ComicIssueDetail from '../components/ComicIssueDetail';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ManageMenu from '../components/ManageMenu';
 import IssueCardMenu from '../components/IssueCardMenu';
-import EventStrip from '../components/EventStrip';
+import EventStrip, { EventHomeCaptions } from '../components/EventStrip';
 import { ReidentifySeriesButton } from '../components/LibraryHealth';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useSeriesCache, isAdmin, InfoTip } from '../App';
@@ -1052,26 +1052,10 @@ export default function SeriesDetailComic() {
                     {gapError && <span className="a-err">{gapError}</span>}
                   </div>
                 )}
-                {/* An event's own series shows its core issues only; its Timeline has the full order with
-                    tie-ins and side stories ("Read in event order", 2026-11-21). */}
-                {placement?.homeEvents?.length > 0 && (
-                  <div className="event-home-note" role="note">
-                    <span className="ehn-mark" aria-hidden="true">◆</span>
-                    <span className="ehn-text">
-                      {placement.homeEvents.length === 1
-                        ? <>The core issues of <b>{placement.homeEvents[0].name}</b>{placement.homeEvents[0].year ? ` (${placement.homeEvents[0].year})` : ''}. Its tie-ins and side stories are in the Timeline.</>
-                        : <>The core issues of {placement.homeEvents.length} events. Their tie-ins and side stories are in the Timeline.</>}
-                    </span>
-                    {placement.homeEvents.map(e => (
-                      <button type="button" key={e.id} className="ehn-link" onClick={() => navigate(`/events/${e.id}`)}>
-                        {placement.homeEvents.length > 1 ? `Read ${e.name} in event order →` : 'Read in event order →'}
-                      </button>
-                    ))}
-                  </div>
-                )}
                 <div className="issues-bookshelf">
                   <div className="shelf-wall" style={{ padding:'16px 0 0' }}>
                     <div className="issues-books">
+                      <EventHomeCaptions events={placement?.homeEvents} />
                       {shelfItems.map(({ book, gap, placed, crossMissing }, i) => crossMissing ? renderCrossMissing(crossMissing) : gap ? renderGap(gap) : (() => {
                         const isCurrent   = book.id === currentBookId;
                         const isCompleted = !!book.readProgress?.completed;
@@ -1083,15 +1067,13 @@ export default function SeriesDetailComic() {
                         const isSelected = selected.has(book.id);
                         return (
                         <div key={book.id} className={`issue-book${isCurrent ? ' issue-book--current' : ''}${placed ? ' issue-book--placed' : ''}`} style={{ width: ISSUE_W }}>
-                          {isCurrent && <div className="issue-tagrow"><span /><span className="issue-here">▶ Reading</span></div>}
+                          <EventStrip bookId={book.id} events={book.events} current={isCurrent} hidden={selectMode} homeEvents={placement?.homeEvents} />
                           {/* Cover + hover overlay */}
-                          <div className={`issue-cover issue-cover-hoverable${book.events?.length ? ' has-event-strip' : ''}`} style={{ width: ISSUE_W, height: ISSUE_H, outline: isSelected ? '2px solid var(--td-yellow)' : 'none', outlineOffset: 2 }}
+                          <div className="issue-cover issue-cover-hoverable" style={{ width: ISSUE_W, height: ISSUE_H, outline: isSelected ? '2px solid var(--td-yellow)' : 'none', outlineOffset: 2 }}
                             onClick={selectMode ? () => toggleSelect(book.id) : undefined}>
                             <img src={`/api/books/${book.id}/thumbnail`} alt="" loading="lazy"
                               onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
                             <div className="shelf-book-placeholder" style={{ display:'none' }}>◈</div>
-                            {/* Timeline event strip (EventStrip.jsx, 2026-11-19) */}
-                            <EventStrip bookId={book.id} events={book.events} hidden={selectMode} />
 
                             {/* Selection checkbox */}
                             {selectMode && (
@@ -1170,12 +1152,11 @@ export default function SeriesDetailComic() {
                     <div className="issues-books">
                         {annuals.books.map((book, i) => (
                           <div key={book.id} className="issue-book" style={{ width: ISSUE_W }}>
-                            <div className={`issue-cover issue-cover-hoverable${book.events?.length ? ' has-event-strip' : ''}`} style={{ width: ISSUE_W, height: ISSUE_H }}>
+                            <EventStrip bookId={book.id} events={book.events} />
+                            <div className="issue-cover issue-cover-hoverable" style={{ width: ISSUE_W, height: ISSUE_H }}>
                               <img src={`/api/books/${book.id}/thumbnail`} alt="" loading="lazy"
                                 onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
                               <div className="shelf-book-placeholder" style={{ display:'none' }}>◈</div>
-                              {/* Timeline event strip (EventStrip.jsx, 2026-11-19) */}
-                              <EventStrip bookId={book.id} events={book.events} />
                               {book.readProgress?.completed && <div className="issue-read-badge">✓</div>}
                               <IssueCardMenu bookId={book.id} label={issueLabel(book)} read={!!book.readProgress?.completed} onChanged={c => issueReadChanged(book.id, c)} placement={placementMenu(book.id)} />
                               <div className="issue-hover-overlay">
@@ -1225,12 +1206,11 @@ export default function SeriesDetailComic() {
                       <div className="issues-books">
                         {specials.books.map((book, i) => (
                           <div key={book.id} className="issue-book" style={{ width: ISSUE_W }}>
-                            <div className={`issue-cover issue-cover-hoverable${book.events?.length ? ' has-event-strip' : ''}`} style={{ width: ISSUE_W, height: ISSUE_H }}>
+                            <EventStrip bookId={book.id} events={book.events} />
+                            <div className="issue-cover issue-cover-hoverable" style={{ width: ISSUE_W, height: ISSUE_H }}>
                               <img src={`/api/books/${book.id}/thumbnail`} alt="" loading="lazy"
                                 onError={e => { e.target.style.display='none'; e.target.nextSibling.style.display='flex'; }} />
                               <div className="shelf-book-placeholder" style={{ display:'none' }}>◈</div>
-                              {/* Timeline event strip (EventStrip.jsx, 2026-11-19) */}
-                              <EventStrip bookId={book.id} events={book.events} />
                               {book.readProgress?.completed && <div className="issue-read-badge">✓</div>}
                               <IssueCardMenu bookId={book.id} label={issueLabel(book)} read={!!book.readProgress?.completed} onChanged={c => issueReadChanged(book.id, c)} placement={placementMenu(book.id)} />
                               <div className="issue-hover-overlay">

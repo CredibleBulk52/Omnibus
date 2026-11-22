@@ -90,3 +90,5 @@ Download Manager uses compact, theme-aware operational controls. Wanted groups b
 Import separates scanning, match review and results. Only matched, unmonitored folders are eligible; failed or partially failed executions remain visible as errors. Logs retains the latest 500 streamed entries while following is paused; scrolling affects only its own viewport. Filters and copy operate on the retained entries.
 
 Search gives Essentials its own result category. Issue results expose separate reader and series links; metadata-maintenance badges are admin-only. New searches invalidate older responses, including when clearing the query or changing library scope.
+
+On series shelves, event links reuse the angled comic caption above the cover. An ivory face identifies the link and a Timeline tier stripe identifies event scope. An event's home series links to the full order above the Issues grid. Other issue-specific event links open at that book.

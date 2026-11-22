@@ -2262,3 +2262,7 @@ input,select,textarea { font-family:inherit; }
 img.cover-spread { object-position: right center !important; }
 /* Manga read right to left: the front is the left half (spreadCovers.js marks them cover-spread-rtl). */
 img.cover-spread.cover-spread-rtl { object-position: left center !important; }
+
+.comic-caption { padding: 2px 10px 1px 7px; white-space: nowrap;
+  font-family: 'Bangers', cursive; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: color-mix(in srgb, var(--om-base) 70%, black);
+  border: 2px solid #000; clip-path: polygon(0 0, 100% 0, 92% 100%, 0 100%); }

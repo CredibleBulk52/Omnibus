@@ -267,7 +267,7 @@ function EventShelf({ issues, current, focusId = null, onRead, more, onMore, acq
                 title={[`${i._n}. ${i.series_name} #${i.issue_number}`, i.tier_note].filter(Boolean).join('\n')}>
                 {(i.tier || isCurrent) && (
                   <div className="issue-tagrow">
-                    {i.tier ? <span className="ev-ribbon" style={{ background: TIER_COLOUR[i.tier] || 'color-mix(in srgb, var(--om-text) 55%, var(--om-base))' }}>{TIER_LABEL[i.tier] || i.tier}</span> : <span />}
+                    {i.tier ? <span className="comic-caption ev-ribbon" style={{ background: TIER_COLOUR[i.tier] || 'color-mix(in srgb, var(--om-text) 55%, var(--om-base))' }}>{TIER_LABEL[i.tier] || i.tier}</span> : <span />}
                     {isCurrent && <span className="issue-here">▶ Reading</span>}
                   </div>
                 )}
@@ -307,7 +307,7 @@ function EventShelf({ issues, current, focusId = null, onRead, more, onMore, acq
           <div className="ev-card-head">
             <span className="ev-card-num">{card._n}.</span>
             <span className="ev-card-issue">{card.series_name} <span>#{card.issue_number}</span>{card.volume_year ? <span className="ev-card-year"> ({card.volume_year})</span> : null}</span>
-            {card.tier && <span className="ev-ribbon" style={{ background: TIER_COLOUR[card.tier] || 'color-mix(in srgb, var(--om-text) 55%, var(--om-base))' }}>{TIER_LABEL[card.tier] || card.tier}</span>}
+            {card.tier && <span className="comic-caption ev-ribbon" style={{ background: TIER_COLOUR[card.tier] || 'color-mix(in srgb, var(--om-text) 55%, var(--om-base))' }}>{TIER_LABEL[card.tier] || card.tier}</span>}
           </div>
           {(card.issue_title || card.solicit) && <div className="ev-card-title">{card.issue_title ? `“${card.issue_title}”` : null}
             {card.solicit && <button type="button" className="ev-card-toggle" aria-expanded={solicitOpen} onClick={() => setSolicitOpen(v => !v)}

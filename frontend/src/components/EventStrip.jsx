@@ -1,40 +1,57 @@
-// ─── Timeline event strip on an issue cover (2026-11-19) ─────────────
-// A slim band across the bottom of the cover naming the Timeline event the issue belongs to; the
-// event where it matters most comes first (backend/eventMarkers.js). "+N" reveals the others.
-// Hover shows the issue's role in the event; a click opens the event at this issue
-// (EventDetail ?book=). claude/SERIES_READING_ORDER.md: event markers.
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { EVENT_TIERS } from './eventTiers';
 import '../eventStrip.css';
 
-const ROLE = { essential: 'essential', recommended: 'recommended', 'tie-in': 'tie-in', aftermath: 'aftermath' };
-
-export default function EventStrip({ bookId, events, hidden = false }) {
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  if (hidden || !Array.isArray(events) || !events.length) return null;
-  const shown = open ? events : events.slice(0, 1);
-  const role = e => (ROLE[e.tier] ? ` · ${ROLE[e.tier]}` : '');
-  const others = events.slice(1).map(e => e.name).join(', ');
+function EventCaption({ to, tier, title, children }) {
+  const color = EVENT_TIERS[tier]?.color;
   return (
-    <div className={`issue-event-strip${open ? ' is-open' : ''}`} onClick={e => e.stopPropagation()}>
-      {shown.map((e, i) => (
-        <div className="ies-row" key={e.id}>
-          <button type="button" className="ies-link" title={`${e.name}${role(e)} — open in the Timeline`}
-            onClick={() => navigate(`/events/${encodeURIComponent(e.id)}?book=${encodeURIComponent(bookId)}`)}>
-            <span className="ies-mark" aria-hidden="true">◆</span>
-            <span className="ies-name">{e.name}</span>
-          </button>
-          {i === 0 && events.length > 1 && (
-            <button type="button" className="ies-more" aria-expanded={open}
-              title={open ? 'Show one event' : `Also in ${others}`}
-              aria-label={open ? 'Show one event' : `Also in ${others}`}
-              onClick={() => setOpen(o => !o)}>
-              {open ? '−' : `+${events.length - 1}`}
-            </button>
-          )}
+    <Link to={to} className="comic-caption event-caption" title={title} aria-label={title}
+      style={color ? { '--event-accent': color } : undefined}>
+      <span className="event-caption-text">{children}</span>
+      <span aria-hidden="true">→</span>
+    </Link>
+  );
+}
+
+export function EventHomeCaptions({ events }) {
+  if (!events?.length) return null;
+  return (
+    <nav className="event-home-captions" aria-label="Event reading orders">
+      {events.map(event => {
+        const tier = EVENT_TIERS[event.tier]?.label;
+        return (
+          <EventCaption key={event.id} to={'/events/' + encodeURIComponent(event.id)} tier={event.tier}
+            title={`View the full ${event.name} event reading order with tie-ins${tier ? ' · ' + tier : ''}`}>
+            {tier && tier + ' · '}{events.length > 1 && event.name + ' · '}Full event reading order
+          </EventCaption>
+        );
+      })}
+    </nav>
+  );
+}
+
+export default function EventStrip({ bookId, events, current, hidden, homeEvents }) {
+  const [open, setOpen] = useState(false);
+  const visible = hidden ? [] : (events || []).filter(event => !homeEvents?.some(home => home.id === event.id));
+  if (!visible.length && !current) return null;
+  const caption = event => {
+    const title = [event.name, EVENT_TIERS[event.eventTier]?.label, event.tier, 'Open at this issue'].filter(Boolean).join(' · ');
+    return <EventCaption key={event.id} tier={event.eventTier} title={title}
+      to={`/events/${encodeURIComponent(event.id)}?book=${encodeURIComponent(bookId)}`}>{event.name}</EventCaption>;
+  };
+  return (
+    <div className="issue-tagrow series-event-tags">
+      {visible.length > 0 && (
+        <div className="event-caption-group">
+          {caption(visible[0])}
+          {visible.length > 1 && <button type="button" className="event-caption-more"
+            aria-expanded={open} aria-label={open ? 'Hide additional events' : 'Also in ' + visible.slice(1).map(e => e.name).join(', ')}
+            onClick={() => setOpen(!open)}>{open ? '−' : '+' + (visible.length - 1)}</button>}
+          {open && visible.length > 1 && <div className="event-caption-others">{visible.slice(1).map(caption)}</div>}
         </div>
-      ))}
+      )}
+      {current && <span className="issue-here">▶ Reading</span>}
     </div>
   );
 }

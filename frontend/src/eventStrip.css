@@ -1,30 +1,19 @@
-/* Timeline event strip on issue covers (components/EventStrip.jsx, 2026-11-19). */
-/* Above the hover overlay so it stays clickable; below the ⋮ menu (z-index 40) and the progress bar sits on its bottom edge. */
-.issue-event-strip {
-  position: absolute; left: 0; right: 0; bottom: 0; z-index: 4;
-  display: flex; flex-direction: column-reverse;
-  background: rgba(0, 0, 0, 0.82);
-  border-top: 1px solid color-mix(in srgb, var(--td-yellow) 55%, transparent);
-  padding: 2px 0 3px;
+/* Timeline links on the series shelves share the event page's comic caption. */
+.event-home-captions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.event-caption {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%;
+  color: #17130e; background: #fff3da; text-decoration: none;
+  box-shadow: inset 4px 0 var(--event-accent, transparent);
 }
-.ies-row { display: flex; align-items: center; min-width: 0; }
-.ies-link {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 4px;
-  padding: 1px 5px; background: none; border: 0; cursor: pointer; text-align: left;
-  font: 700 0.64rem/1.25 'DM Sans', system-ui, sans-serif; letter-spacing: 0.01em;
-  color: var(--td-yellow);
+.event-caption-text { overflow: hidden; text-overflow: ellipsis; }
+.event-home-captions .event-caption { white-space: normal; padding-right: 16px; }
+.event-caption:hover, .event-caption:focus-visible { text-decoration: underline; }
+.event-caption:focus-visible { background: white; outline: 2px solid currentColor; outline-offset: -4px; }
+.series-event-tags .issue-here { margin-left: auto; flex: none; }
+.event-caption-group { display: flex; align-items: center; min-width: 0; max-width: 100%; gap: 2px; position: relative; }
+.event-caption-more { flex: none; border: 1px solid currentColor; background: var(--bg-surface); color: var(--text-primary); cursor: pointer; }
+.event-caption-others {
+  position: absolute; left: 0; top: 100%; z-index: 6; padding: 4px; width: max-content; max-width: 100%;
+  display: grid; gap: 3px; background: var(--bg-surface);
 }
-.ies-link:hover .ies-name, .ies-link:focus-visible .ies-name { text-decoration: underline; }
-.ies-link:focus-visible, .ies-more:focus-visible { outline: 2px solid var(--td-yellow); outline-offset: -2px; }
-.ies-mark { flex: none; font-size: 0.6rem; }
-.ies-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ies-more {
-  flex: none; margin-right: 4px; padding: 0 5px; cursor: pointer;
-  font: 800 0.6rem/1.4 'DM Sans', system-ui, sans-serif; color: #000;
-  background: var(--td-yellow); border: 0; border-radius: 3px;
-}
-/* The issue ⋮ sits bottom-right on the cover: lift it above the strip. */
-.issue-cover.has-event-strip .scm-toggle.scm-toggle--issue { bottom: 24px; }
-.issue-cover.has-event-strip .issue-event-strip.is-open ~ .scm-toggle.scm-toggle--issue { bottom: 40px; }
-/* The reading-progress bar stays visible on the strip's bottom edge. */
-.issue-cover.has-event-strip .issue-progress-bar { z-index: 5; }
+.issue-book:has(.event-caption-others) { z-index: 12; }
