@@ -75,6 +75,23 @@ function create(lib, over = {}) {
 }
 const names = list => list.map(x => `${x.series_name} #${x.issue_number}${x.owned ? '' : ' (missing)'}`);
 
+test('first grid after restart resolves a saved Matriarch placeholder by its published issue', () => {
+  const lib = library(), { db } = lib;
+  C.schema(db);
+  db.exec(`CREATE TABLE book_ci_index (book_id TEXT, series_name TEXT, volume_year INTEGER, orig_number TEXT, cv_issue_id TEXT);
+    INSERT INTO scanned_series (id,name,year) VALUES ('ww','Wonder Woman',2023),('annual','Wonder Woman Annual',2026);
+    INSERT INTO scanned_books (id,series_id,issue_number,store_date) VALUES
+      ('ww37','ww','37','2026-09-16'), ('matriarch','annual','1','2026-09-30');
+    INSERT INTO book_ci_index VALUES ('matriarch','Wonder Woman 2026 Annual: Wonder War - The Matriarch Special',2026,'1','1195410');
+    INSERT INTO crossover_links (key,from_book_id,from_series,from_issue,to_series,to_issue,to_year,source,found_at)
+      VALUES ('pending','ww37','Wonder Woman','37','Wonder Woman Annual: Wonder War - The Matriarch','1',2026,'web',0)`);
+  for (let i = 0; i < 2; i++) {
+    const x = create(lib);
+    assert.deepEqual(x.placementFor('ww').map(row => row.bookId), ['matriarch']);
+    assert.equal(x.missingRow(db.prepare("SELECT id FROM crossover_links WHERE key='pending'").get().id), null);
+  }
+});
+
 test('a module without everything it needs refuses to start', () => {
   assert.throws(() => C.createCrossovers({}), /createCrossovers: missing /);
 });
