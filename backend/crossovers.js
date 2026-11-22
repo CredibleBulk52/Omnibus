@@ -167,9 +167,21 @@ function titleLinks(lib, summaryParts = new Map()) {
     }
     for (const run of runs) {
       run.sort((x, y) => (x.part - y.part) || x.b.store_date.localeCompare(y.b.store_date));
+      // A part number two series both have means two stories with one name, not one story across them:
+      // Green Lantern (1990) #83–85 "Retribution, Part 1–3" and The Spectre #52 "Retribution, Part 1" (user,
+      // 2026-11-22), or an event's tie-ins numbered in each series (Fear Itself in New Avengers and Secret
+      // Avengers). Such parts are not linked (32 of 903 title links on the 2026-11-21 database).
+      const holders = new Map();
+      for (const x of run) { const h = holders.get(x.part) || new Set(); h.add(x.b.series_id); holders.set(x.part, h); }
+      const shared = x => holders.get(x.part).size > 1;
       for (let i = 0; i + 1 < run.length; i++) {
         const a = run[i], c = run[i + 1], step = c.part - a.part;
         if (a.b.series_id === c.b.series_id || step < 1 || step > 3 || T.days(a.b.store_date, c.b.store_date) > TITLE_GAP_DAYS) continue;
+        if (shared(a) || shared(c)) continue;
+        // The next part released well before this one: not one story (The Spectre #52 "Part 1" came out eight
+        // weeks after Green Lantern #84 "Part 2"). Up to 30 days is allowed: parts do ship out of order
+        // (Cable #75 Part 1 three weeks after Uncanny X-Men #376 Part 2). On 2026-11-21: 1 of 875 removed.
+        if (Date.parse(c.b.store_date) - Date.parse(a.b.store_date) < -30 * 86400000) continue;
         out.push({ key: `t:${a.b.id}>${c.b.id}`, from: a.b, to: c.b, story: [a.story, c.story].sort((x, y) => x.length - y.length)[0], source: 'title',
           proof: `"${a.story}" part ${a.part} → part ${c.part}` });
       }

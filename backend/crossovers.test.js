@@ -242,6 +242,11 @@ test('story titles link parts in different series: by part number, same publishe
     book('ds34', 'ds', '1995-07-06', 'Strangers in a Strange Land'),
     book('a1', 'a', '2016-06-01', 'Rebirth, Part 1'), book('b1', 'b', '2016-06-08', 'Rebirth, Part 1'),   // two series' own arcs
     book('m2', 'm', '1995-06-29', 'The Siege of the Zi Charam, Part 3', 'Marvel'),               // another publisher
+    // Two stories with one name: Green Lantern #83–84 "Retribution, Part 1–2" and The Spectre #52 "Retribution, Part 1".
+    book('gl83', 'gl', '1997-02-05', 'Retribution, Part 1 of 3'), book('gl84', 'gl', '1997-03-05', 'Retribution, Part 2'),
+    book('sp52', 'sp', '1997-02-12', 'Retribution, Part 1'),
+    // A "next part" released eight weeks before: not one story, even without a shared part number.
+    book('x1', 'x', '1999-03-01', 'Lonely Road, Part 1'), book('y2', 'y', '1999-01-04', 'Lonely Road, Part 2'),
   ] };
   const links = C.titleLinks(lib, new Map([['ds34', T2.summaryParts('The Siege of the Zi Charam part 3 of 5.')]]));
   assert.deepEqual(links.map(l => `${l.from.id}>${l.to.id}`), ['nt124>gl65', 'gl65>ds34']);
