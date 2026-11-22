@@ -911,7 +911,7 @@ export default function ReaderPage() {
           <div style={s.endWrap} data-scroll-own="1" onClick={(e) => e.stopPropagation()}>
             <ComicReaderEndCard completed={completed} headline={headline} issueTitle={issueTitle} solicit={solicit}
               bookId={bookId} seriesName={seriesName} context={ctx} next={next}
-              alternatives={alternatives} endMessage={endMessage}
+              alternatives={alternatives} endMessage={endMessage} crossover={kind === 'series' ? adjacent.crossover : null}
               loading={adjacentLoading} onRead={openIssue} onLastPage={closeEnd}
               onBackContext={() => navigate(backLink)}
               onBackSeries={(kind === 'series' && ctx?.id) || seriesId ? () => navigate(`/series/${(kind === 'series' && ctx?.id) || seriesId}`, { replace: true }) : null}

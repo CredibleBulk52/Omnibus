@@ -1000,6 +1000,23 @@ export default function SeriesDetailComic() {
                     {gapError && <span className="a-err">{gapError}</span>}
                   </div>
                 )}
+                {/* An event's own series shows its core issues only; its Timeline has the full order with
+                    tie-ins and side stories ("Read in event order", 2026-11-21). */}
+                {placement?.homeEvents?.length > 0 && (
+                  <div className="event-home-note" role="note">
+                    <span className="ehn-mark" aria-hidden="true">◆</span>
+                    <span className="ehn-text">
+                      {placement.homeEvents.length === 1
+                        ? <>The core issues of <b>{placement.homeEvents[0].name}</b>{placement.homeEvents[0].year ? ` (${placement.homeEvents[0].year})` : ''}. Its tie-ins and side stories are in the Timeline.</>
+                        : <>The core issues of {placement.homeEvents.length} events. Their tie-ins and side stories are in the Timeline.</>}
+                    </span>
+                    {placement.homeEvents.map(e => (
+                      <button type="button" key={e.id} className="ehn-link" onClick={() => navigate(`/events/${e.id}`)}>
+                        {placement.homeEvents.length > 1 ? `Read ${e.name} in event order →` : 'Read in event order →'}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="issues-bookshelf">
                   <div className="shelf-wall" style={{ padding:'16px 0 0' }}>
                     <div className="issues-books">

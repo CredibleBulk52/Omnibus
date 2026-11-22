@@ -1,5 +1,6 @@
 import { useConfirm } from './Confirm';
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { isAdmin } from '../App';
 import { issueText, uniqueCredits, issueSummary } from './issuePresentation';
 import '../comicIssueDetail.css';
@@ -45,6 +46,29 @@ function DiskLocation({ seriesId, bookId }) {
       </button>
     </div>
   );
+}
+
+// A small crossover this issue is part of (crossovers.js, 2026-11-22): the parts before and after it in
+// other series. An issue not in the library is named without a link. Admins can hide a wrong link.
+function CrossoverNote({ bookId, onClose }) {
+  const [x, setX] = useState(null);
+  const load = React.useCallback(() => {
+    fetch(`/api/books/${encodeURIComponent(bookId)}/crossovers`).then(r => (r.ok ? r.json() : null)).then(setX).catch(() => {});
+  }, [bookId]);
+  useEffect(() => { load(); }, [load]);
+  if (!x || !(x.continuedFrom?.length || x.continuesIn?.length)) return null;
+  const story = [...x.continuedFrom, ...x.continuesIn].find(p => p.story)?.story;
+  const hide = async p => {
+    await fetch('/api/admin/crossovers/hide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: p.linkIds }) }).catch(() => {});
+    load();
+  };
+  const line = (word, p) => {
+    const name = `${p.series_name}${p.issue_number != null && p.issue_number !== '' ? ` #${p.issue_number}` : ''}`;
+    return <li key={`${word}${p.id || name}`}>{word} {p.owned && p.id ? <Link to={`/read/${p.id}`} onClick={onClose}>{name}</Link> : <><b>{name}</b> <small>(not in your library yet)</small></>}
+      {isAdmin() && <button type="button" className="cid-crossover-hide" title="Not part of this story: hide this link" onClick={() => hide(p)}>✕</button>}</li>;
+  };
+  return <section className="cid-crossover"><h3>Crossover{story ? <>: <span>{story}</span></> : null}</h3>
+    <ul>{x.continuedFrom.map(p => line('Continued from', p))}{x.continuesIn.map(p => line('Continues in', p))}</ul></section>;
 }
 
 export default function ComicIssueDetail({ book, seriesTitle, onClose, onRead, onToggleSpecial, onAddToList, onTagged, onDeleted, deletionNote }) {
@@ -169,6 +193,7 @@ export default function ComicIssueDetail({ book, seriesTitle, onClose, onRead, o
           <h2 id="cid-title">{storyTitle}</h2>
           <dl className="cid-facts">{[['Released',releasedOn(ci.storeDate)],['Publisher',ci.publisher],['Year',ci.year],['Pages',ci.pageCount]].filter(([,v]) => v).map(([label,value]) => <div key={label}><dt>{label}</dt><dd>{issueText(value)}</dd></div>)}</dl>
           {summary.story && <section className="cid-story"><h3>The story</h3><p>{summary.story}</p></section>}
+          <CrossoverNote bookId={book.id} onClose={onClose} />
           {credits.length > 0 && <section className="cid-credits"><h3>Credits</h3><dl>{credits.map(([role,value]) => <div key={role}><dt>{role}</dt><dd>{value}</dd></div>)}</dl></section>}
           {ci.genre && <p className="cid-genre">{issueText(ci.genre)}</p>}
           {ci.characters && <details className="cid-extra"><summary>Characters</summary><p>{uniqueCredits(ci.characters)}</p></details>}

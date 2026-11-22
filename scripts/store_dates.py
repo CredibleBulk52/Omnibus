@@ -2094,6 +2094,100 @@ def cmd_damage_check(args):
             f"{os.path.basename(path)}: no rewrite recorded | " + ("no damaged pages in Python" if not bad else "; ".join(bad[:4])))
 
 
+LINK_RX = re.compile(r"\b(continued|continues|concluded|concludes|continuing|picks up|leads? into|crosses over|crossover|"
+                     r"part (?:one|two|three|four|five|six|\d+))\b[^.#]{0,80}?\b(?:in|from|into|with)\s+(?:the\s+)?(?:pages of\s+)?"
+                     r"([A-Z][A-Za-z0-9:'&\.\-/ ]{2,60}?)\s*(?:\((?:vol\.? ?\d+|\d{4})[^)]*\))?\s*#\s?(\d+)")
+
+
+def summary_links(db):
+    """(book, linked book) pairs where a book's ComicInfo summary says it continues in / from an issue of
+    another series that is in the library (the crossover test set for arc-probe)."""
+    import html as _html
+    books = db.execute("""SELECT b.id, b.series_id, s.name, b.issue_number, b.comicinfo, b.store_date, b.cv_issue_id
+        FROM scanned_books b JOIN scanned_series s ON s.id = b.series_id""").fetchall()
+    idx = {}
+    for b in books:
+        ci_series = re.search(r"<Series>([^<]*)</Series>", b["comicinfo"] or "")
+        for nm in {b["name"], ci_series.group(1) if ci_series else ""}:
+            nm = re.sub(r"\s*\(\d{4}.*?\)$", "", nm or "")
+            if nm:
+                idx.setdefault((norm_name(nm), (b["issue_number"] or "").lstrip("0") or "0"), []).append(b)
+    out = []
+    for b in books:
+        m = re.search(r"<Summary>(.*?)</Summary>", b["comicinfo"] or "", re.S)
+        text = _html.unescape(m.group(1)) if m else ""
+        for h in LINK_RX.finditer(text):
+            name = re.sub(r"^(the|issue of)\s+", "", h.group(2).strip(), flags=re.I)
+            cands = [t for t in idx.get((norm_name(name), h.group(3).lstrip("0") or "0"), []) if t["series_id"] != b["series_id"]]
+            if cands:
+                t = min(cands, key=lambda t: abs((datetime.fromisoformat(t["store_date"]) - datetime.fromisoformat(b["store_date"])).days)
+                        if t["store_date"] and b["store_date"] else 99999)
+                out.append((b, t, h.group(0)[:80]))
+    return out
+
+
+def cmd_arc_probe(args):
+    """Read-only (2026-11-21): do Comic Vine's and Metron's story arcs connect known crossovers? Test set:
+    pairs whose summary says "continued in/from <series> #N" (a random sample), plus the pairs given with
+    --pair CV_ID:CV_ID (Absolute Wonder Woman #15 / Absolute Batman #16 by default). For each pair: the
+    arcs each source lists for both issues, and whether they share one. Metron requests are capped."""
+    db = app_db()
+    pairs = []
+    for p in (args.pair or ["1149795:1154054", "42642:66796"]):
+        a, b = p.split(":")
+        ra = db.execute("SELECT b.*, s.name FROM scanned_books b JOIN scanned_series s ON s.id = b.series_id WHERE cv_issue_id = ?", (a,)).fetchone()
+        rb = db.execute("SELECT b.*, s.name FROM scanned_books b JOIN scanned_series s ON s.id = b.series_id WHERE cv_issue_id = ?", (b,)).fetchone()
+        if ra and rb:
+            pairs.append((ra, rb, "given"))
+    links = [l for l in summary_links(db) if l[0]["cv_issue_id"] and l[1]["cv_issue_id"]]
+    import random
+    random.seed(args.seed)
+    pairs += random.sample(links, min(args.sample, len(links)))
+    log(f"{len(links)} summary links in the library; probing {len(pairs)} pairs")
+    cv_key, metron_token = load_keys()
+    mod = load_enricher()
+    metron = mod.MetronClient(metron_token) if metron_token and not args.no_metron else None
+    cv = mod.ComicVineClient(cv_key, metron) if cv_key else None
+    budget = {"metron": args.metron_max}
+    cache = {}
+
+    def arcs(cv_id):
+        if cv_id in cache:
+            return cache[cv_id]
+        got = {"cv": None, "metron": None}
+        if cv:
+            r = cv._request(f"issue/4000-{cv_id}/", {"field_list": "id,story_arc_credits"})
+            got["cv"] = [a.get("name") for a in (r or {}).get("story_arc_credits") or []] if r is not None else None
+        if metron and budget["metron"] >= 2:
+            budget["metron"] -= 1
+            found = metron._get("issue/", {"cv_id": cv_id})
+            hit = ((found or {}).get("results") or [None])[0]
+            if hit and hit.get("id"):
+                budget["metron"] -= 1
+                d = metron._get(f"issue/{hit['id']}/")
+                got["metron"] = [a.get("name") for a in (d or {}).get("arcs") or []] if d is not None else None
+            elif found is not None:
+                got["metron"] = "not on Metron"
+        cache[cv_id] = got
+        return got
+
+    tally = {"cv": [0, 0], "metron": [0, 0]}
+    for a, b, why in pairs:
+        x, y = arcs(str(a["cv_issue_id"])), arcs(str(b["cv_issue_id"]))
+        line = []
+        for src in ("cv", "metron"):
+            xa, ya = x[src], y[src]
+            if isinstance(xa, list) and isinstance(ya, list):
+                shared = sorted(set(xa) & set(ya))
+                tally[src][1] += 1
+                tally[src][0] += 1 if shared else 0
+                line.append(f"{src}: {'SHARED ' + '; '.join(shared) if shared else 'no shared arc'} ({len(xa)}/{len(ya)} arcs)")
+            else:
+                line.append(f"{src}: {xa if isinstance(xa, str) else ya if isinstance(ya, str) else 'no answer'}")
+        log(f"{a['name']} #{a['issue_number']} -> {b['name']} #{b['issue_number']} [{why if why == 'given' else 'summary'}] | " + " | ".join(line))
+    log("Result: " + ", ".join(f"{k} shared arc in {v[0]} of {v[1]} pairs answered" for k, v in tally.items()))
+
+
 def cmd_check_endings(args):
     """Read-only (2026-11-21): every file `write` edited, at its current path, must open in Python's zip
     reader with one end record (no earlier index left), give 7-Zip no warnings, and its ComicInfo.xml must
@@ -2250,6 +2344,12 @@ def main():
     fe.add_argument("--match", action="append", help="only books whose path contains this text (repeatable)")
     dc = sub.add_parser("damage-check")
     dc.add_argument("--match", action="append", required=True, help="books whose path contains this text (repeatable)")
+    ap = sub.add_parser("arc-probe")
+    ap.add_argument("--pair", action="append", help="CV_ID:CV_ID of a known crossover (default: Absolute Wonder Woman #15 / Absolute Batman #16 and Green Lantern #76 / Green Arrow #110)")
+    ap.add_argument("--sample", type=int, default=25, help="random pairs from summary links")
+    ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--metron-max", type=int, default=80, help="most Metron requests this run (Metron allows 20 a minute)")
+    ap.add_argument("--no-metron", action="store_true")
     rc = sub.add_parser("retag-check")
     rc.add_argument("--match", action="append", help="only books whose path contains this text (repeatable)")
     rc.add_argument("--orphans", action="store_true", help="books whose old ComicInfo.xml was left in the file")
@@ -2289,7 +2389,7 @@ def main():
     wt.add_argument("--wiki-name", help="the series name on the wiki when it differs from Omnibus's")
     wt.add_argument("--rendered", type=int, default=30, help="DC: pages whose 'published on' sentence is read (one request each)")
     args = p.parse_args()
-    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe, "sync-db": cmd_sync_db, "skipped": cmd_skipped, "fix-dates": cmd_fix_monitored, "fix-endings": cmd_fix_endings, "fix-orphans": cmd_fix_orphans, "retag-check": cmd_retag_check, "damage-check": cmd_damage_check, "check-endings": cmd_check_endings, "fix-monitored": cmd_fix_monitored, "unmark-scan": cmd_unmark_scan, "scan-check": cmd_scan_check, "wiki-probe": cmd_wiki_probe, "wiki-trial": cmd_wiki_trial, "collect-wiki": cmd_collect_wiki, "collect-gcd": cmd_collect_gcd}[args.cmd](args)
+    {"collect": cmd_collect, "report": cmd_report, "write": cmd_write, "probe": cmd_probe, "sync-db": cmd_sync_db, "skipped": cmd_skipped, "fix-dates": cmd_fix_monitored, "fix-endings": cmd_fix_endings, "fix-orphans": cmd_fix_orphans, "retag-check": cmd_retag_check, "damage-check": cmd_damage_check, "arc-probe": cmd_arc_probe, "check-endings": cmd_check_endings, "fix-monitored": cmd_fix_monitored, "unmark-scan": cmd_unmark_scan, "scan-check": cmd_scan_check, "wiki-probe": cmd_wiki_probe, "wiki-trial": cmd_wiki_trial, "collect-wiki": cmd_collect_wiki, "collect-gcd": cmd_collect_gcd}[args.cmd](args)
 
 
 if __name__ == "__main__":

@@ -159,14 +159,18 @@ function createSeriesPlacement({ db, members = () => [] }) {
   // An event's own series: the home of a saved event with at least half of its issues in the events it
   // homes (2026-11-21: Convergence, Secret Wars, House of M 89%; an ongoing that hosts an event —
   // Green Lantern (1990) and Circle of Fire, The Amazing Spider-Man and Spider-Island — has at most 42%).
-  function isEventHome(seriesId, regular) {
+  // Returns those events ([{ id, name, year, tier }], by year) or [] — the Issues page links to them
+  // ("Read in event order", 2026-11-21).
+  function eventHomeOf(seriesId, regular) {
     try {
-      const evs = all('SELECT id FROM events WHERE home_series_id = ? AND COALESCE(draft, 0) = 0', seriesId).map(e => e.id);
-      if (!evs.length || !regular.length) return false;
+      const evs = all('SELECT * FROM events WHERE home_series_id = ? AND COALESCE(draft, 0) = 0', seriesId);
+      if (!evs.length || !regular.length) return [];
       const inEvent = new Set(all(`SELECT scanned_book_id AS b FROM event_issues WHERE scanned_book_id IS NOT NULL
-        AND event_id IN (${evs.map(() => '?').join(',')})`, ...evs).map(r => r.b));
-      return regular.filter(r => inEvent.has(r.id)).length * 2 >= regular.length;
-    } catch { return false; }
+        AND event_id IN (${evs.map(() => '?').join(',')})`, ...evs.map(e => e.id)).map(r => r.b));
+      if (regular.filter(r => inEvent.has(r.id)).length * 2 < regular.length) return [];
+      return evs.map(e => ({ id: e.id, name: e.name, year: e.year || null, tier: e.event_tier ?? null }))
+        .sort((a, b) => (a.year || 0) - (b.year || 0) || String(a.name).localeCompare(String(b.name)));
+    } catch { return []; }
   }
 
   // The automatic position of one extra: { after: index of the regular issue it follows (-1 = before the
@@ -220,7 +224,8 @@ function createSeriesPlacement({ db, members = () => [] }) {
     const weeks = regular.map(r => weekOf(r.store_date));
     const timeline = timelineOf([...regular, ...extras.map(x => x.book)].map(b => b.id));
     const pins = new Map(all('SELECT * FROM series_placement_pins WHERE series_id = ?', seriesId).map(p => [p.book_id, p]));
-    const eventHome = isEventHome(seriesId, regular);
+    const homeEvents = eventHomeOf(seriesId, regular);
+    const eventHome = homeEvents.length > 0;
     const parentNames = [series.name, tag(regular[0]?.comicinfo, 'Series')].filter(Boolean);
     const runNumbers = new Set(regular.map(r => num(r.issue_number)).filter(v => v != null));
     const placed = [], shelf = [];
@@ -263,7 +268,7 @@ function createSeriesPlacement({ db, members = () => [] }) {
       idx.forEach((i, k) => { placed[i] = items[k]; });
     }
     placed.forEach(p => { delete p.sortKey; });
-    return { seriesId, eventHome, regular: regular.map(r => ({ id: r.id, number: r.issue_number })), placed, shelf,
+    return { seriesId, eventHome, homeEvents, regular: regular.map(r => ({ id: r.id, number: r.issue_number })), placed, shelf,
       pins: Object.fromEntries([...pins.values()].map(p => [p.book_id, { mode: p.mode, anchorBookId: p.anchor_book_id || null }])) };
   }
 

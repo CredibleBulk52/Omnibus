@@ -74,10 +74,11 @@
 @container (min-width: 520px){
   /* The panel and the callout share one grid cell: the panel grows to fit a long event name.
      (The grid is .next-grid: a container query cannot style the container itself.) */
-  .comic-reader-finale .next-row.has-event > .next-grid{display:grid}
-  .comic-reader-finale .next-row.has-event .next-grid > .next-panel{grid-area:1/1;padding-right:200px}
+  .comic-reader-finale .next-row.has-side > .next-grid{display:grid}
+  .comic-reader-finale .next-row.has-side .next-grid > .next-panel{grid-area:1/1;padding-right:200px}
   .comic-reader-finale .next-row.has-event .next-panel span.next-event.next-event:not(.read-action){display:none}
-  .comic-reader-finale .next-row.has-event .next-grid > .next-event-side{grid-area:1/1;justify-self:end;align-self:center;position:relative;z-index:1;
+  .comic-reader-finale .next-row.has-crossover > .crossover-alt{display:none}
+  .comic-reader-finale .next-row.has-side .next-grid > .next-event-side{grid-area:1/1;justify-self:end;align-self:center;position:relative;z-index:1;
     display:flex;flex-direction:column;gap:5px;width:172px;margin:68px 18px 20px 0;padding:2px 0 2px 13px;border-left:3px solid var(--highlight);pointer-events:none}
 }
 .comic-reader-finale .next-event-side .nes-cap{white-space:nowrap;font:13px 'Boogaloo',sans-serif;letter-spacing:.1em;text-transform:uppercase;color:color-mix(in srgb, var(--om-text) 78%, var(--om-base))}
@@ -90,3 +91,10 @@
 .comic-reader-finale .next-event-side .nes-link{pointer-events:auto;align-self:start;white-space:nowrap;margin-top:8px;padding:4px 11px;background:color-mix(in srgb, var(--om-base) 80%, black);
   border:2px solid var(--highlight);box-shadow:3px 3px 0 #000;color:var(--highlight);font:15px 'Bangers',cursive;letter-spacing:.06em;text-transform:uppercase;transform:skew(-3deg)}
 .comic-reader-finale .next-event-side .nes-link:hover{background:var(--highlight);color:#000}
+/* A small crossover's next part (series reading, 2026-11-22): the callout above on wide cards, a detour row
+   under the panel on narrow ones (and after "last issue" when the series has no next issue). */
+.comic-reader-finale .next-crossover-side .nes-continues{font:14px 'Comic Neue',sans-serif;color:color-mix(in srgb, var(--om-text) 85%, var(--om-base))}
+.comic-reader-finale .next-crossover-side .nes-missing{margin-top:8px;font:italic 13px 'Comic Neue',sans-serif;color:color-mix(in srgb, var(--om-text) 70%, var(--om-base))}
+.comic-reader-finale .crossover-alt{margin-top:12px}
+.comic-reader-finale .route-missing{cursor:default}
+.comic-reader-finale .route-missing small{font:italic 400 13px 'Comic Neue',sans-serif;color:color-mix(in srgb, var(--om-text) 70%, var(--om-base))}

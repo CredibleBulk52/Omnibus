@@ -92,3 +92,33 @@ test('series reading: the event callout names the event, year and role, and open
   await render({ context: { kind: 'series', id: 'gl', name: 'Green Lantern' }, next, onRead });
   expect(container.querySelector('.nes-link')).toBeNull();      // no handler: no link
 });
+
+test('series reading: a crossover takes the right side over the event, reads its issue, and names a missing one', async () => {
+  const next = { id: 'gl41', series_name: 'Green Lantern', issue_number: 41, events: [{ id: 'zh', name: 'Zero Hour', year: 1994, tier: 'tie-in' }] };
+  const crossover = { id: 'glc22', series_name: 'Green Lantern Corps', issue_number: 22, story: 'First Light', owned: true };
+  const onRead = vi.fn(), onEvent = vi.fn();
+  await render({ context: { kind: 'series', id: 'gl', name: 'Green Lantern' }, next, crossover, onRead, onEvent });
+  const row = container.querySelector('.next-row.has-side.has-crossover');
+  expect(row.classList.contains('has-event')).toBe(false);          // the event shows as the panel's strip instead
+  const side = row.querySelector('.next-crossover-side');
+  expect(side.textContent).toContain('Story continues in');
+  expect(side.textContent).toContain('Green Lantern Corps #22');
+  expect(side.textContent).toContain('First Light');
+  expect(row.querySelector('.next-panel .next-event').textContent).toContain('Part of Zero Hour');
+  click(side.querySelector('.nes-link'));
+  expect(onRead).toHaveBeenCalledWith(crossover);
+  click(row.querySelector('.crossover-alt .route'));                 // the narrow cards' row
+  expect(onRead).toHaveBeenLastCalledWith(crossover);
+  await render({ context: { kind: 'series', id: 'gl', name: 'Green Lantern' }, next, crossover: { ...crossover, id: null, owned: false }, onRead });
+  expect(container.querySelector('.nes-link')).toBeNull();
+  expect(container.querySelector('.nes-missing').textContent).toBe('Not in your library yet');
+  expect(container.querySelector('.crossover-alt button')).toBeNull();
+  // The last issue of the series: the crossover is still offered.
+  await render({ context: { kind: 'series', id: 'gl', name: 'Green Lantern' }, next: null, crossover, onRead });
+  expect(container.querySelector('.end-none')).not.toBeNull();
+  click(container.querySelector('.crossover-alt .route'));
+  expect(onRead).toHaveBeenLastCalledWith(crossover);
+  // Event reading follows the event's path: no crossover.
+  await render({ context: { kind: 'event', id: 'zh', name: 'Zero Hour' }, next, crossover, onRead, onBackContext: () => {} });
+  expect(container.querySelector('.crossover-alt')).toBeNull();
+});

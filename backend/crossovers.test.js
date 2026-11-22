@@ -1,0 +1,190 @@
+'use strict';
+// Crossover links (crossovers.js, crossoverText.js; claude/CROSSOVERS.md).
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const Database = require('better-sqlite3');
+const T = require('./crossoverText');
+const C = require('./crossovers');
+
+const mentions = s => T.summaryMentions(`<Summary>${s}</Summary>`).map(m => `${m.tail || m.series} #${m.issue}`);
+
+test('summary phrases that name the next or previous part', () => {
+  assert.deepEqual(mentions('Part 6 continues in Detective Comics #661.'), ['Detective Comics #661']);
+  assert.deepEqual(mentions('part 3, continued from VALOR #22'), ['VALOR #22']);
+  assert.deepEqual(mentions('Continued in DETECTIVE COMICS (1937-2011) #735'), ['DETECTIVE COMICS #735']);
+  assert.deepEqual(mentions('Continued from: Adventures of Superman #537'), ['Adventures of Superman #537']);
+  assert.deepEqual(mentions('Continues in this month&amp;#8217;s JUSTICE LEAGUE UNITED: FUTURES END #1'), ['JUSTICE LEAGUE UNITED: FUTURES END #1']);
+  assert.deepEqual(mentions("Continuing the story that started in December's HAWKGIRL #59"), ['HAWKGIRL #59']);
+  assert.deepEqual(mentions("continues from Aquaman's series in Adventure Comics #478"), ['Adventure Comics #478']);
+  assert.deepEqual(mentions("Don't miss the conclusion in Batman #5!"), ['Batman #5']);
+});
+
+test('summary phrases that are not a story continuing', () => {
+  assert.deepEqual(mentions("don't miss a free preview of this title in August's JACK OF FABLES #37"), []);
+  assert.deepEqual(mentions('continues from the previews issue, Firefly #20'), []);   // the name must start with a capital
+  assert.deepEqual(mentions('Batman fights the Joker in Gotham. Superman #4 is out now.'), []);
+});
+
+test('a page names an issue in the usual ways, and not a different number', () => {
+  const p = { series: 'Green Lantern Corps', issue: '22' };
+  assert.ok(T.namedOnPage('Read Green Lantern Corps #22 next', p));
+  assert.ok(T.namedOnPage('Green Lantern Corps (2025) #22', p));
+  assert.ok(T.namedOnPage('Green_Lantern_Corps_Vol_5_22', p));
+  assert.ok(!T.namedOnPage('Green Lantern Corps #220', p));
+  assert.ok(!T.namedOnPage('Green Lantern #22', p));
+});
+
+test('proven links: one page must name both neighbouring parts; same-series neighbours are not links', () => {
+  const stories = [{ name: 'First Light', parts: [
+    { series: 'Green Lantern', issue: '40' }, { series: 'Green Lantern Corps', issue: '21' }, { series: 'Green Lantern Corps', issue: '22' }] }];
+  // Page A names GL #40 and Corps #22 (the wrongly added #21 does not hide the link); page B names only one.
+  const links = C.provenLinks(stories, [{ url: 'a', text: 'Green Lantern #40 then Green Lantern Corps #22' }, { url: 'b', text: 'Green Lantern Corps #21' }]);
+  assert.deepEqual(links.map(l => `${l.from.series} #${l.from.issue} > ${l.to.series} #${l.to.issue} @${l.page}`), ['Green Lantern #40 > Green Lantern Corps #22 @a']);
+  assert.deepEqual(C.provenLinks(stories, [{ url: 'x', text: 'Green Lantern #40' }, { url: 'y', text: 'Green Lantern Corps #22' }]), []);
+});
+
+// ── A small library ───────────────────────────────────────────────────
+function library() {
+  const db = new Database(':memory:');
+  db.exec(`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+    CREATE TABLE scanned_series (id TEXT PRIMARY KEY, name TEXT, year INTEGER);
+    CREATE TABLE scanned_books (id TEXT PRIMARY KEY, series_id TEXT, issue_number TEXT, comicinfo TEXT, store_date TEXT, cv_issue_id TEXT, is_special INTEGER DEFAULT 0);
+    CREATE TABLE events (id TEXT PRIMARY KEY, name TEXT, draft INTEGER DEFAULT 0);
+    CREATE TABLE event_issues (id INTEGER PRIMARY KEY, event_id TEXT, scanned_book_id TEXT, series_name TEXT, issue_number TEXT);`);
+  const series = (id, name, year) => db.prepare('INSERT INTO scanned_series VALUES (?,?,?)').run(id, name, year);
+  const book = (id, sid, n, date, { ci = null, summary = '' } = {}) => db.prepare('INSERT INTO scanned_books (id, series_id, issue_number, comicinfo, store_date, cv_issue_id) VALUES (?,?,?,?,?,?)')
+    .run(id, sid, n, `<ComicInfo>${ci ? `<Series>${ci}</Series>` : ''}<Summary>${summary}</Summary></ComicInfo>`, date, `cv-${id}`);
+  series('gl', 'Green Lantern', 2023); series('glc', 'Green Lantern Corps', 2025); series('bat', 'Batman', 2025);
+  series('cw', 'Absolute Catwoman', 2026); series('cc', "Absolute Cassandra Cain: The Shadow's Hand", 2026); series('sup', 'Superman', 1987); series('act', 'Action Comics', 1938);
+  book('gl40', 'gl', '40', '2026-10-28'); book('glc22', 'glc', '22', '2026-11-11');
+  book('bat1', 'bat', '1', '2025-09-03');
+  book('sunset', 'bat', '1', '2026-08-26', { ci: 'Batman: Bad Seeds - Sunset' });   // a one-shot on the Batman shelf
+  book('cw1', 'cw', '1', '2026-06-10'); book('cw3', 'cw', '3', '2026-08-26'); book('cw4', 'cw', '4', '2026-11-04'); book('cc1', 'cc', '1', '2026-09-16');
+  book('sup50', 'sup', '50', '1990-12-04', { summary: 'Part 2 continues in Action Comics #660.' });
+  book('act660', 'act', '660', '1990-12-18', { summary: 'Continued from Superman #50.' });
+  book('act1', 'act', '1', '1938-04-18', { summary: 'Continued in Superman #50' });   // decades apart: no link
+  const settings = new Map();
+  const app = { routes: {}, get(p, ...f) { this.routes[`GET ${p}`] = f.at(-1); }, post(p, ...f) { this.routes[`POST ${p}`] = f.at(-1); } };
+  return { db, app, settings };
+}
+const quiet = { info() {}, warn() {}, error() {} };
+function create(lib, over = {}) {
+  return C.createCrossovers({ app: lib.app, db: lib.db, ai: {}, webLookup: {}, readPage: async () => ({}), axios: {}, cron: { schedule() {} },
+    getSetting: k => lib.settings.get(k) ?? null, setSetting: (k, v) => lib.settings.set(k, v), logger: quiet, requireAuth: () => {}, requireAdmin: () => {},
+    sequence: () => [], modelCatalog: { estimateCost: () => 0.0004 }, ...over });
+}
+const names = list => list.map(x => `${x.series_name} #${x.issue_number}${x.owned ? '' : ' (missing)'}`);
+
+test('a module without everything it needs refuses to start', () => {
+  assert.throws(() => C.createCrossovers({}), /createCrossovers: missing /);
+});
+
+test('summary links: both ways, ordered by release date; not across decades', () => {
+  const lib = library(), x = create(lib);
+  const r = x.refreshFree();
+  assert.equal(r.summary, 1);   // Superman #50 ⇄ Action #660 stated twice, stored once
+  assert.deepEqual(names(x.forBook('sup50').continuesIn), ['Action Comics #660']);
+  assert.deepEqual(names(x.forBook('act660').continuedFrom), ['Superman #50']);
+  assert.deepEqual(x.forBook('act1'), { continuesIn: [], continuedFrom: [] });
+});
+
+test('a named issue is matched by the book\'s own series name, not the shelf it sits on', () => {
+  const lib = library();
+  create(lib);
+  const L = C.loadLibrary(lib.db);
+  const row = C.linkRow(L, { story: 'Bad Seeds', from: { series: 'Poison Ivy', issue: '48' }, to: { series: 'Batman', issue: '1' }, page: 'p' }, '2026-09-30');
+  assert.equal(row, null);   // Batman (2025) #1 is a year earlier; the one-shot is "Batman: Bad Seeds - Sunset"
+  const row2 = C.linkRow(L, { story: 'Bad Seeds', from: { series: 'Batman: Bad Seeds - Sunset', issue: '1' }, to: { series: 'Batman', issue: '13' }, page: 'p' }, '2026-08-26');
+  assert.equal(row2.from.id, 'sunset');
+  assert.equal(row2.to, null);
+  assert.equal(row2.toName.series, 'Batman');
+});
+
+function addWeb(x, lib, links) {
+  const L = C.loadLibrary(lib.db);
+  const ins = lib.db.prepare(`INSERT INTO crossover_links (key, from_book_id, from_series, from_issue, to_book_id, to_series, to_issue, story, source, proof, found_at)
+    VALUES (?,?,?,?,?,?,?,?,'web','p',0)`);
+  for (const [a, b, story, anchor] of links) {
+    const r = C.linkRow(L, { story, from: a, to: b, page: 'p' }, anchor);
+    assert.ok(r, `${a.series} #${a.issue} > ${b.series} #${b.issue}`);
+    ins.run(r.key, r.from?.id || null, r.from ? r.from.series : r.fromName.series, r.from ? r.from.issue_number : r.fromName.issue,
+      r.to?.id || null, r.to ? r.to.series : r.toName.series, r.to ? r.to.issue_number : r.toName.issue, story);
+  }
+}
+
+test('each issue keeps its nearest link: a collection page\'s Catwoman #1 → Cassandra Cain #1 is not shown', () => {
+  const lib = library(), x = create(lib);
+  const cw = n => ({ series: 'Absolute Catwoman', issue: n }), cc = { series: "Absolute Cassandra Cain: The Shadow's Hand", issue: '1' };
+  addWeb(x, lib, [[cw('1'), cc, 'The Yarn', '2026-09-16'], [cw('3'), cc, 'The Yarn', '2026-09-16'], [cc, cw('4'), 'The Yarn', '2026-09-16']]);
+  assert.deepEqual(names(x.forBook('cc1').continuedFrom), ['Absolute Catwoman #3']);
+  assert.deepEqual(names(x.forBook('cc1').continuesIn), ['Absolute Catwoman #4']);
+  assert.deepEqual(x.forBook('cw1').continuesIn, []);
+  assert.deepEqual(names(x.forBook('cw3').continuesIn), ["Absolute Cassandra Cain: The Shadow's Hand #1"]);
+});
+
+test('not shown: books in the same Timeline event, a missing issue the event lists, books the reading order already joins', () => {
+  const lib = library();
+  let joined = false;
+  const x = create(lib, { sequence: id => (joined && id === 'gl' ? ['gl40', 'glc22'] : []) });
+  addWeb(x, lib, [[{ series: 'Green Lantern', issue: '40' }, { series: 'Green Lantern Corps', issue: '22' }, 'First Light', '2026-10-28'],
+    [{ series: 'Green Lantern Corps', issue: '22' }, { series: 'Green Lantern', issue: '41' }, 'First Light', '2026-11-11']]);
+  assert.deepEqual(names(x.forBook('gl40').continuesIn), ['Green Lantern Corps #22']);
+  assert.deepEqual(names(x.forBook('glc22').continuesIn), ['Green Lantern #41 (missing)']);
+  assert.deepEqual(x.nextFor('gl40').id, 'glc22');
+  joined = true;
+  assert.deepEqual(x.forBook('gl40').continuesIn, []);
+  joined = false;
+  lib.db.exec(`INSERT INTO events VALUES ('e1', 'Green Lantern: First Light', 0);
+    INSERT INTO event_issues (event_id, scanned_book_id, series_name, issue_number) VALUES ('e1', 'gl40', 'Green Lantern', '40'), ('e1', 'glc22', 'Green Lantern Corps', '22')`);
+  assert.deepEqual(x.forBook('gl40').continuesIn, []);
+  assert.deepEqual(x.forBook('glc22').continuesIn, []);   // GL #41 is not owned, but the story is the event's
+  lib.db.exec(`UPDATE events SET draft = 1`);
+  assert.deepEqual(names(x.forBook('gl40').continuesIn), ['Green Lantern Corps #22']);
+});
+
+test('a missing issue gets its book when it arrives; a hidden link stays hidden', () => {
+  const lib = library(), x = create(lib);
+  addWeb(x, lib, [[{ series: 'Green Lantern Corps', issue: '22' }, { series: 'Green Lantern', issue: '41' }, 'First Light', '2026-11-11']]);
+  lib.db.prepare('INSERT INTO scanned_books (id, series_id, issue_number, comicinfo, store_date) VALUES (?,?,?,?,?)').run('gl41', 'gl', '41', '<ComicInfo/>', '2026-11-25');
+  assert.equal(x.refreshFree().resolved, 1);
+  const next = x.nextFor('glc22');
+  assert.equal(next.id, 'gl41');
+  lib.app.routes['POST /api/admin/crossovers/hide']({ body: { ids: next.linkIds } }, { json() {}, status() { return this; } });
+  assert.equal(x.nextFor('glc22'), null);
+});
+
+test('a web check run: asks about new issues only, keeps page-proven links, records each issue and its cost', async () => {
+  const lib = library();
+  const asked = [];
+  const webLookup = { lookup: async q => { asked.push(q); return { grounded: true, cost: 0.0007, notes: 'notes', sources: [{ url: 'https://example.com/first-light' }] }; } };
+  const ai = { complete: async () => ({ model: 'claude-haiku-5-5', usage: {}, text: JSON.stringify({ stories: [{ name: 'First Light', parts: [
+    { series: 'Green Lantern', year: 2023, issue: '40' }, { series: 'Green Lantern Corps', year: 2025, issue: '22' }] }] }) }) };
+  const readPage = async url => ({ url, text: 'Green Lantern #40 leads into Green Lantern Corps #22.' });
+  const x = create(lib, { webLookup, ai, readPage });
+  lib.db.prepare(`UPDATE scanned_books SET store_date = date('now', '-400 days') WHERE id NOT IN ('gl40', 'glc22')`).run();
+  lib.db.prepare(`UPDATE scanned_books SET store_date = date('now', '-20 days') WHERE id = 'gl40'`).run();
+  lib.db.prepare(`UPDATE scanned_books SET store_date = date('now', '-6 days') WHERE id = 'glc22'`).run();
+  assert.equal(x.status().pending, 2);
+  await x.run('manual');
+  while (x.state.running) await new Promise(r => setTimeout(r, 5));
+  assert.equal(asked.length, 2);
+  assert.match(asked[0], /Green Lantern \(2023\) #40 \(released \d{4}-\d{2}-\d{2}/);
+  assert.equal(x.nextFor('gl40').id, 'glc22');
+  const s = x.status();
+  assert.equal(s.pending, 0);
+  assert.equal(s.links.web, 1);
+  assert.equal(s.checked, 2);
+  assert.ok(Math.abs(s.spent - 2 * 0.0011) < 1e-9);
+  assert.ok(lib.settings.get('crossover_check_last_run'));
+});
+
+test('schedule: off by default; weekly is due a week after the last run', () => {
+  const lib = library(), x = create(lib);
+  assert.equal(x.status().frequency, 'off');
+  assert.equal(x.due(), false);
+  lib.settings.set('crossover_check_frequency', 'weekly');
+  lib.settings.set('crossover_check_last_run', String(Date.now() - 3 * 86400000));
+  assert.equal(x.due(), false);
+  lib.settings.set('crossover_check_last_run', String(Date.now() - 7 * 86400000));
+  assert.equal(x.due(), true);
+});

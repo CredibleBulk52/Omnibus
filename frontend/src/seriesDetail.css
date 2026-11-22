@@ -49,3 +49,21 @@
   .series-detail-page .issue-book { width: 100% !important; min-width: 0; }
   .series-detail-page .issue-cover { width: 100% !important; height: auto !important; aspect-ratio: 2 / 3; }
 }
+
+/* An event's own series: a note above the Issues grid with a link to the event's Timeline (2026-11-21). */
+.event-home-note {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+  margin: 0 16px 12px; padding: 9px 14px;
+  background: color-mix(in srgb, var(--td-yellow) 8%, var(--bg-surface, transparent));
+  border: 1px solid color-mix(in srgb, var(--td-yellow) 35%, transparent);
+  border-left: 3px solid var(--td-yellow); border-radius: 6px;
+  color: var(--text-primary); font-size: .88rem;
+}
+.event-home-note .ehn-mark { color: var(--td-yellow); }
+.event-home-note .ehn-text { flex: 1 1 260px; min-width: 0; }
+.event-home-note .ehn-link {
+  background: none; border: 0; padding: 4px 0; cursor: pointer;
+  color: var(--td-yellow); font: inherit; font-weight: 700;
+}
+.event-home-note .ehn-link:hover, .event-home-note .ehn-link:focus-visible { text-decoration: underline; }
+.event-home-note .ehn-link:focus-visible { outline: 2px solid var(--td-yellow); outline-offset: 2px; }

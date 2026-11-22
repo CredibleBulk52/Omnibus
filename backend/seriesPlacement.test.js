@@ -102,6 +102,7 @@ test("an event's own series places only pinned books", () => {
   const { p } = fixture({ eventHome: true });
   const r = p.placement('ww');
   assert.equal(r.eventHome, true);
+  assert.deepEqual(r.homeEvents, [{ id: 'wwar', name: 'Wonder War', year: 2026, tier: null }]);   // the Issues page's link
   assert.equal(r.placed.length, 0);
   p.setPin('ww', 'ann', { mode: 'after', anchorBookId: 'w37' });
   assert.equal(where(p.placement('ww'), 'ann').afterBookId, 'w37');
@@ -186,6 +187,7 @@ test('an ongoing that hosts an event (few of its issues in it) is placed as usua
   db.prepare("DELETE FROM event_issues WHERE scanned_book_id = 'w38'").run();   // 1 of 3 issues in the event
   const r = p.placement('ww');
   assert.equal(r.eventHome, false);
+  assert.deepEqual(r.homeEvents, []);
   assert.equal(where(r, 'ann').afterBookId, 'w37');
 });
 

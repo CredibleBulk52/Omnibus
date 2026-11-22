@@ -20,6 +20,13 @@
 .cid-story { position:relative; border:2px solid var(--rl-theme-accent,var(--td-yellow)); background:color-mix(in srgb, var(--om-base) 96%, transparent); box-shadow:4px 4px #000; padding:24px 20px 18px; margin:0 0 26px; }
 .cid-story h3 { position:absolute; top:-16px; left:12px; margin:0; padding:4px 10px; transform:rotate(-2deg); background:var(--rl-theme-accent,var(--td-yellow)); color:var(--rl-theme-on-accent,#000); border:2px solid #000; font:20px 'Bangers',cursive; }
 .cid-story p { font:18px/1.6 'Comic Neue',sans-serif; margin:0; white-space:pre-line; overflow-wrap:anywhere; }
+.cid-crossover { margin:0 0 22px; padding:10px 14px; border-left:4px solid var(--rl-theme-accent,var(--td-yellow)); background:color-mix(in srgb, var(--om-base) 92%, transparent); }
+.cid-crossover h3 { font:20px 'Bangers',cursive; letter-spacing:.04em; color:var(--rl-theme-accent,var(--td-yellow)); margin:0 0 6px; }
+.cid-crossover h3 span { color:var(--om-text,inherit); }
+.cid-crossover ul { list-style:none; margin:0; padding:0; font:16px/1.6 'Comic Neue',sans-serif; }
+.cid-crossover a { color:inherit; font-weight:700; text-decoration:underline; text-decoration-color:var(--rl-theme-accent,var(--td-yellow)); text-underline-offset:3px; }
+.cid-crossover small { color:var(--text-muted); font-style:italic; }
+.cid-crossover-hide { margin-left:8px; padding:0 6px; border:1px solid var(--border-subtle,#555); background:transparent; color:var(--text-muted); border-radius:3px; cursor:pointer; font-size:12px; }
 .cid-credits h3 { font:22px 'Bangers',cursive; color:var(--rl-theme-accent,var(--td-yellow)); margin:0 0 12px; }
 .cid-credits dl { margin:0 0 20px; }
 .cid-credits dl > div { display:grid; grid-template-columns:100px minmax(0,1fr); gap:12px; padding:5px 0; }

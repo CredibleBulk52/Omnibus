@@ -28,6 +28,9 @@ const TASKS = Object.freeze([
   // web search, so Gemini can run it too.
   { id: 'shelf_sorter', tier: 'quick', fallback: [SONNET, SOL, 'gemini:gemini-3.8-flash'], label: 'Shelf Sorter', where: 'Checks the Specials shelves (Library › Specials shelves): whether each event\'s home is right and which series belong on its shelf. Confident answers can be applied on their own; each run can be undone.', gemini: true },
   { id: 'event_notes', tier: 'quick', fallback: [HAIKU, LUNA], label: 'Event Tier Notes', where: 'Writes the reader-facing tier notes for event issues (Write tier notes with AI) from the generator\'s tier reasons, the issues\' solicits and saved synopses; no web search.' },
+  // Crossover Check (2026-11-22, crossovers.js): turns Web Search's notes about one new issue into a list of
+  // stories and their issues; Omnibus keeps a link only when a source page names both issues. Haiku: the pilot.
+  { id: 'crossover_check', tier: 'quick', fallback: [HAIKU, LUNA], label: 'Crossover Check', where: 'Reads Web Search\'s notes about a new issue and lists any story that continues in another series (Crossover links). Omnibus keeps a link only when a source page names both issues.' },
   { id: 'quick_answer', tier: 'quick', fallback: [LUNA, HAIKU], label: 'Quick Answers', where: 'Comic Book Guy\'s first stop for every question: answers it, points to a saved reading order, or passes it on (new reading orders, deep answers and recaps).', needs: ['tools'] },
   { id: 'topshelf', tier: 'generation', fallback: [OPUS, SOL], label: 'Top Shelf – Run Generator', where: 'Generates Top Shelf runs (uses web search).', needs: ['web_search'] },
   { id: 'timeline', tier: 'generation', fallback: [SONNET, SOL], label: 'Timeline – Crossover Event Generator', where: 'Generates event reading orders (reads guide pages; searches only when Omnibus finds none).', needs: ['web_search'] },
@@ -120,7 +123,7 @@ function migrationRows(getSetting) {
 // settings are removed. Returns { rows: [[key, value]], remove: [keys] }.
 const RETIRE_MARKER = 'ai_tiers_retired_2026_10';
 const OLD_OWN_DEFAULT = new Set(['web_lookup', 'recap_web', 'recap_reader']);   // tasks that had their own defaults before
-const AFTER_RETIREMENT = new Set(['shelf_sorter']);   // tasks added later never followed a top-level model
+const AFTER_RETIREMENT = new Set(['shelf_sorter', 'crossover_check']);   // tasks added later never followed a top-level model
 function retireTierRows(getSetting, opts = {}) {
   const v = key => { const x = getSetting(key); return typeof x === 'string' ? x.trim() : ''; };
   if (v(RETIRE_MARKER)) return { rows: [], remove: [] };

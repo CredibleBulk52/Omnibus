@@ -26,7 +26,7 @@ function useEventCover(context) {
 }
 
 export default function ComicReaderEndCard({ completed, headline, issueTitle, bookId, seriesName, solicit,
-  context, next, nextRecommended, nextEssential, showRec, showEss, loading, alternatives, endMessage,
+  context, next, nextRecommended, nextEssential, showRec, showEss, loading, alternatives, endMessage, crossover,
   onRead, onLastPage, onBackContext, onBackSeries, assistant, onDiscuss, onEvent }) {
   const kind = context?.kind || 'series';
   const word = { series: 'series', event: 'event', list: 'list', run: 'run' }[kind] || 'series';
@@ -48,6 +48,18 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
   // empty right side, with a link to the event at that issue; narrow ones as a strip under the title.
   const nextEvent = kind === 'series' && next?.events?.length ? next.events[0] : null;
   const moreEvents = nextEvent ? next.events.length - 1 : 0;
+  // Series reading: a small crossover's next part in another series (crossovers.js, 2026-11-22). It takes
+  // the panel's right side when the next issue is also in an event (user: the crossover is the more specific
+  // next step); the event then shows as the panel's strip. Narrow cards list it under the panel.
+  const cross = kind === 'series' && crossover ? crossover : null;
+  const side = cross ? 'crossover' : nextEvent ? 'event' : null;
+  const crossLabel = cross ? endIssueLabel(cross) : '';
+  const crossRow = cross && <div className="alternatives crossover-alt">
+    <span className="skip-label">STORY CONTINUES IN ANOTHER SERIES{cross.story ? ` · ${cross.story.toUpperCase()}` : ''}</span>
+    {cross.owned
+      ? <button className="route" onClick={() => onRead(cross)}><span>Crossover</span><strong>{crossLabel}</strong><b>↗</b></button>
+      : <div className="route route-missing"><span>Crossover</span><strong>{crossLabel} <small>(not in your library yet)</small></strong></div>}
+  </div>;
   const routes = alternatives || [showRec && { label: 'Next recommended', issue: nextRecommended }, showEss && { label: 'Next essential', issue: nextEssential }].filter(Boolean);
   return (
     <section className="comic-reader-finale finish-card" style={theme.style} aria-label="Finished issue">
@@ -63,7 +75,7 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
         {hasPosition && <div className="route-track" role="progressbar" aria-label={`Position in ${word}`} aria-valuemin={0} aria-valuemax={total} aria-valuenow={position}><span style={{ width: `${Math.min(100, position / total * 100)}%` }} /></div>}
       </div>}
       {loading ? <p role="status">Loading the next issue…</p> : next ? (<>
-        <div className={`next-row${nextEvent ? ' has-event' : ''}`}><div className="next-grid">
+        <div className={`next-row${side ? ' has-side' : ''}${side === 'event' ? ' has-event' : ''}${cross ? ' has-crossover' : ''}`}><div className="next-grid">
         <button className="next-panel" onClick={() => onRead(next)} aria-label={`Read next: ${endIssueLabel(next)}`}>
           <span className="caption">{kind === 'series' ? 'CONTINUED NEXT ISSUE…' : `NEXT IN THE ${word.toUpperCase()}…`}</span>
           {next.id && failedCover !== next.id
@@ -77,7 +89,16 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
             <span className="read-action">{kind === 'series' && next.issue_number != null ? `READ #${next.issue_number}` : 'READ NEXT'} <span>→</span></span>
           </span>
         </button>
-        {nextEvent && <aside className="next-event-side" aria-label={`Part of the event ${nextEvent.name}`}>
+        {side === 'crossover' && <aside className="next-event-side next-crossover-side" aria-label={`Story continues in ${crossLabel}`}>
+          <span className="nes-cap"><b aria-hidden="true">⇄</b> Crossover</span>
+          <span className="nes-continues">Story continues in</span>
+          <strong>{crossLabel}</strong>
+          {cross.story && <span className="nes-meta">“{cross.story}”</span>}
+          {cross.owned
+            ? <button type="button" className="nes-link" onClick={() => onRead(cross)}>Read it next ↗</button>
+            : <span className="nes-missing">Not in your library yet</span>}
+        </aside>}
+        {side === 'event' && <aside className="next-event-side" aria-label={`Part of the event ${nextEvent.name}`}>
           {/* The Timeline's comic boxes: the event's ★ tier badge, the issue's role chip (tiers.js colours). */}
           {nextEvent.eventTier ? <span className="nes-badge"><TierBadge tier={nextEvent.eventTier} /></span>
             : <span className="nes-cap"><b aria-hidden="true">◆</b> Part of the event</span>}
@@ -88,14 +109,14 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
           </span>
           {onEvent && <button type="button" className="nes-link" onClick={() => onEvent(nextEvent, next)}>View in the event ↗</button>}
         </aside>}
-        </div></div>
+        </div>{crossRow}</div>
         {hasAbout && <button type="button" className="about-toggle about-next" aria-expanded={aboutOpen} onClick={() => setAboutOpen(v => !v)}>
           {aboutOpen ? '▴' : '▾'} About the next issue</button>}
         {aboutOpen && hasAbout && <div className="about-issue">
           {nextNote && <p className="about-note"><span>Why read it</span>{nextNote}</p>}
           {nextSolicit && <p className="about-solicit"><span>Solicit</span>{nextSolicit}</p>}
         </div>}
-      </>) : <p className="end-none">{endMessage || (kind === 'series' ? 'That was the last issue of this series in your library.' : `That was the last issue you own in this ${word}.`)}</p>}
+      </>) : <><p className="end-none">{endMessage || (kind === 'series' ? 'That was the last issue of this series in your library.' : `That was the last issue you own in this ${word}.`)}</p>{crossRow}</>}
       {!loading && routes.length > 0 && <div className="alternatives"><span className="skip-label">ONE-TIME DETOURS · PATH UNCHANGED</span>
         {routes.map(({ label, issue }) => <button key={issue.id} className="route" onClick={() => onRead(issue)}><span>{label}</span><strong>{endIssueLabel(issue)}</strong><b>↗</b></button>)}
       </div>}

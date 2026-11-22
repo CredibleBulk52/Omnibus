@@ -1143,6 +1143,7 @@ const CRON_JOB_NAMES = {
   '30 5 * * *': 'retag-backlog', '45 4 * * *': 'series-json-refresh', '30 9 * * *': 'db-backup',
   '0 */6 * * *': 'wanted-scan', '0 */3 * * *': 'locg-resolve', '0 8 * * *': 'week-refresh',
   '0 4 1 * *': 'series-status', '30 3 1 * *': 'blacklist-cleanup', '20 0-3,7-23 * * *': 'untagged-sweep',
+  '35 4 * * *': 'crossovers',
 };
 {
   const origSchedule = cron.schedule.bind(cron);
@@ -1416,7 +1417,7 @@ const AI_ROUTES = ['/api/assistant/chat', '/api/events/generate', '/api/events/g
   '/api/events/notes/refresh-all', '/api/canon/generate', '/api/editor/runs/categories/check', '/api/admin/genres/retag',
   '/api/series/:id/enrich', '/api/series/:id/create-json', '/api/monitor/mass-json', '/api/monitor/series/:id/create-series-json',
   '/api/monitor/series/:id/discover-annuals', '/api/monitor/series/:id/link-annual', '/api/monitor/series-json-refresh/run', '/api/admin/recaps',
-  '/api/grouping/ai/ask'];
+  '/api/grouping/ai/ask', '/api/admin/crossovers/run'];
 app.use(AI_ROUTES, (req, res, next) => (req.method === 'POST' ? aiInfo.track(req, res, next) : next()));
 // Express step that makes the rest of a request one AI run (Usage & results, System log).
 const aiRunStep = labelOf => (req, res, next) => {
@@ -3345,6 +3346,8 @@ app.get('/api/books/:id/adjacent', requireAuth, (req, res) => {
   const out = withLabels({ prev: fmt(order[idx - 1]), next: fmt(order[idx + 1]), context: serContext });
   // The next issue's Timeline events, for the end card's note (eventMarkers.js, 2026-11-21).
   if (out.next?.id) { try { const ev = eventMarkersFor(db, [out.next.id]).get(out.next.id); if (ev?.length) out.next.events = ev; } catch {} }
+  // A small crossover's next part in another series (crossovers.js, 2026-11-22): the end card's "Story continues in".
+  try { const x = crossovers?.nextFor(bookId); if (x) out.crossover = x; } catch {}
   res.json(out);
 });
 
@@ -11742,6 +11745,14 @@ catch (e) { logger.error('achievements', 'Achievements unavailable', e.message);
 // Recaps ("Previously on…"): stored issue synopses, story arcs, scope and limits (recaps/; RECAPS_DESIGN.md).
 // Web Search (task web_lookup): shared by recap lookups and Comic Book Guy's web_lookup tool.
 const webLookup = require('./ai/webLookup').createWebLookup({ ai, modelCatalog, logger });
+// Crossover links (2026-11-22, crossovers.js; claude/CROSSOVERS.md): small crossovers across two series,
+// from ComicInfo summaries (free, nightly) and an optional per-issue web check (Settings › AI › Crossover links).
+let crossovers = null;
+try {
+  crossovers = require('./crossovers').createCrossovers({ app, db, ai, webLookup, readPage: require('./ai/pageReader').readPage, axios, cron, getSetting,
+    setSetting: (k, v) => db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v), logger, requireAuth, requireAdmin,
+    sequence: id => seriesPlacement.sequence(id), modelCatalog });
+} catch (e) { logger.error('crossovers', 'Crossover links unavailable', e.message); }
 const recaps = require('./recaps')({ app, db, ai, logger, getPageImage: (...a) => getPageImageForAssistant(...a), modelCatalog, cvApiGet, getCVKey, readingLists, bookIndex, requireAdmin, axios, webLookup });
 // Installed synchronously before startup timers or HTTP requests can run.
 // Metron's store date for one Comic Vine issue: the metadata writer's second source when Comic Vine

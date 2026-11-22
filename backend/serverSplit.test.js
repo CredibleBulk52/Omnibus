@@ -17,7 +17,8 @@ const MODULES = { 'cbr.js': 'createCbr', 'eventGenerator.js': 'registerEventGene
   'postProcessing.js': 'createPostProcessing', 'postProcessScan.js': 'createPostProcessScan', 'arrivalRegistration.js': 'createRegisterArrival',   // step 6b
   'annuals.js': 'createAnnuals', 'monitorRoutes.js': 'registerMonitorRoutes', 'downloadClientRoutes.js': 'registerDownloadClientRoutes',   // step 7A
   'seriesJsonCreation.js': 'createSeriesJsonCreation', 'retagIssueRoutes.js': 'registerRetagIssueRoutes', 'missingIssues.js': 'createMissingIssues',
-  'downloadWatcher.js': 'createDownloadWatcher' };
+  'downloadWatcher.js': 'createDownloadWatcher',
+  'crossovers.js': 'createCrossovers' };   // 2026-11-22
 const needs = file => /const (?:missing|NEEDS) = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(__dirname, file), 'utf8'))[1]
   .split(',').map(s => s.trim().replace(/'/g, '')).filter(Boolean);
 
