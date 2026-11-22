@@ -57,9 +57,10 @@ const BEFORE = /(?:continu\w*|concludes?|picks?\s+up|leads?)\s+(from|in|into)\b|
 function parsePage(text) {
   const f = fields(text || '');
   const links = [];
-  const add = (dir, title) => {
+  const characterLinks = [];
+  const add = (dir, title, list = links) => {
     const t = parseTitle(title);
-    if (t && !links.some(l => l.dir === dir && l.series === t.series && l.issue === t.issue)) links.push({ dir, ...t });
+    if (t && !list.some(l => l.dir === dir && l.series === t.series && l.vol === t.vol && l.issue === t.issue)) list.push({ dir, ...t });
   };
   // Marvel: "(Story) {{cl|…}}" in PreviousIssue / NextIssue.
   for (const [k, dir] of [['PreviousIssue', 'from'], ['NextIssue', 'in']]) {
@@ -74,7 +75,15 @@ function parsePage(text) {
   let c;
   while ((c = BEFORE.exec(prose))) {
     const dir = c[1] ? (/from/i.test(c[1]) ? 'from' : 'in') : (/follow|preceded/i.test(c[2]) ? 'from' : 'in');
-    marks.push({ at: c.index, end: c.index + c[0].length, cue: dir });
+    // A character returning to their own title is a different assertion from a story handoff.
+    // Inspect only the subject immediately preceding this verb, including wiki italics.
+    const before = prose.slice(Math.max(0, c.index - 180), c.index)
+      .replace(/\[\[([^|\]]+)(?:\|([^\]]+))?\]\]/g, (_, target, label) => label || target)
+      .replace(/'{2,}/g, '').trimEnd();
+    const subject = /(?:['’]s|(?<=s)['’]|\b(?:his|her|their))\s+(?:own\s+)?(?:story(?:line)?|journey|adventures?|chronology|appearances?)\b(?:\s+(?:is|was|are|were|will|be|then|next|chronologically|directly))*$/i.exec(before);
+    const owner = subject && before.slice(0, subject.index).replace(/\]\]|\}\}/g, '').trimEnd();
+    const personal = subject && !/\b(?:issue|chapter|crossover|event|series|arc|comic|book|backup|feature)$/i.test(owner);
+    marks.push({ at: c.index, end: c.index + c[0].length, cue: dir, list: personal ? characterLinks : links });
   }
   LINK.lastIndex = 0;
   let m;
@@ -83,14 +92,16 @@ function parsePage(text) {
   let cue = null, carry = null;
   for (const k of marks) {
     if (k.cue) { cue = k; carry = null; continue; }
-    if (cue && k.at - cue.end <= 70) { add(cue.cue, k.title); carry = { dir: cue.cue, end: k.end }; cue = null; continue; }
-    if (carry && /^[\s,]*(?:and|&|or)?[\s,]*$/i.test(prose.slice(carry.end, k.at))) { add(carry.dir, k.title); carry.end = k.end; continue; }
+    if (cue && k.at - cue.end <= 70 && !/[.;!?\n]/.test(prose.slice(cue.end, k.at))) {
+      add(cue.cue, k.title, cue.list); carry = { dir: cue.cue, end: k.end, list: cue.list }; cue = null; continue;
+    }
+    if (carry && /^[ \t,]*(?:and|&|or)?[ \t,]*$/i.test(prose.slice(carry.end, k.at))) { add(carry.dir, k.title, carry.list); carry.end = k.end; continue; }
     cue = null; carry = null;
   }
   // The story: the Event field, else the notes' 'part two of "Black Circle: Urban Knights"' / 'Part II of V in [[The Siege …]]'.
   const named = /\bpart\s+[\w]+(?:\s+of\s+[\w]+)?\s+(?:of|in)\s+(?:the\s+story\s+)?(?:["“]([^"”]{3,80})["”]|\[\[([^|\]]+)(?:\|[^\]]*)?\]\])/i.exec(prose);
   const event = String(f.Event || f.Event1 || (named ? named[1] || named[2] : '') || '').replace(/\[\[([^|\]]+)(?:\|([^\]]*))?\]\]/g, (_, a, b) => b || a).replace(/\s*\(Event\)\s*$/i, '').trim() || null;
-  return { links, event, date: pageDate(f), title: f.Title || null };
+  return { links, characterLinks, event, date: pageDate(f), title: f.Title || null };
 }
 
 // Does a page's date fit a book's store date? (cover dates run up to ~3 months after sale)

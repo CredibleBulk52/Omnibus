@@ -343,6 +343,17 @@ test('fan wiki pages: "continues from / in" notes, Marvel (Story) previous/next,
   assert.equal(W.wikiName('The Amazing Spider-Man (1963)'), 'Amazing Spider-Man');
 });
 
+test('a finale can name its previous chapter and several characters’ next appearances', () => {
+  const { parsePage } = require('./crossoverWiki');
+  const page = parsePage(`| Notes = The Thaumaton storyline continues from {{c|Trinity of Sin: Pandora Vol 1 9}}.
+** [[John Constantine]]'s story chronologically continues in {{c|Constantine Vol 1 13}};
+** Pandora’s story is continued in {{c|Trinity of Sin: Pandora Vol 1 10}};
+** Phantom Stranger's story is continued in {{c|Trinity of Sin: The Phantom Stranger Vol 4 18}}.
+* This issue's story concludes in [[Another Title Vol 2 7]].`);
+  assert.deepEqual(page.links.map(l => [l.dir, l.issue]), [['from', '9'], ['in', '7']]);
+  assert.deepEqual(page.characterLinks.map(l => l.issue), ['13', '10', '18']);
+});
+
 test('the fan wiki pass: finds each series\' volume by date, reads pages 50 at a time, stores links, reads each issue once', async () => {
   const lib = library();
   const page = (title, notes, month, year) => `{{DC Database:Comic Template\n| Title = x\n| Month = ${month}\n| Year = ${year}\n| Notes = ${notes}\n}}`;
@@ -374,7 +385,24 @@ test('the fan wiki pass: finds each series\' volume by date, reads pages 50 at a
   assert.equal(calls.length, n + 1);
   assert.ok(calls.at(-1).includes('Green Lantern Vol 7 40'));
   lib.settings.set('crossover_code_enabled', '0');
-  assert.equal(x.nextFor('gl40'), null);   // a free source: the code switch
+  assert.equal(x.nextFor('gl40'), null);
+  lib.settings.set('crossover_code_enabled', '1');
+  // Simulate a link saved by the previous parser. A failed fetch preserves it; a
+  // successful re-read removes only this page's character-only evidence.
+  lib.db.prepare("UPDATE crossover_wiki_books SET story_reviewed = 0 WHERE book_id = 'gl40'").run();
+  const title = 'Green Lantern Vol 7 40';
+  delete wiki[title];
+  await x.wikiPass({ maxRequests: 50 });
+  assert.equal(x.nextFor('gl40').id, 'glc22');
+  const personal = "John's story is continued in {{c|Green Lantern Corps Vol 5 22}}.";
+  wiki[title] = page(title, personal + ' This story concludes in {{c|Green Lantern Corps Vol 5 22}}.', 'December', 2026);
+  await x.wikiPass({ maxRequests: 50 });
+  assert.equal(x.nextFor('gl40').id, 'glc22');
+  lib.db.prepare("UPDATE crossover_wiki_books SET story_reviewed = 0 WHERE book_id = 'gl40'").run();
+  wiki[title] = page(title, personal, 'December', 2026);
+  await x.wikiPass({ maxRequests: 50 });
+  assert.equal(x.nextFor('gl40'), null);
+  assert.equal(lib.db.prepare("SELECT story_reviewed FROM crossover_wiki_books WHERE book_id = 'gl40'").get().story_reviewed, 1);
 });
 
 test('fan wiki volumes: other spellings when the first finds none (The Flash, Atom and Hawkman); old notes and reversed dates', async () => {

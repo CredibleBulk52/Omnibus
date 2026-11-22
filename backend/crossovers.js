@@ -56,7 +56,11 @@ function schema(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS crossover_wiki_series (
     key TEXT PRIMARY KEY, wiki TEXT NOT NULL, name TEXT NOT NULL, vol INTEGER NOT NULL, checked_at INTEGER NOT NULL)`);
   db.exec(`CREATE TABLE IF NOT EXISTS crossover_wiki_books (
-    book_id TEXT PRIMARY KEY, checked_at INTEGER NOT NULL, page TEXT, links INTEGER NOT NULL DEFAULT 0)`);
+    book_id TEXT PRIMARY KEY, checked_at INTEGER NOT NULL, page TEXT, links INTEGER NOT NULL DEFAULT 0,
+    story_reviewed INTEGER NOT NULL DEFAULT 0)`);
+  if (!db.prepare('PRAGMA table_info(crossover_wiki_books)').all().some(c => c.name === 'story_reviewed')) {
+    db.exec('ALTER TABLE crossover_wiki_books ADD COLUMN story_reviewed INTEGER NOT NULL DEFAULT 0');
+  }
 }
 
 // ── The library ───────────────────────────────────────────────────────
@@ -87,6 +91,34 @@ function loadLibrary(db) {
     return byKey.get(`${T.norm(name)}|${n}`) || byKey.get(`~${loose(name)}|${n}`) || [];
   };
   return { books, byId, find };
+}
+
+// Full title variants seen in crossover sources. Keep qualifiers such as Annual and Special.
+const crossoverAliases = new Map([
+  ['Trinity of Sin: The Phantom Stranger', 'The Phantom Stranger'],
+  ['DCU: Rebirth', 'DC Universe: Rebirth'],
+  ['Justice Society of America Kingdom Come Special Superman', 'JSA Kingdom Come Special: Superman'],
+  ['Emperor Joker', 'Superman: Emperor Joker'],
+  ['Comics Giveaway Day 2026: Armageddon / X-Men', 'Armageddon/X-Men CGD 2026'],
+  ['Wonder Woman Annual: Wonder War - The Matriarch', 'Wonder Woman 2026 Annual: Wonder War - The Matriarch Special'],
+].map(([source, catalog]) => [T.norm(source), catalog]));
+const publishedKey = name => T.norm(String(name).replace(/\bthe\b/gi, ' '));
+
+function publishedMatcher(db) {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='book_ci_index'").get()) return () => null;
+  const lookup = db.prepare(`SELECT ci.*, b.store_date, ${CI_FIELD('Year')} AS pub_year
+    FROM book_ci_index ci JOIN scanned_books b ON b.id = ci.book_id WHERE ci.orig_number = ?`);
+  return (name, number, year, anchor) => {
+    const catalog = crossoverAliases.get(T.norm(name)) || name;
+    const key = publishedKey(catalog);
+    const candidates = lookup.all(T.num(number)).filter(b => b.series_name && publishedKey(b.series_name) === key
+      && (!year || Number(b.volume_year) === Number(year)));
+    const matches = candidates.filter(b => b.book_id !== anchor.id && (b.store_date
+      ? T.days(b.store_date, anchor.store_date) <= MAX_GAP_DAYS
+      : candidates.length === 1 && /\bannual\b/i.test(name) && b.cv_issue_id
+        && T.norm(name) === T.norm(b.series_name) && b.pub_year === anchor.store_date.slice(0, 4)));
+    return matches.length === 1 ? matches[0].book_id : null;
+  };
 }
 
 // The library book for a named issue, released nearest `anchor` and at most `maxDays` from it.
@@ -339,13 +371,15 @@ function createCrossovers(deps = {}) {
     const rows = db.prepare(`SELECT * FROM crossover_links WHERE source IN ('web', 'wiki') AND (from_book_id IS NULL OR to_book_id IS NULL)`).all();
     const set = db.prepare('UPDATE crossover_links SET from_book_id = ?, to_book_id = ? WHERE id = ?');
     const drop = db.prepare('DELETE FROM crossover_links WHERE id = ?');
+    const published = publishedMatcher(db);
     let n = 0;
     for (const r of rows) {
       const other = lib.byId.get(r.from_book_id || r.to_book_id);
       if (!other?.store_date) continue;
       const side = r.from_book_id ? 'to' : 'from';
       const cands = lib.find(r[`${side}_series`], r[`${side}_issue`]).filter(b => b.id !== other.id);
-      const b = nearest(cands, other.store_date, MAX_GAP_DAYS);
+      const b = nearest(cands, other.store_date, MAX_GAP_DAYS)
+        || lib.byId.get(published(r[`${side}_series`], r[`${side}_issue`], r[`${side}_year`], other));
       // Owned, but released far from the other issue: an old issue the story looks back to (see linkRow).
       if (!b && sameVolume(cands, r[`${side}_year`]).some(c => c.store_date && T.days(c.store_date, other.store_date) > MATCH_DAYS)) { drop.run(r.id); continue; }
       if (!b) continue;
@@ -587,23 +621,31 @@ function createCrossovers(deps = {}) {
       // Series with no wiki volume cost no requests (their issues are only marked again).
       const since = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString().slice(0, 10);
       const done = new Set(db.prepare(`SELECT w.book_id FROM crossover_wiki_books w LEFT JOIN scanned_books b ON b.id = w.book_id
-        WHERE NOT (b.store_date >= ? AND w.checked_at < ?)`).all(since, Date.now() - 7 * 86400000).map(r => r.book_id));
+        WHERE (w.story_reviewed = 1 OR w.links = 0) AND NOT (b.store_date >= ? AND w.checked_at < ?)`).all(since, Date.now() - 7 * 86400000).map(r => r.book_id));
+      const review = new Map(db.prepare('SELECT book_id, page FROM crossover_wiki_books WHERE story_reviewed = 0 AND links > 0 AND page IS NOT NULL')
+        .all().map(r => [r.book_id, r.page]));
       const pubOf = new Map();
       for (const b of lib.books) if (b.publisher && !pubOf.has(b.series_id)) pubOf.set(b.series_id, b.publisher);
       // Groups: one wiki series = folder + the book's own series name (one-shots on a shelf have their own).
       const groups = new Map();
+      const queue = [];
       for (const b of lib.books) {
         if (done.has(b.id) || !b.store_date || !b.issue_number) continue;
         const w = W.wikiOf(b.publisher || pubOf.get(b.series_id));
         const name = W.wikiName(b.series);
         if (!w || !name) continue;
+        if (review.has(b.id)) {
+          queue.push({ w, b, title: review.get(b.id) });
+          continue;
+        }
         const key = `${w}|${b.series_id}|${name.toLowerCase()}`;
         if (!groups.has(key)) groups.set(key, { key, wiki: w, name, books: [] });
         groups.get(key).books.push(b);
       }
       const getVol = db.prepare('SELECT name, vol FROM crossover_wiki_series WHERE key = ?');
       const putVol = db.prepare('INSERT OR REPLACE INTO crossover_wiki_series (key, wiki, name, vol, checked_at) VALUES (?, ?, ?, ?, ?)');
-      const mark = db.prepare('INSERT OR REPLACE INTO crossover_wiki_books (book_id, checked_at, page, links) VALUES (?, ?, ?, ?)');
+      const mark = db.prepare('INSERT OR REPLACE INTO crossover_wiki_books (book_id, checked_at, page, links, story_reviewed) VALUES (?, ?, ?, ?, 1)');
+      const retire = db.prepare("DELETE FROM crossover_links WHERE key = ? AND source = 'wiki' AND proof = ? AND hidden = 0");
       // 1. Volumes not known yet (crossoverWiki.findVolumes: Vol 1–10, then other spellings of the name).
       const unknown = [...groups.values()].filter(g => getVol.get(g.key) == null);
       for (const w of Object.keys(W.WIKIS)) {
@@ -616,7 +658,6 @@ function createCrossovers(deps = {}) {
         for (const [key, v] of found) putVol.run(key, w, v.name, v.vol, Date.now());
       }
       // 2. Issue pages of series with a volume, 50 to a request; series without one are marked read.
-      const queue = [];
       for (const g of groups.values()) {
         const found = getVol.get(g.key);
         if (!found) continue;                              // not probed yet (request limit): next night
@@ -632,11 +673,27 @@ function createCrossovers(deps = {}) {
             for (const q of batch) {
               const page = got.get(q.title);
               let n = 0;
+              // Keep the old evidence queued if its original page could not be verified.
+              if (!page && review.has(q.b.id)) continue;
               if (page) {
                 const parsed = W.parsePage(page.text);
+                if (review.has(q.b.id) && !W.dateFits(parsed, q.b.store_date)) continue;
                 if (W.dateFits(parsed, q.b.store_date)) {
+                  const proof = `${w} wiki: ${page.title}`;
+                  // Only retract the named character reference. A page can contain both types
+                  // of evidence, and a pending link can keep its original key after being matched.
+                  for (const ref of parsed.characterLinks) {
+                    if (parsed.links.some(l => l.dir === ref.dir && l.series === ref.series && l.issue === ref.issue)) continue;
+                    const named = `${T.norm(ref.series)}#${T.num(ref.issue)}`;
+                    const pendingKey = ref.dir === 'in' ? `k:${q.b.id}>${named}` : `k:${named}>${q.b.id}`;
+                    const row = wikiRow(lib, q.b, ref, parsed.event, proof);
+                    for (const key of new Set([pendingKey, row?.key].filter(Boolean))) {
+                      retire.run(key, proof);
+                      if (q.title !== page.title) retire.run(key, `${w} wiki: ${q.title}`);
+                    }
+                  }
                   for (const ref of parsed.links) {
-                    const row = wikiRow(lib, q.b, ref, parsed.event, `${w} wiki: ${page.title}`);
+                    const row = wikiRow(lib, q.b, ref, parsed.event, proof);
                     if (row && insert.run(rowOf(row)).changes) n++;
                   }
                 }
