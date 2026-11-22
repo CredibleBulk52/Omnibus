@@ -29,6 +29,7 @@
 // crossover_links_enabled: '0' there still turns both off, and an install that already scheduled or ran
 // web checks counts as AI on until the admin chooses.
 const T = require('./crossoverText');
+const W = require('./crossoverWiki');
 
 const NEEDS = ['app', 'db', 'ai', 'webLookup', 'readPage', 'axios', 'cron', 'getSetting', 'setSetting', 'logger', 'requireAuth', 'requireAdmin', 'sequence', 'modelCatalog'];
 const MAX_GAP_DAYS = 120;          // the two books of a link
@@ -49,6 +50,11 @@ function schema(db) {
   db.exec('CREATE INDEX IF NOT EXISTS idx_crossover_links_to ON crossover_links(to_book_id)');
   db.exec(`CREATE TABLE IF NOT EXISTS crossover_checks (
     book_id TEXT PRIMARY KEY, checked_at INTEGER NOT NULL, result TEXT, cost REAL)`);
+  // Fan wikis (crossoverWiki.js): each series' wiki volume (vol 0 = not found) and each issue read.
+  db.exec(`CREATE TABLE IF NOT EXISTS crossover_wiki_series (
+    key TEXT PRIMARY KEY, wiki TEXT NOT NULL, name TEXT NOT NULL, vol INTEGER NOT NULL, checked_at INTEGER NOT NULL)`);
+  db.exec(`CREATE TABLE IF NOT EXISTS crossover_wiki_books (
+    book_id TEXT PRIMARY KEY, checked_at INTEGER NOT NULL, page TEXT, links INTEGER NOT NULL DEFAULT 0)`);
 }
 
 // ── The library ───────────────────────────────────────────────────────
@@ -255,6 +261,26 @@ function linkRow(lib, link, anchor) {
   return { key: `w:${k(a)}>${k(b)}`, from: a.book, to: b.book, fromName: a, toName: b, story: link.story, source: 'web', proof: link.page };
 }
 
+// One wiki reference → a row: the named issue matched near the page's book (120 days); an owned issue of
+// that name far away is an old story the page looks back to, not a part (as for the web check).
+function wikiRow(lib, book, ref, event, proof) {
+  // The same series' next issue ("continues in Green Lantern Vol 3 66") is not a crossover, owned or not.
+  if ([book.series, book.folder].some(n => n && T.norm(W.wikiName(n)) === T.norm(ref.series))) return null;
+  const cands = lib.find(ref.series, ref.issue).filter(x => x.id !== book.id);
+  const other = nearest(cands, book.store_date, MAX_GAP_DAYS);
+  if (!other && cands.some(x => x.store_date)) return null;
+  if (other && other.series_id === book.series_id && T.norm(other.series) === T.norm(book.series)) return null;   // same series: not a crossover
+  // An issue not owned: only a next part ("continues in"). "Continued from" an issue not in the library was
+  // mostly a story looked back to (Giant-Size Avengers #4 for Fantastic Four #325; wiki test 2026-11-22).
+  if (!other && ref.dir !== 'in') return null;
+  // A next part released well before (or an earlier part well after): the wiki's wording, not reading order.
+  if (other && (ref.dir === 'in' ? 1 : -1) * (Date.parse(other.store_date) - Date.parse(book.store_date)) < -45 * 86400000) return null;
+  const name = { series: ref.series, issue: T.num(ref.issue), year: null };
+  const [from, to, fromName, toName] = ref.dir === 'in' ? [book, other, null, name] : [other, book, name, null];
+  const k = (b, n) => (b ? b.id : `${T.norm(n.series)}#${n.issue}`);
+  return { key: `k:${k(from, fromName)}>${k(to, toName)}`, from, to, fromName, toName, story: event, source: 'wiki', proof };
+}
+
 function createCrossovers(deps = {}) {
   const missing = NEEDS.filter(n => !deps[n]);
   if (missing.length) throw new Error(`createCrossovers: missing ${missing.join(', ')}`);
@@ -296,7 +322,7 @@ function createCrossovers(deps = {}) {
 
   // Web links with an issue that was not in the library: match it now (near the other end's date).
   function resolvePending(lib) {
-    const rows = db.prepare(`SELECT * FROM crossover_links WHERE source = 'web' AND (from_book_id IS NULL OR to_book_id IS NULL)`).all();
+    const rows = db.prepare(`SELECT * FROM crossover_links WHERE source IN ('web', 'wiki') AND (from_book_id IS NULL OR to_book_id IS NULL)`).all();
     const set = db.prepare('UPDATE crossover_links SET from_book_id = ?, to_book_id = ? WHERE id = ?');
     const drop = db.prepare('DELETE FROM crossover_links WHERE id = ?');
     let n = 0;
@@ -381,7 +407,7 @@ function createCrossovers(deps = {}) {
     if (legacyOff()) return false;
     try { return (getSetting('crossover_check_frequency') || 'off') !== 'off' || !!db.prepare('SELECT 1 FROM crossover_checks LIMIT 1').get(); } catch { return false; }
   };
-  const sourceOn = src => (src === 'web' ? aiOn() : codeOn());
+  const sourceOn = src => (src === 'web' ? aiOn() : codeOn());   // summary, title and wiki are the free sources
   const enabled = () => codeOn() || aiOn();
 
   // { continuesIn: [...], continuedFrom: [...] } for one book; owned issues first, one entry per issue.
@@ -413,21 +439,128 @@ function createCrossovers(deps = {}) {
     WHERE l.hidden = 0 AND (a.series_id = ? OR b.series_id = ?) AND a.series_id <> b.series_id`);
   function placementFor(seriesId) {
     if (!enabled()) return [];
-    const out = [], seen = new Map();
     const series = id => bookInfo.get(id)?.series_id;
+    // The whole story, not just the neighbouring parts (user, 2026-11-22: Green Lantern #65 and The Siege of
+    // the Zi Charam): from an issue of this series, follow the next part through other series until the
+    // story ends or comes back to this series (and back the same way). At most 20 parts; each step is a
+    // link the rules show (Timeline-covered links are not, so a long crossover in a Timeline stops here).
+    const stepOf = (id, dir) => { const f = forBook(id); return (dir === 'in' ? f.continuesIn : f.continuedFrom).find(x => x.owned && x.id) || null; };
+    const out = [], seen = new Set();
+    const walk = (anchor, dir) => {
+      const chain = [], visited = new Set([anchor]);
+      let cur = anchor;
+      for (let i = 0; i < 20; i++) {
+        const n = stepOf(cur, dir);
+        if (!n || visited.has(n.id) || series(n.id) === seriesId) break;
+        visited.add(n.id);
+        chain.push(n);
+        cur = n.id;
+      }
+      if (dir === 'from') chain.reverse();
+      const story = chain.find(x => x.story)?.story || null;
+      const first = chain[0] ? bookInfo.get(chain[0].id)?.store_date || null : null;
+      chain.forEach((x, i) => {
+        const k = `${x.id}|${dir === 'in' ? 'a' : 'b'}`;
+        if (seen.has(k)) return;
+        seen.add(k);
+        out.push({ bookId: x.id, ...(dir === 'in' ? { afterBookId: anchor } : { beforeBookId: anchor }), story: x.story || story, chainDate: first, seq: i });
+      });
+    };
+    const anchors = new Set();
     for (const l of linksOfSeries.all(seriesId, seriesId)) {
       if (!shown(l)) continue;
       const mine = series(l.from_book_id) === seriesId;
-      const other = mine ? l.to_book_id : l.from_book_id;
-      const k = `${other}|${mine ? 'a' : 'b'}`;
-      if (seen.has(k)) { if (!seen.get(k).story && l.story) seen.get(k).story = l.story; continue; }   // a title link names the story
-      const entry = mine ? { bookId: other, afterBookId: l.from_book_id, story: l.story || null } : { bookId: other, beforeBookId: l.to_book_id, story: l.story || null };
-      seen.set(k, entry);
-      out.push(entry);
+      const k = `${mine ? l.from_book_id : l.to_book_id}|${mine ? 'in' : 'from'}`;
+      if (anchors.has(k)) continue;
+      anchors.add(k);
+      walk(mine ? l.from_book_id : l.to_book_id, mine ? 'in' : 'from');
     }
     // Outgoing first: a book that both follows one issue and leads into the next sits after the first.
     return out.sort((a, b) => (a.afterBookId ? 0 : 1) - (b.afterBookId ? 0 : 1));
   }
+
+  // ── Fan wikis (free; part of the code switch) ─────────────────────────
+  // Reads DC and Marvel issue pages 50 at a time (crossoverWiki.js), at most `maxRequests` a night, so the
+  // first pass over a library spreads over a few nights; later nights read only new issues.
+  const wiki = W.createWikiClient({ axios, logger });
+  const wikiState = { running: false, requests: 0, books: 0, links: 0, startedAt: null, finishedAt: null, error: null };
+  async function wikiPass({ maxRequests = 1500 } = {}) {
+    if (wikiState.running || !codeOn()) return wikiState;
+    Object.assign(wikiState, { running: true, requests: 0, books: 0, links: 0, startedAt: Date.now(), finishedAt: null, error: null });
+    const start = wiki.requests();
+    const left = () => maxRequests - (wiki.requests() - start);
+    try {
+      const lib = loadLibrary(db);
+      const done = new Set(db.prepare('SELECT book_id FROM crossover_wiki_books').all().map(r => r.book_id));
+      const pubOf = new Map();
+      for (const b of lib.books) if (b.publisher && !pubOf.has(b.series_id)) pubOf.set(b.series_id, b.publisher);
+      // Groups: one wiki series = folder + the book's own series name (one-shots on a shelf have their own).
+      const groups = new Map();
+      for (const b of lib.books) {
+        if (done.has(b.id) || !b.store_date || !b.issue_number) continue;
+        const w = W.wikiOf(b.publisher || pubOf.get(b.series_id));
+        const name = W.wikiName(b.series);
+        if (!w || !name) continue;
+        const key = `${w}|${b.series_id}|${name.toLowerCase()}`;
+        if (!groups.has(key)) groups.set(key, { key, wiki: w, name, books: [] });
+        groups.get(key).books.push(b);
+      }
+      const getVol = db.prepare('SELECT name, vol FROM crossover_wiki_series WHERE key = ?');
+      const putVol = db.prepare('INSERT OR REPLACE INTO crossover_wiki_series (key, wiki, name, vol, checked_at) VALUES (?, ?, ?, ?, ?)');
+      const mark = db.prepare('INSERT OR REPLACE INTO crossover_wiki_books (book_id, checked_at, page, links) VALUES (?, ?, ?, ?)');
+      // 1. Volumes not known yet (crossoverWiki.findVolumes: Vol 1–10, then other spellings of the name).
+      const unknown = [...groups.values()].filter(g => getVol.get(g.key) == null);
+      for (const w of Object.keys(W.WIKIS)) {
+        if (left() <= 0 || !codeOn()) break;
+        const list = unknown.filter(g => g.wiki === w).map(g => {
+          const probe = g.books.find(b => /^\d+$/.test(T.num(b.issue_number))) || g.books[0];
+          return { key: g.key, name: g.name, series: g.books[0].series, probe: { issue: T.num(probe.issue_number), store_date: probe.store_date } };
+        });
+        const found = await W.findVolumes(wiki, w, list, left);
+        for (const [key, v] of found) putVol.run(key, w, v.name, v.vol, Date.now());
+      }
+      // 2. Issue pages of series with a volume, 50 to a request; series without one are marked read.
+      const queue = [];
+      for (const g of groups.values()) {
+        const found = getVol.get(g.key);
+        if (!found) continue;                              // not probed yet (request limit): next night
+        if (!found.vol) { db.transaction(() => { for (const b of g.books) mark.run(b.id, Date.now(), null, 0); })(); continue; }
+        for (const b of g.books) queue.push({ w: g.wiki, b, title: W.pageTitle(found.name, found.vol, T.num(b.issue_number)) });
+      }
+      for (const w of Object.keys(W.WIKIS)) {
+        const list = queue.filter(q => q.w === w);
+        for (let i = 0; i < list.length && left() > 0 && codeOn(); i += 50) {
+          const batch = list.slice(i, i + 50);
+          const got = await wiki.pages(w, batch.map(q => q.title));
+          db.transaction(() => {
+            for (const q of batch) {
+              const page = got.get(q.title);
+              let n = 0;
+              if (page) {
+                const parsed = W.parsePage(page.text);
+                if (W.dateFits(parsed, q.b.store_date)) {
+                  for (const ref of parsed.links) {
+                    const row = wikiRow(lib, q.b, ref, parsed.event, `${w} wiki: ${page.title}`);
+                    if (row && insert.run(rowOf(row)).changes) n++;
+                  }
+                }
+              }
+              mark.run(q.b.id, Date.now(), page?.title || null, n);
+              wikiState.books++; wikiState.links += n;
+            }
+          })();
+        }
+      }
+    } catch (e) {
+      wikiState.error = e.message;
+      logger.warn('crossovers', 'Fan wiki pass stopped', { error: e.message });
+    } finally {
+      Object.assign(wikiState, { running: false, finishedAt: Date.now(), requests: wiki.requests() - start });
+      logger.info('crossovers', 'Fan wiki pass', { requests: wikiState.requests, issues: wikiState.books, links: wikiState.links });
+    }
+    return wikiState;
+  }
+
 
   // ── Web check runs ────────────────────────────────────────────────
   const state = { running: false, stop: false, done: 0, total: 0, found: 0, cost: 0, current: null, startedAt: null, finishedAt: null, trigger: null, errors: [] };
@@ -509,12 +642,13 @@ function createCrossovers(deps = {}) {
 
   function status() {
     const n = candidates().length, per = costPerBook(), f = frequency(), last = lastRun();
-    const counts = db.prepare(`SELECT SUM(source = 'summary') AS summary, SUM(source = 'title') AS title, SUM(source = 'web') AS web,
+    const counts = db.prepare(`SELECT SUM(source = 'summary') AS summary, SUM(source = 'title') AS title, SUM(source = 'wiki') AS wiki, SUM(source = 'web') AS web,
       SUM(source = 'web' AND (from_book_id IS NULL OR to_book_id IS NULL)) AS waiting, SUM(hidden) AS hidden FROM crossover_links`).get();
     const checked = db.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(cost), 0) AS cost FROM crossover_checks').get();
     return { code: codeOn(), ai: aiOn(), frequency: f, frequencies: Object.keys(FREQUENCIES), lastRun: last, nextRun: FREQUENCIES[f] && last ? last + FREQUENCIES[f] * 86400000 : null,
       pending: n, perBook: per, estimate: n * per, lookbackDays: LOOKBACK_DAYS,
-      links: { summary: counts.summary || 0, title: counts.title || 0, web: counts.web || 0, waiting: counts.waiting || 0, hidden: counts.hidden || 0 },
+      wiki: { ...wikiState, read: db.prepare('SELECT COUNT(*) AS n FROM crossover_wiki_books').get().n },
+      links: { summary: counts.summary || 0, title: counts.title || 0, wiki: counts.wiki || 0, web: counts.web || 0, waiting: counts.waiting || 0, hidden: counts.hidden || 0 },
       checked: checked.n, spent: checked.cost, run: { ...state, errors: state.errors.slice(-10) } };
   }
   // The scheduled check, when it is due (called daily).
@@ -569,6 +703,7 @@ function createCrossovers(deps = {}) {
       if (codeOn()) refreshFree();
       else if (aiOn()) db.transaction(() => resolvePending(loadLibrary(db)))();
     } catch (e) { logger.error('crossovers', 'Links from issue text failed', e.message); }
+    if (codeOn()) wikiPass().catch(e => logger.error('crossovers', 'Fan wiki pass failed', e.message));
     if (due() && !state.running) run('scheduled').catch(e => logger.error('crossovers', 'Scheduled check failed', e.message));
   });
   // First start after deploy: build the summary links once (a few seconds), off the startup path.
@@ -576,8 +711,12 @@ function createCrossovers(deps = {}) {
   if (codeOn() && !db.prepare(`SELECT 1 FROM crossover_links WHERE source = 'title' LIMIT 1`).get()) {
     setTimeout(() => { try { refreshFree(); } catch (e) { logger.error('crossovers', 'Summary links failed', e.message); } }, 90000).unref?.();
   }
+  // The fan wikis' first pass starts soon after deploy (then nightly): about 1,500 requests a night.
+  if (codeOn() && !db.prepare('SELECT 1 FROM crossover_wiki_books LIMIT 1').get()) {
+    setTimeout(() => wikiPass().catch(e => logger.error('crossovers', 'Fan wiki pass failed', e.message)), 150000).unref?.();
+  }
 
-  return { forBook, nextFor, placementFor, refreshFree, run, status, due, candidates, state, codeOn, aiOn };
+  return { forBook, nextFor, placementFor, refreshFree, wikiPass, wikiState, run, status, due, candidates, state, codeOn, aiOn };
 }
 
-module.exports = { createCrossovers, schema, loadLibrary, summaryLinks, textLinks, titleLinks, provenLinks, linkRow, bookQuestion, volumeQuestion, EXTRACT, MAX_GAP_DAYS };
+module.exports = { createCrossovers, schema, loadLibrary, nearest, wikiRow, summaryLinks, textLinks, titleLinks, provenLinks, linkRow, bookQuestion, volumeQuestion, EXTRACT, MAX_GAP_DAYS };

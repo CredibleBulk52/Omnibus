@@ -27,9 +27,9 @@ export default function CrossoverSettings() {
   return (
     <div className="xo-settings">
       <p className="form-hint">Links a story that continues in another series (for example Green Lantern #40 → Green Lantern Corps #22): the reader's end card, the issue page, and the series page's Reading order view. Two ways to find them; each switch also hides the links it found (they are kept for when it is switched back on).</p>
-      <label className="xo-switch"><input type="checkbox" checked={st.code} onChange={e => post('/switches', { code: e.target.checked })} /> From issue text (free)</label>
-      <p className="form-hint xo-indent">Summaries that name the other issue ("Continued in Superman #50") and story titles with part numbers in two series ("First Light, Part 1" / "Part Two"). Rebuilt every night.
-        {st.code && <> <b>{st.links.summary + st.links.title}</b> links ({st.links.summary} from summaries, {st.links.title} from titles).</>}</p>
+      <label className="xo-switch"><input type="checkbox" checked={st.code} onChange={e => post('/switches', { code: e.target.checked })} /> Free sources: issue text and fan wikis</label>
+      <p className="form-hint xo-indent">Summaries that name the other issue ("Continued in Superman #50"), story titles with part numbers in two series ("First Light, Part 1" / "Part Two"), and the DC and Marvel fan wikis' "continues from / in" notes (read from Fandom, about 1,500 pages a night until the library is done, then only new issues). Rebuilt every night.
+        {st.code && <> <b>{st.links.summary + st.links.title + st.links.wiki}</b> links ({st.links.summary} from summaries, {st.links.title} from titles, {st.links.wiki} from wikis{st.wiki ? `; ${st.wiki.read} issues read on the wikis${st.wiki.running ? ', reading now…' : ''}` : ''}).</>}</p>
       <label className="xo-switch"><input type="checkbox" checked={st.ai} disabled={run.running && !st.ai} onChange={e => post('/switches', { ai: e.target.checked })} /> AI web check (paid, needs an AI key)</label>
       {!st.ai ? <p className="form-hint xo-indent">One Web Search question per new issue, about {money(st.perBook)} each. Off: no AI spending{st.links.web ? `; the ${st.links.web} links found earlier are hidden` : ''}.</p> : <div className="xo-indent">
       <p><b>{st.links.web}</b> links from web checks{st.links.waiting ? <> ({st.links.waiting} waiting for an issue you don't have)</> : null}</p>

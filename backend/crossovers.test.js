@@ -281,8 +281,99 @@ test('a short story name hides a missing part only when it is the event\'s name 
 test('Reading order placements: the next part after its issue, an earlier part before its issue; none when off', () => {
   const lib = library(), x = create(lib);
   addWeb(x, lib, [[{ series: 'Green Lantern', issue: '40' }, { series: 'Green Lantern Corps', issue: '22' }, 'First Light', '2026-10-28']]);
-  assert.deepEqual(x.placementFor('gl'), [{ bookId: 'glc22', afterBookId: 'gl40', story: 'First Light' }]);
-  assert.deepEqual(x.placementFor('glc'), [{ bookId: 'gl40', beforeBookId: 'glc22', story: 'First Light' }]);
+  const strip = list => list.map(({ chainDate, seq, ...rest }) => rest);
+  assert.deepEqual(strip(x.placementFor('gl')), [{ bookId: 'glc22', afterBookId: 'gl40', story: 'First Light' }]);
+  assert.deepEqual(strip(x.placementFor('glc')), [{ bookId: 'gl40', beforeBookId: 'glc22', story: 'First Light' }]);
   lib.settings.set('crossover_ai_enabled', '0');                // web links: the AI switch
   assert.deepEqual(x.placementFor('gl'), []);
+});
+
+test('Reading order follows the whole story through other series, in story order, until it comes back', () => {
+  const lib = library(), x = create(lib);
+  const add = lib.db.prepare('INSERT INTO scanned_books (id, series_id, issue_number, comicinfo, store_date, cv_issue_id) VALUES (?,?,?,?,?,?)');
+  lib.db.prepare('INSERT INTO scanned_series VALUES (?,?,?)').run('nt', 'New Titans', 1988);
+  lib.db.prepare('INSERT INTO scanned_series VALUES (?,?,?)').run('ds', 'Darkstars', 1992);
+  lib.db.prepare('INSERT INTO scanned_series VALUES (?,?,?)').run('gg', 'Guy Gardner', 1992);
+  add.run('nt124', 'nt', '124', '<ComicInfo/>', '1995-06-22', 'c1'); add.run('gl65', 'gl', '65', '<ComicInfo/>', '1995-06-27', 'c2');
+  add.run('ds34', 'ds', '34', '<ComicInfo/>', '1995-07-06', 'c3'); add.run('gg33', 'gg', '33', '<ComicInfo/>', '1995-07-13', 'c4');
+  add.run('nt125', 'nt', '125', '<ComicInfo/>', '1995-07-20', 'c5'); add.run('gl66', 'gl', '66', '<ComicInfo/>', '1995-07-27', 'c6');
+  const ins = lib.db.prepare(`INSERT INTO crossover_links (key, from_book_id, from_series, from_issue, to_book_id, to_series, to_issue, story, source, found_at) VALUES (?,?,'a','1',?,'b','1',?,'title',0)`);
+  const chain = ['nt124', 'gl65', 'ds34', 'gg33', 'nt125', 'gl66'];
+  for (let i = 0; i + 1 < chain.length; i++) ins.run(`t:${chain[i]}>${chain[i + 1]}`, chain[i], chain[i + 1], 'The Siege of the Zi Charam');
+  const gl = x.placementFor('gl');
+  assert.deepEqual(gl.filter(p => p.afterBookId === 'gl65').sort((a, b) => a.seq - b.seq).map(p => p.bookId), ['ds34', 'gg33', 'nt125']);   // stops at #66, this series
+  assert.deepEqual(gl.filter(p => p.beforeBookId === 'gl65').map(p => p.bookId), ['nt124']);
+  assert.ok(!gl.some(p => p.bookId === 'gl66'));
+  // Darkstars' grid: the parts before #34 back to the start, and after it to the end.
+  const ds = x.placementFor('ds');
+  assert.deepEqual(ds.filter(p => p.beforeBookId === 'ds34').sort((a, b) => a.seq - b.seq).map(p => p.bookId), ['nt124', 'gl65']);
+  assert.deepEqual(ds.filter(p => p.afterBookId === 'ds34').sort((a, b) => a.seq - b.seq).map(p => p.bookId), ['gg33', 'nt125', 'gl66']);
+});
+
+test('fan wiki pages: "continues from / in" notes, Marvel (Story) previous/next, the event name and the date', () => {
+  const W = require('./crossoverWiki');
+  const pages = file => Object.values(require(`./fixtures/${file}`).query.pages).map(p => [p.title, W.parsePage(p.revisions[0].slots.main['*'])]);
+  const got = Object.fromEntries([...pages('wiki-dc-sample.json'), ...pages('wiki-marvel-sample.json')].map(([t, r]) => [t, r]));
+  const links = r => r.links.map(l => `${l.dir} ${l.series} #${l.issue}`);
+  assert.deepEqual(links(got['Green Lantern Vol 3 162']), ['from Green Arrow #23', 'in Green Arrow #24']);
+  assert.deepEqual(links(got['Green Lantern Vol 3 65']), ['from New Titans #124', 'in Darkstars #34']);
+  assert.deepEqual(links(got['Mighty Thor Vol 1 19']), ['from Journey Into Mystery #642', 'in Journey Into Mystery #643']);
+  assert.deepEqual(links(got['Amazing Spider-Man Vol 1 404']), ['from Web of Spider-Man #127', 'in Spider-Man #61']);
+  assert.equal(got['Green Lantern Vol 3 65'].event, 'The Siege of the Zi Charam');
+  assert.ok(W.dateFits(got['Green Lantern Vol 3 65'], '1995-06-27'));          // cover August 1995, on sale June 27
+  assert.ok(!W.dateFits(got['Green Lantern Vol 3 65'], '2014-06-27'));         // another volume's #65
+  assert.ok(W.dateFits(got['Mighty Thor Vol 1 19'], '2012-09-05'));
+  // Character pages and "see also" links are not story links; "in X and Y" gives both.
+  assert.deepEqual(W.parsePage('| Notes = Story continues in {{c|A Vol 1 2}} and {{c|B Vol 2 3}}. See also [[C Vol 1 4]] and [[Peter Parker (Earth-616)|Peter]].').links.map(l => l.series), ['A', 'B']);
+  assert.equal(W.wikiName('The Amazing Spider-Man (1963)'), 'Amazing Spider-Man');
+});
+
+test('the fan wiki pass: finds each series\' volume by date, reads pages 50 at a time, stores links, reads each issue once', async () => {
+  const lib = library();
+  const page = (title, notes, month, year) => `{{DC Database:Comic Template\n| Title = x\n| Month = ${month}\n| Year = ${year}\n| Notes = ${notes}\n}}`;
+  const wiki = {
+    'Green Lantern Vol 1 40': page('Green Lantern Vol 1 40', 'Old story.', 'June', 1965),      // another volume (wrong date)
+    'Green Lantern Vol 7 40': page('Green Lantern Vol 7 40', 'This is part one of "First Light". This story continues in {{c|Green Lantern Corps Vol 5 22}}.', 'December', 2026),
+  };
+  const calls = [];
+  const axios = { get: async (url, { params }) => {
+    calls.push(params.titles);
+    const pages = {};
+    params.titles.split('|').forEach((t, i) => { pages[wiki[t] ? i : -1 - i] = wiki[t] ? { title: t, revisions: [{ slots: { main: { '*': wiki[t] } } }] } : { title: t, missing: '' }; });
+    return { data: { query: { pages } } };
+  } };
+  lib.db.exec(`UPDATE scanned_books SET comicinfo = '<ComicInfo><Publisher>DC Comics</Publisher></ComicInfo>'`);
+  const x = create(lib, { axios });
+  await x.wikiPass({ maxRequests: 50 });
+  assert.equal(x.nextFor('gl40').id, 'glc22');
+  const row = lib.db.prepare(`SELECT * FROM crossover_links WHERE source = 'wiki'`).get();
+  assert.equal(row.story, 'First Light');
+  assert.equal(lib.db.prepare(`SELECT vol FROM crossover_wiki_series WHERE name = 'Green Lantern'`).get().vol, 7);
+  const n = calls.length;
+  await x.wikiPass({ maxRequests: 50 });
+  assert.equal(calls.length, n);   // nothing new to read
+  lib.settings.set('crossover_code_enabled', '0');
+  assert.equal(x.nextFor('gl40'), null);   // a free source: the code switch
+});
+
+test('fan wiki volumes: other spellings when the first finds none (The Flash, Atom and Hawkman); old notes and reversed dates', async () => {
+  const W = require('./crossoverWiki');
+  const have = { 'The Flash Vol 4 1': '| Month = 11\n| Year = 2011\n', 'Atom and Hawkman Vol 1 39': '| Month = 10\n| Year = 1968\n' };
+  const client = { pages: async (wiki, titles) => new Map(titles.map(t => [t, have[t] ? { title: t, text: have[t] } : null])) };
+  const found = await W.findVolumes(client, 'dc', [
+    { key: 'f', name: W.wikiName('The Flash'), series: 'The Flash', probe: { issue: '1', store_date: '2011-09-28' } },
+    { key: 'a', name: W.wikiName('The Atom & Hawkman'), series: 'The Atom & Hawkman', probe: { issue: '39', store_date: '1968-08-01' } },
+    { key: 'x', name: 'Nothing Here', series: 'Nothing Here', probe: { issue: '1', store_date: '2000-01-01' } },
+  ]);
+  assert.deepEqual(Object.fromEntries(found), { f: { name: 'The Flash', vol: 4 }, a: { name: 'Atom and Hawkman', vol: 1 }, x: { name: 'Nothing Here', vol: 0 } });
+  // wikiRow: "continued from" an issue not owned is a look back, not a part; a next part released well before is dropped.
+  const lib = library();
+  const L = C.loadLibrary(lib.db);
+  const gl40 = L.byId.get('gl40');
+  assert.equal(C.wikiRow(L, gl40, { dir: 'from', series: 'Giant-Size Avengers', issue: '4' }, null, 'p'), null);
+  assert.equal(C.wikiRow(L, gl40, { dir: 'in', series: 'Giant-Size Avengers', issue: '5' }, null, 'p').toName.series, 'Giant-Size Avengers');
+  assert.ok(C.wikiRow(L, L.byId.get('glc22'), { dir: 'in', series: 'Green Lantern', issue: '40' }, null, 'p'));   // 2 weeks earlier: allowed (up to 45 days)
+  lib.db.prepare(`UPDATE scanned_books SET store_date = '2026-08-20' WHERE id = 'gl40'`).run();
+  assert.equal(C.wikiRow(C.loadLibrary(lib.db), C.loadLibrary(lib.db).byId.get('glc22'), { dir: 'in', series: 'Green Lantern', issue: '40' }, null, 'p'), null);   // 83 days earlier: dropped
+  assert.equal(C.wikiRow(L, gl40, { dir: 'in', series: 'Green Lantern Corps', issue: '22' }, null, 'p').to.id, 'glc22');
 });

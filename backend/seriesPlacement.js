@@ -273,7 +273,8 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
         const n = String(tag(book.comicinfo, 'Number') || book.issue_number || '').replace(/^0+(?=\d)/, '');
         placed.push({ bookId: c.bookId, afterBookId: after >= 0 ? regular[after].id : null, after, evidence: pin ? 'pin' : 'crossover', kind: 'crossover', mini: false,
           pinned: !!pin, label: n ? `${name} #${n}` : name, title: c.story ? `Crossover · ${c.story}` : 'Crossover', story: c.story || null,
-          sortKey: [book.store_date || '9999-99-99', 0, String(book.filename || ''), null] });
+          // One story's parts after one issue keep the story's order (crossovers.js walks the chain).
+          sortKey: [c.chainDate || book.store_date || '9999-99-99', c.seq ?? 0, String(book.filename || ''), null] });
         taken.add(c.bookId);
       }
     }
