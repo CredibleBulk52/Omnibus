@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import PlacementModal from '../PlacementModal';
+import CoverMenu from '../CoverMenu';
 import { useNavigate } from 'react-router-dom';
 import { useSeriesCache, isAdmin } from '../../App';
 import { ROLE_LABEL, call } from './api';
@@ -25,7 +26,11 @@ export function LinkedSeriesShelf({ homeId, members, onChanged, regular, onPlace
               <span className="linked-shelf-name">{m.name}{m.year ? ` (${m.year})` : ''}</span>
               <span className="linked-shelf-meta">{ROLE_LABEL[m.role] || m.role} · {m.issues} issue{m.issues === 1 ? '' : 's'}{m.hidden ? '' : ' · also in the browser'}</span>
             </button>
-            {isAdmin() && regular?.length > 0 && <button type="button" className="linked-shelf-remove" onClick={() => setPlacing(m)}>Place in reading order</button>}
+            {isAdmin() && regular?.length > 0 && <div className="linked-shelf-cover-menu">
+              <CoverMenu label={`More for ${m.name}`} heading={m.name} className="scm-toggle--issue">
+                {close => <button role="menuitem" onClick={() => { close(); setPlacing(m); }}>↳ Read after…</button>}
+              </CoverMenu>
+            </div>}
             {isAdmin() && <button type="button" className="linked-shelf-remove" onClick={() => remove(m)} title="Take it off this shelf">Remove</button>}
           </div>
         ))}

@@ -14,7 +14,10 @@
 .linked-shelf { margin: 8px 0 20px; }
 .linked-shelf-head { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
 .linked-shelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
-.linked-shelf-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.linked-shelf-card { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.linked-shelf-cover-menu { position: absolute; inset: 0 0 auto; aspect-ratio: 2 / 3; pointer-events: none; }
+.linked-shelf-cover-menu .scm-toggle { pointer-events: auto; }
+.linked-shelf-card:hover .scm-toggle, .linked-shelf-card:focus-within .scm-toggle { opacity: 1; transform: none; }
 .linked-shelf-open { display: flex; flex-direction: column; gap: 4px; background: none; border: 0; padding: 0; text-align: left; color: var(--text-primary); cursor: pointer; font: inherit; min-width: 0; }
 .linked-shelf-open img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 4px; background: var(--bg-card); }
 .linked-shelf-name { font-weight: 700; font-size: 0.85rem; overflow-wrap: anywhere; }
