@@ -91,7 +91,11 @@ function runOrder(regular) {
   return run;
 }
 
-function createSeriesPlacement({ db, members = () => [] }) {
+// crossoversFor(seriesId) (crossovers.js, 2026-11-22): owned issues of other series that continue this
+// series' story or lead into it — [{ bookId, afterBookId | beforeBookId, story }]. Placed in Reading order
+// after the issue they continue from (or before the one they lead into). { crossovers: false } leaves them
+// out: crossovers.js asks for that order to see whether a series already reads two books together.
+function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [] }) {
   ensurePlacementSchema(db);
   const one = (sql, ...a) => db.prepare(sql).get(...a);
   const all = (sql, ...a) => db.prepare(sql).all(...a);
@@ -216,7 +220,7 @@ function createSeriesPlacement({ db, members = () => [] }) {
   }
 
   // The series' reading order: placed extras with the regular issue each follows, and the shelved rest.
-  function placement(seriesId) {
+  function placement(seriesId, { crossovers = true } = {}) {
     const series = one('SELECT id, name, monitored_series_id FROM scanned_series WHERE id = ?', seriesId);
     if (!series) return null;
     const { regular, extras } = extrasOf(seriesId, series);
@@ -249,6 +253,30 @@ function createSeriesPlacement({ db, members = () => [] }) {
         evidence: pos.evidence, kind: x.kind, mini: x.mini, pinned: !!pin, ...label,
         sortKey: [x.book.store_date || '9999-99-99', pos.ord ?? 0, String(x.book.filename || ''), pos.event ?? null] });
     }
+    // Crossover issues from other series (crossovers.js): after the issue they continue, before the one
+    // they lead into. A pin moves or shelves one like any extra; a book already placed is not added twice.
+    if (crossovers) {
+      const taken = new Set([...placed.map(p => p.bookId), ...shelf.map(p => p.bookId), ...regIndex.keys()]);
+      let list = [];
+      try { list = crossoversFor(seriesId) || []; } catch { list = []; }
+      for (const c of list) {
+        if (taken.has(c.bookId)) continue;
+        const book = one(`SELECT ${COLS} FROM scanned_books WHERE id = ?`, c.bookId);
+        if (!book) continue;
+        let after = c.afterBookId != null ? regIndex.get(c.afterBookId) : regIndex.has(c.beforeBookId) ? regIndex.get(c.beforeBookId) - 1 : undefined;
+        if (after === undefined) continue;
+        const pin = pins.get(c.bookId);
+        if (pin?.mode === 'shelf') { shelf.push({ bookId: c.bookId, reason: 'pinned to the shelf', pinned: true }); taken.add(c.bookId); continue; }
+        if (pin?.mode === 'first') after = -1;
+        else if (pin?.mode === 'after' && regIndex.has(pin.anchor_book_id)) after = regIndex.get(pin.anchor_book_id);
+        const name = tag(book.comicinfo, 'Series') || one('SELECT name FROM scanned_series WHERE id = ?', book.series_id)?.name || '';
+        const n = String(tag(book.comicinfo, 'Number') || book.issue_number || '').replace(/^0+(?=\d)/, '');
+        placed.push({ bookId: c.bookId, afterBookId: after >= 0 ? regular[after].id : null, after, evidence: pin ? 'pin' : 'crossover', kind: 'crossover', mini: false,
+          pinned: !!pin, label: n ? `${name} #${n}` : name, title: c.story ? `Crossover · ${c.story}` : 'Crossover', story: c.story || null,
+          sortKey: [book.store_date || '9999-99-99', 0, String(book.filename || ''), null] });
+        taken.add(c.bookId);
+      }
+    }
     // Several extras after one issue: by date, then Timeline order, then filename (and see below).
     placed.sort((a, b) => (a.after - b.after) || (a.sortKey[0] < b.sortKey[0] ? -1 : a.sortKey[0] > b.sortKey[0] ? 1 : 0)
       || (a.sortKey[1] - b.sortKey[1]) || a.sortKey[2].localeCompare(b.sortKey[2]));
@@ -274,14 +302,14 @@ function createSeriesPlacement({ db, members = () => [] }) {
 
   // The displayed order: regular issues with the placed extras after their anchors —
   // [{ id, placed }] (placed: the extra's entry with its label, or null for a regular issue).
-  function order(seriesId) {
-    const p = placement(seriesId);
+  function order(seriesId, opts) {
+    const p = placement(seriesId, opts);
     if (!p) return null;
     const out = p.placed.filter(x => x.after < 0).map(x => ({ id: x.bookId, placed: x }));
     p.regular.forEach((r, i) => { out.push({ id: r.id, placed: null }); for (const x of p.placed) if (x.after === i) out.push({ id: x.bookId, placed: x }); });
     return out;
   }
-  const sequence = seriesId => order(seriesId)?.map(x => x.id) ?? null;
+  const sequence = (seriesId, opts) => order(seriesId, opts)?.map(x => x.id) ?? null;
 
   function setPin(seriesId, bookId, { mode, anchorBookId } = {}, userId = null) {
     if (!PIN_MODES.has(mode)) throw Object.assign(new Error('mode must be after, first or shelf'), { status: 400 });
@@ -304,8 +332,8 @@ function createSeriesPlacement({ db, members = () => [] }) {
 
 // Routes (2026-11-21). GET for any signed-in reader (the series page's Issues grid); pins for admins:
 // one shared reading order per series (user's choice).
-function registerPlacementRoutes({ app, db, requireAuth, requireAdmin, members, parseComicInfo, withEventMarkers }) {
-  const placement = createSeriesPlacement({ db, members });
+function registerPlacementRoutes({ app, db, requireAuth, requireAdmin, members, parseComicInfo, withEventMarkers, crossoversFor }) {
+  const placement = createSeriesPlacement({ db, members, crossoversFor });
   const fail = (res, e) => res.status(e.status || 500).json({ error: e.message });
   app.get('/api/series/:id/placement', requireAuth, (req, res) => {
     try {

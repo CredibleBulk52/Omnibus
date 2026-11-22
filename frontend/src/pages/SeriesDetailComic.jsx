@@ -1002,7 +1002,8 @@ export default function SeriesDetailComic() {
                     <button type="button" aria-pressed={!ordered} className={!ordered ? 'active' : ''} onClick={() => chooseView('issues')}>Issues only</button>
                     <button type="button" aria-pressed={ordered} className={ordered ? 'active' : ''} onClick={() => chooseView('reading')}>Reading order</button>
                     <span>{(() => { const n = placement.placed.length, one = n === 1;
-                      return `${ordered ? `${n} annual${one ? '' : 's'} or special${one ? '' : 's'} placed` : `Reading order adds ${n} annual${one ? '' : 's'} or special${one ? '' : 's'}`} where ${one ? 'it is' : 'they are'} read`; })()}</span>
+                      const what = `annual${one ? '' : 's'}, special${one ? '' : 's'} or crossover issue${one ? '' : 's'}`;
+                      return `${ordered ? `${n} ${what} placed` : `Reading order adds ${n} ${what}`} where ${one ? 'it is' : 'they are'} read`; })()}</span>
                   </div>
                 )}
                 {gapRows.length > 0 && (

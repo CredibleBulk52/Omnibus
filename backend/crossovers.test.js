@@ -236,3 +236,12 @@ test('a short story name hides a missing part only when it is the event\'s name 
   lib.db.exec(`UPDATE events SET name = 'DNX Aftermath'`);
   assert.equal(x.forBook('gl40').continuedFrom.length, 1);   // "DNX" is not "DNX Aftermath"
 });
+
+test('Reading order placements: the next part after its issue, an earlier part before its issue; none when off', () => {
+  const lib = library(), x = create(lib);
+  addWeb(x, lib, [[{ series: 'Green Lantern', issue: '40' }, { series: 'Green Lantern Corps', issue: '22' }, 'First Light', '2026-10-28']]);
+  assert.deepEqual(x.placementFor('gl'), [{ bookId: 'glc22', afterBookId: 'gl40', story: 'First Light' }]);
+  assert.deepEqual(x.placementFor('glc'), [{ bookId: 'gl40', beforeBookId: 'glc22', story: 'First Light' }]);
+  lib.settings.set('crossover_links_enabled', '0');
+  assert.deepEqual(x.placementFor('gl'), []);
+});

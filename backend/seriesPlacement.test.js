@@ -228,3 +228,28 @@ test('books after one issue from the same Timeline keep its order though a final
   const p = createSeriesPlacement({ db, members: () => [] });
   assert.deepEqual(p.sequence('cap'), ['c600', 'c601', 'r1', 'r2', 'r3', 'r4', 'r5', 'xs', 'r6', 'wws', 'c602']);
 });
+
+test('crossover issues (crossovers.js) go after the issue they continue, or before the one they lead into; not twice, not over a placed book', () => {
+  const { db } = fixture();
+  const add = db.prepare('INSERT INTO scanned_books VALUES (?,?,?,?,?,?,?,?,?)');
+  db.prepare('INSERT INTO scanned_series VALUES (?,?,?)').run('bat', 'Batman', null);
+  add.run('b16', 'bat', 'Batman 016.cbz', '16', 'Mark of Hecate', '<ComicInfo><Series>Absolute Batman</Series><Number>16</Number></ComicInfo>', 0, 16, '2026-09-23');
+  add.run('b17', 'bat', 'Batman 017.cbz', '17', 'Next', '<ComicInfo><Series>Absolute Batman</Series><Number>17</Number></ComicInfo>', 0, 17, '2026-10-28');
+  const links = [
+    { bookId: 'b16', afterBookId: 'w37', story: 'The Mark of Hecate' },   // Wonder Woman #37 → Batman #16
+    { bookId: 'b16', beforeBookId: 'w38', story: 'The Mark of Hecate' },  // and Batman #16 → Wonder Woman #38: one card
+    { bookId: 'b17', beforeBookId: 'w36', story: 'Earlier' },             // leads into #36: after the issue before it (none: first)
+    { bookId: 'aa1', afterBookId: 'w36', story: 'x' },                    // Amazons Attack #1 is already placed as a mini
+  ];
+  const p = createSeriesPlacement({ db, members: id => (id === 'ww' ? [{ id: 'aa' }] : []), crossoversFor: id => (id === 'ww' ? links : []) });
+  const seq = p.sequence('ww');
+  assert.equal(seq.filter(id => id === 'b16').length, 1);
+  assert.ok(seq.indexOf('b16') > seq.indexOf('w37') && seq.indexOf('b16') < seq.indexOf('w38'));
+  assert.ok(seq.indexOf('b17') < seq.indexOf('w36'));
+  const card = p.placement('ww').placed.find(x => x.bookId === 'b16');
+  assert.deepEqual([card.kind, card.label, card.title, card.afterBookId], ['crossover', 'Absolute Batman #16', 'Crossover · The Mark of Hecate', 'w37']);
+  assert.equal(p.placement('ww').placed.find(x => x.bookId === 'aa1').kind, 'linked');
+  assert.ok(!p.sequence('ww', { crossovers: false }).includes('b16'));   // the order crossovers.js checks against
+  p.setPin('ww', 'b16', { mode: 'shelf' });                              // an admin can shelve a wrong one
+  assert.ok(!p.sequence('ww').includes('b16'));
+});

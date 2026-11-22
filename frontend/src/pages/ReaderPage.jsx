@@ -105,6 +105,9 @@ export default function ReaderPage() {
   const ctxSaveRef = useRef(ctxSave); ctxSaveRef.current = ctxSave;
   const ctxQs = eventId ? `?eventId=${encodeURIComponent(eventId)}&minTier=${eventPath}` : canonRunId ? `?canonRunId=${canonRunId}` : listId ? `?listId=${listId}`
     : fromSeries ? `?fromSeries=${encodeURIComponent(fromSeries)}` : '';
+  // A series neighbour from another series (a placed mini or crossover issue; adjacent's `fromSeries`)
+  // opens in this series' order, so reading goes on in this series afterwards (2026-11-22).
+  const qsFor = b => (!eventId && !canonRunId && !listId && b?.fromSeries ? `?fromSeries=${encodeURIComponent(b.fromSeries)}` : ctxQs);
   const [listOpen, setListOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [asst, setAsst] = useState(null);   // Comic Book Guy status (enabled, name, avatar)
@@ -356,8 +359,7 @@ export default function ReaderPage() {
     // Past first page → navigate to prev issue
     if (newPage < 0 && adjacentRef.current.prev) {
       const prev = adjacentRef.current.prev;
-      const params = ctxQs;
-      navigate(`/read/${prev.id}${params}`, { replace: true });
+      navigate(`/read/${prev.id}${qsFor(prev)}`, { replace: true });
       return;
     }
 
@@ -423,8 +425,8 @@ export default function ReaderPage() {
   const openIssue = useCallback((b) => {
     if (!b) return;
     setNextToast(b);
-    setTimeout(() => navigate(`/read/${b.id}${ctxQs}`, { replace: true }), 350);
-  }, [ctxQs, navigate]);
+    setTimeout(() => navigate(`/read/${b.id}${qsFor(b)}`, { replace: true }), 350);
+  }, [ctxQs, navigate, eventId, canonRunId, listId]);
   const closeEnd = useCallback(() => { atEndRef.current = false; setAtEnd(false); }, []);
   // Turn without scrolling first (swipes). From the end card: next issue / back to the last page.
   const turnForward = useCallback(() => {

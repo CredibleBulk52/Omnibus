@@ -100,7 +100,19 @@ async function run(opts, { db, ai, catalog, readPage, axios, C, T, log }) {
   let spent = 0;
   const totals = { volume: { questions: 0, searches: 0, cost: 0 }, issue: { questions: 0, searches: 0, cost: 0 } };
 
+  // One question; a failed call (a Gemini timeout stopped the first run, 2026-11-22) is tried once more,
+  // then recorded as an error and the test goes on.
   async function ask(kind, question, words, anchorFor) {
+    for (let attempt = 1; ; attempt++) {
+      try { return await askOnce(kind, question, words, anchorFor); }
+      catch (e) {
+        const msg = String(e?.message || e).slice(0, 160);
+        if (attempt >= 2) { totals[kind].errors = (totals[kind].errors || 0) + 1; log(`  ${kind} question failed twice: ${msg}`); return { searches: 0, links: [], result: `error: ${msg}` }; }
+        log(`  ${kind} question failed (${msg}); trying again`);
+      }
+    }
+  }
+  async function askOnce(kind, question, words, anchorFor) {
     if (spent >= opts.cap) return { skipped: 'cost cap' };
     const l = await lookup(ai, catalog, question, words);
     const t = totals[kind];
@@ -242,5 +254,6 @@ async function main() {
   console.log(`\n${text(rep).split('\nKnown links found again:')[0]}\n\nFull report: ${base}.txt (and .json)`);
 }
 
-if (require.main === module) main().catch(e => { console.error(e); process.exit(1); });
+// Only the message: an axios error carries the request's headers, API key included (first run's log, 2026-11-22).
+if (require.main === module) main().catch(e => { console.error(`Failed: ${e?.message || e}`); process.exit(1); });
 module.exports = { run, text };

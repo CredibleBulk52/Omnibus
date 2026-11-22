@@ -333,6 +333,28 @@ function createCrossovers(deps = {}) {
   // The end card's "Story continues in …" (series reading): the first next part.
   const nextFor = bookId => forBook(bookId).continuesIn[0] || null;
 
+  // For the Reading order view (seriesPlacement.js): owned issues of other series linked to this series'
+  // books — the next part goes after its issue, an earlier part before its issue. The same rules as the
+  // end card (`sequence` is the order without crossovers, so a series does not hide its own links).
+  const linksOfSeries = db.prepare(`SELECT l.* FROM crossover_links l JOIN scanned_books a ON a.id = l.from_book_id JOIN scanned_books b ON b.id = l.to_book_id
+    WHERE l.hidden = 0 AND (a.series_id = ? OR b.series_id = ?) AND a.series_id <> b.series_id`);
+  function placementFor(seriesId) {
+    if (!enabled()) return [];
+    const out = [], seen = new Set();
+    const series = id => bookInfo.get(id)?.series_id;
+    for (const l of linksOfSeries.all(seriesId, seriesId)) {
+      if (!shown(l)) continue;
+      const mine = series(l.from_book_id) === seriesId;
+      const other = mine ? l.to_book_id : l.from_book_id;
+      const k = `${other}|${mine ? 'a' : 'b'}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(mine ? { bookId: other, afterBookId: l.from_book_id, story: l.story || null } : { bookId: other, beforeBookId: l.to_book_id, story: l.story || null });
+    }
+    // Outgoing first: a book that both follows one issue and leads into the next sits after the first.
+    return out.sort((a, b) => (a.afterBookId ? 0 : 1) - (b.afterBookId ? 0 : 1));
+  }
+
   // ── Web check runs ────────────────────────────────────────────────
   const state = { running: false, stop: false, done: 0, total: 0, found: 0, cost: 0, current: null, startedAt: null, finishedAt: null, trigger: null, errors: [] };
   const frequency = () => (Object.hasOwn(FREQUENCIES, getSetting('crossover_check_frequency') || '') ? getSetting('crossover_check_frequency') : 'off');
@@ -474,7 +496,7 @@ function createCrossovers(deps = {}) {
     setTimeout(() => { try { refreshFree(); } catch (e) { logger.error('crossovers', 'Summary links failed', e.message); } }, 90000).unref?.();
   }
 
-  return { forBook, nextFor, refreshFree, run, status, due, candidates, state };
+  return { forBook, nextFor, placementFor, refreshFree, run, status, due, candidates, state };
 }
 
 module.exports = { createCrossovers, schema, loadLibrary, summaryLinks, provenLinks, linkRow, bookQuestion, volumeQuestion, EXTRACT, MAX_GAP_DAYS };

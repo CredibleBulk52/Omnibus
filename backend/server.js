@@ -3350,8 +3350,15 @@ app.get('/api/books/:id/adjacent', requireAuth, (req, res) => {
   const out = withLabels({ prev: fmt(order[idx - 1]), next: fmt(order[idx + 1]), context: serContext });
   // The next issue's Timeline events, for the end card's note (eventMarkers.js, 2026-11-21).
   if (out.next?.id) { try { const ev = eventMarkersFor(db, [out.next.id]).get(out.next.id); if (ev?.length) out.next.events = ev; } catch {} }
-  // A small crossover's next part in another series (crossovers.js, 2026-11-22): the end card's "Story continues in".
-  try { const x = crossovers?.nextFor(bookId); if (x) out.crossover = x; } catch {}
+  // A small crossover's next part in another series (crossovers.js, 2026-11-22): the end card's "Story continues in"
+  // — unless it already is the next issue (Reading order places crossover issues in the series).
+  try { const x = crossovers?.nextFor(bookId); if (x && x.id !== out.next?.id) out.crossover = x; } catch {}
+  // A neighbour from another series (a placed mini or crossover issue) keeps this series' order when opened.
+  for (const k of ['prev', 'next']) {
+    if (!out[k]?.id) continue;
+    const sid = db.prepare('SELECT series_id FROM scanned_books WHERE id = ?').get(out[k].id)?.series_id;
+    if (sid && sid !== ctxId) out[k].fromSeries = ctxId;
+  }
   res.json(out);
 });
 
@@ -11597,7 +11604,8 @@ const problemReports = require('./problemReports')({ app, db, requireAuth, requi
 // Specials shelves panel, the Shelf Sorter, the series page's shelf routes, the rules' startup and hourly runs.
 // Annuals and specials in a series' reading order (seriesPlacement.js, 2026-11-21; claude/SERIES_READING_ORDER.md).
 const seriesPlacement = require('./seriesPlacement').registerPlacementRoutes({ app, db, requireAuth, requireAdmin,
-  members: id => seriesGrouping.members(id), parseComicInfo, withEventMarkers });
+  members: id => seriesGrouping.members(id), parseComicInfo, withEventMarkers,
+  crossoversFor: id => (crossovers ? crossovers.placementFor(id) : []) });   // Reading order: crossover issues (crossovers.js, 2026-11-22)
 require('./shelfRoutes').registerShelfRoutes({ ai, aiModels, aiRouting, app, db, getSetting, hasAiProvider, logger, metron, metronToken, minisOn, requireAdmin, requireAuth,
   seriesGroupOf, seriesGrouping, setAiJobOutcome, shelvesMode, shelvesOn });
 
@@ -11757,7 +11765,7 @@ let crossovers = null;
 try {
   crossovers = require('./crossovers').createCrossovers({ app, db, ai, webLookup, readPage: require('./ai/pageReader').readPage, axios, cron, getSetting,
     setSetting: (k, v) => db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v), logger, requireAuth, requireAdmin,
-    sequence: id => seriesPlacement.sequence(id), modelCatalog });
+    sequence: id => seriesPlacement.sequence(id, { crossovers: false }), modelCatalog });
 } catch (e) { logger.error('crossovers', 'Crossover links unavailable', e.message); }
 const recaps = require('./recaps')({ app, db, ai, logger, getPageImage: (...a) => getPageImageForAssistant(...a), modelCatalog, cvApiGet, getCVKey, readingLists, bookIndex, requireAdmin, axios, webLookup });
 // Installed synchronously before startup timers or HTTP requests can run.
