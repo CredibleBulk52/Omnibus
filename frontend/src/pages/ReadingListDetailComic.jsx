@@ -23,7 +23,9 @@ import {
 import ReadingOrderHero from '../components/ReadingOrderHero';
 import { useReadingTheme } from '../components/ReadingTheme';
 import { reportProblem } from '../components/ReportProblem';
-import AcquireBox, { AcquireDialog } from '../components/AcquireBox';
+import MatchModal from '../components/MatchModal';
+import { eventAdapter, runAdapter } from '../components/listEditor/adapters';
+import { AcquireDialog } from '../components/AcquireBox';
 import { isAdmin, useAppSettings } from '../App';
 import ManageMenu from '../components/ManageMenu';
 import { ExportMenuItem } from '../components/CuratedTransfer';
@@ -114,6 +116,13 @@ export default function ReadingListDetail() {
   if (!data) return <Loading label="Loading list…" />;
 
   const { list, entries, progress, can_edit: canEdit } = data;
+  const canMatchIssue = i => i.source_issue_id != null ? isAdmin() : i.id != null && canEdit;
+  const acquireBase = i => i.source_issue_id != null
+    ? `/api/requests/${i._entry.type === 'event' ? 'event' : 'run'}/${i._entry.ref_id}/issues/${i.source_issue_id}`
+    : `/api/reading-lists/${list.id}/issues/${i.id}`;
+  const matchTarget = i => i.source_issue_id != null
+    ? (i._entry.type === 'event' ? eventAdapter : runAdapter).matchTarget(i._entry.ref_id, { id: i.source_issue_id })
+    : { method: 'PATCH', url: `${acquireBase(i)}/match`, body: bookId => ({ bookId }) };
   const readUrl = bookId => `/read/${bookId}?listId=${list.id}`;
 
   // ── Actions ────────────────────────────────────────────────────
@@ -216,16 +225,16 @@ export default function ReadingListDetail() {
                 <IssueRow issue={i} n={startIdx + k + 1} colour={TYPE_COLOUR[e.type]} showTier={showTier}
                   isCurrent={current && i.book_id === current.book_id}
                   onRead={() => navigate(readUrl(i.book_id))}
-                  onMatch={canEdit && i.id != null && !i.owned ? () => setMatchIssue(i) : null}
-                  onAcquire={i.id != null && !i.owned && requests[i.id] !== 'open' ? () => setAcquireIssue(i) : null} acquireLabel={acquireLabel}
+                  onMatch={canMatchIssue(i) && !i.owned ? () => setMatchIssue(i) : null}
+                  onAcquire={(i.id != null || i.source_issue_id != null) && !i.owned && requests[i.id] !== 'open' ? () => setAcquireIssue(i) : null} acquireLabel={acquireLabel}
                   reqStatus={!i.owned && i.id != null ? requests[i.id] : null}
-                  linkedMissing={e.linked && !i.owned} />
+                  linkedMissing={i._entry.linked && !i.owned && !canMatchIssue(i)} />
               </React.Fragment>
             ))}
           </div>
         ) : (
           <IssueShelf issues={issues} showSeries={e.type === 'story'} current={current} onRead={i => navigate(readUrl(i.book_id))}
-            onMatch={canEdit ? (i => setMatchIssue(i)) : null} requests={requests} onIssueChanged={load}
+            onMatch={setMatchIssue} canMatchIssue={canMatchIssue} requests={requests} onIssueChanged={load}
             onAcquire={i => setAcquireIssue(i)} acquireLabel={acquireLabel}
             expanded={expanded.has(e.id)} onMore={() => toggleExpand(e.id)} />
         )}
@@ -321,11 +330,12 @@ export default function ReadingListDetail() {
           onDeleted={() => navigate(list.visibility === 'essential' ? '/essentials' : '/collections')} />
       )}
       {acquireIssue && (
-        <AcquireDialog base={`/api/reading-lists/${list.id}/issues/${acquireIssue.id}`} issue={acquireIssue}
+        <AcquireDialog base={acquireBase(acquireIssue)} issue={acquireIssue}
           onClose={() => { setAcquireIssue(null); load(); }} />
       )}
       {matchIssue && (
-        <MatchModal issue={matchIssue} listId={list.id} onClose={() => { setMatchIssue(null); load(); }}
+        <MatchModal issue={matchIssue} target={matchTarget(matchIssue)}
+          acquireBase={acquireBase(matchIssue)} onClose={() => { setMatchIssue(null); load(); }}
           onMatched={() => { setMatchIssue(null); load(); }} />
       )}
       {noteEntry && (
@@ -493,81 +503,3 @@ function EntryNoteModal({ entry, create, listId, onClose, onSaved }) {
     </Modal>
   );
 }
-
-// ─── Manual match: pick the library book for a stored list issue ──
-function MatchModal({ issue, listId, onClose, onMatched }) {
-  const [query, setQuery] = useState(issue.series_name || '');
-  const [num, setNum] = useState(issue.issue_number || '');
-  const [results, setResults] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  const search = useCallback(async (q = query, n = num) => {
-    if (!q.trim()) return;
-    setBusy(true); setError('');
-    try {
-      const params = new URLSearchParams({ q: q.trim() });
-      if (String(n).trim()) params.set('issue', String(n).trim());
-      const d = await rlApi('GET', `/api/events/book-search?${params}`);
-      setResults(Array.isArray(d) ? d : []);
-    } catch (e) { setError(e.message); setResults([]); }
-    setBusy(false);
-  }, [query, num]);
-  const searched = useRef(false);
-  useEffect(() => { if (!searched.current) { searched.current = true; search(); } }, [search]);   // first search on open
-
-  const pick = async (bookId) => {
-    setBusy(true); setError('');
-    try { await rlApi('PATCH', `/api/reading-lists/${listId}/issues/${issue.id}/match`, { bookId }); onMatched(); }
-    catch (e) { setError(e.message); setBusy(false); }
-  };
-
-  return (
-    <Modal title="Find in Library" onClose={onClose} width={580}
-      footer={<>
-        {issue.owned && (
-          <button className="btn btn-ghost" style={{ marginRight: 'auto', color: '#ff7a6a' }} onClick={() => pick(null)} disabled={busy}>Clear match</button>
-        )}
-        <button className="btn btn-ghost" onClick={onClose} disabled={busy}>Cancel</button>
-      </>}>
-      <div className="rl-modal-sub">
-        {issue.series_name} #{issue.issue_number}{issue.volume_year ? ` (${issue.volume_year})` : ''}{issue.title ? ` · “${issue.title}”` : ''}
-      </div>
-      <div className="rl-modal-body">
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input className="rl-input" style={{ flex: 1 }} value={query} placeholder="Series name"
-            onChange={ev => setQuery(ev.target.value)} onKeyDown={ev => ev.key === 'Enter' && search()} />
-          <input className="rl-input" style={{ width: 76 }} value={num} placeholder="#"
-            onChange={ev => setNum(ev.target.value)} onKeyDown={ev => ev.key === 'Enter' && search()} />
-          <button className="btn btn-primary" onClick={() => search()} disabled={busy}>{busy ? '…' : 'Search'}</button>
-        </div>
-        {results === null && <div className="rl-status"><span className="rl-spin" /> Searching your library…</div>}
-        {results && results.length === 0 && (
-          <div className="rl-status">No books found. Try fewer words, or clear the issue number.</div>
-        )}
-        {results && results.length === 0 && !issue.owned && issue.id != null && (
-          <AcquireBox base={`/api/reading-lists/${listId}/issues/${issue.id}`} issue={issue} />
-        )}
-        {results && results.length > 0 && (
-          <div className="rl-picklist" style={{ maxHeight: '45vh' }}>
-            {results.map(b => (
-              <button key={b.id} type="button" className="rl-pick" onClick={() => pick(b.id)} disabled={busy}>
-                <img src={`/api/books/${b.id}/thumbnail`} alt="" style={{ width: 30, height: 45, objectFit: 'cover', border: '1.5px solid #000', flexShrink: 0 }}
-                  onError={ev => { ev.target.style.visibility = 'hidden'; }} />
-                <span className="rl-pick-name">
-                  {b.series_name} <span className="rl-row-num-inline">#{b.issue_number}</span>
-                  {b.series_year && <span style={{ color: 'var(--text-muted)', fontSize: 12 }}> ({b.series_year})</span>}
-                  <span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{b.filename}</span>
-                </span>
-                <span className="rl-pick-tag" style={{ color: 'var(--td-yellow)' }}>{issue.book_id === b.id ? '✓ Current' : 'Select'}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        {error && <div className="rl-error">{error}</div>}
-      </div>
-    </Modal>
-  );
-}
-
-

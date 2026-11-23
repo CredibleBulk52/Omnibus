@@ -447,12 +447,12 @@ module.exports = function createReadingLists(deps) {
 
   function linkedIssues(e, { unfiltered = false } = {}) {
     if (e.entry_type === 'event') {
-      const all = db.prepare(`SELECT NULL AS id, cv_issue_id, scanned_book_id, series_name, issue_number, issue_title,
+      const all = db.prepare(`SELECT NULL AS id, id AS source_issue_id, cv_issue_id, scanned_book_id, series_name, issue_number, issue_title,
           volume_year, tier, 0 AS manually_matched FROM event_issues WHERE event_id = ? ORDER BY sort_order`).all(String(e.ref_id));
       return unfiltered ? all : filterTiers(all, e.tier_filter);
     }
     if (e.entry_type === 'canon_run') {
-      return db.prepare(`SELECT NULL AS id, cv_issue_id, CAST(scanned_book_id AS TEXT) AS scanned_book_id, series_name, issue_number,
+      return db.prepare(`SELECT NULL AS id, id AS source_issue_id, cv_issue_id, CAST(scanned_book_id AS TEXT) AS scanned_book_id, series_name, issue_number,
           NULL AS issue_title, volume_year, NULL AS tier, 0 AS manually_matched FROM canon_run_issues WHERE run_id = ? ORDER BY sort_order`).all(toInt(e.ref_id));
     }
     return [];
@@ -788,6 +788,7 @@ module.exports = function createReadingLists(deps) {
       const p = b ? pm.get(b.id) : null;
       return {
         id: i.id, cv_issue_id: i.cv_issue_id, book_id: b ? b.id : null, series_id: b ? b.series_id : null,
+        ...(i.source_issue_id != null ? { source_issue_id: i.source_issue_id } : {}),
         series_name: i.series_name, issue_number: i.issue_number, title: i.issue_title || b?.title || null,
         volume_year: i.volume_year, tier: i.tier || null, owned: !!b, completed: !!p?.completed, page: p?.page || 0,
         manually_matched: !!i.manually_matched,

@@ -7,7 +7,7 @@ import '../missingCover.css';
 // number, a state line and an optional action (⬇ Get / ✉ Request / ⚲ Find).
 // image: a Comic Vine cover thumbnail when known (shown dark and grey).
 // tone: missing | wanted | requested (colours the state line).
-export default function MissingCover({ number, label = 'Not in library', tone = 'missing', image = null, sub = null, actions = null }) {
+export default function MissingCover({ number, label = 'Not in library', tone = 'missing', image = null, sub = null, actions = null, onFind = null }) {
   return (
     <div className="missing-cover">
       {image && <img src={image} alt="" loading="lazy" referrerPolicy="no-referrer" onError={e => { e.target.style.display = 'none'; }} />}
@@ -15,6 +15,7 @@ export default function MissingCover({ number, label = 'Not in library', tone = 
       {sub && <span className="missing-cover-sub">{sub}</span>}
       <span className={`missing-cover-state missing-cover-state--${tone}`}>{label}</span>
       {actions}
+      {onFind && <button type="button" className="rl-match-btn missing-cover-action" onClick={e => { e.stopPropagation(); onFind(); }}>⚲ Find</button>}
     </div>
   );
 }

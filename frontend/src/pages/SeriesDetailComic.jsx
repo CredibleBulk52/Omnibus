@@ -1,5 +1,5 @@
 import DeleteSeriesAction from '../components/DeleteSeriesAction';
-import IssueWindow, { issueWindowCss } from '../components/listEditor/IssueWindow';
+import MatchModal from '../components/MatchModal';
 import {PullButton} from '../components/PullBox';
 import { useConfirm } from '../components/Confirm';
 import { ErrorNote } from '../components/StateMessage';
@@ -234,7 +234,7 @@ export default function SeriesDetailComic() {
   // Requests for those parts (downloadRequests 'crossover'): { linkId: status }; the Get / Request dialog.
   const [crossRequests, setCrossRequests] = useState({});
   const [crossAcquire, setCrossAcquire] = useState(null);
-  const [crossMatch, setCrossMatch] = useState(null);
+  const [gapMatch, setGapMatch] = useState(null);
   const loadCrossRequests = React.useCallback(() => fetch(`/api/requests/crossover/${id}/mine`).then(r => (r.ok ? r.json() : {}))
     .then(d => setCrossRequests(d && !d.error ? d : {})).catch(() => {}), [id]);
   const hasCrossMissing = !!(ordered && placement?.missing?.length);
@@ -716,14 +716,13 @@ export default function SeriesDetailComic() {
     return (
       <div key={`xgap-${m.linkId}`} className="issue-book issue-book--missing issue-book--placed" style={{ width: ISSUE_W }}>
         <div className="issue-cover" style={{ width: ISSUE_W, height: ISSUE_H }}>
-          <MissingCover number={m.number} sub={m.series_name} label={label} tone={tone}
+          <MissingCover number={m.number} onFind={isAdmin() ? () => setGapMatch({ row: m, kind: 'crossover' }) : null} label={label} tone={tone}
             actions={!unreleased && !dlState && (canDl || !status || status === 'dismissed')
               ? <MissingAction onClick={() => setCrossAcquire(m)}>{canDl ? '⬇ Get' : '✉ Request'}</MissingAction>
               : null} />
         </div>
         <div className="issue-number">{m.label}</div>
         <div className="issue-title">{m.title}</div>
-        {isAdmin() && <button type="button" className="btn btn-ghost" onClick={() => setCrossMatch(m)}>Find in Library</button>}
       </div>
     );
   };
@@ -738,6 +737,7 @@ export default function SeriesDetailComic() {
       <div key={`gap-${g.id}`} className="issue-book issue-book--missing" style={{ width: ISSUE_W }}>
         <div className="issue-cover" style={{ width: ISSUE_W, height: ISSUE_H }}>
           <MissingCover number={g.number} image={g.image} label={label} tone={stateKey === 'open' ? 'requested' : stateKey}
+            onFind={isAdmin() ? () => setGapMatch({ row: g, kind: "gaps" }) : null}
             actions={canAct && (gaps.can_download || !g.request || g.request === 'dismissed')
               ? <MissingAction disabled={gapBusy === g.id} onClick={() => gapAct(g, gaps.can_download ? 'get' : 'request')}>
                   {gapBusy === g.id ? '…' : gaps.can_download ? '⬇ Get' : '✉ Request'}
@@ -762,6 +762,7 @@ export default function SeriesDetailComic() {
       <div key={`agap-${g.id}`} className="issue-book issue-book--missing" style={{ width: ISSUE_W }}>
         <div className="issue-cover" style={{ width: ISSUE_W, height: ISSUE_H }}>
           <MissingCover number={g.number} image={g.image} label={label} tone={stateKey === 'open' ? 'requested' : stateKey}
+            onFind={isAdmin() ? () => setGapMatch({ row: g, kind: "annual-gaps" }) : null}
             actions={canAct && (dl || !g.request || g.request === 'dismissed')
               ? <MissingAction disabled={annualBusy === g.id} onClick={() => annualAct(g, dl ? 'get' : 'request')}>
                   {annualBusy === g.id ? '…' : dl ? '⬇ Get' : '✉ Request'}
@@ -1017,12 +1018,15 @@ export default function SeriesDetailComic() {
       <div className="series-body">
 
         {shelfOpen && <PutOnShelfDialog seriesId={id} seriesName={title} onClose={() => setShelfOpen(false)} onDone={reloadGrouping} />}
-        {crossMatch && <>
-          <style>{issueWindowCss}</style>
-          <IssueWindow issue={{ series_name: crossMatch.series_name, issue_number: crossMatch.number, volume_year: crossMatch.volume_year }}
-            target={{ url: `/api/admin/crossovers/${crossMatch.linkId}/match`, method: 'POST', body: bookId => ({ bookId }) }}
-            onDone={loadPlacement} onClose={() => setCrossMatch(null)} />
-        </>}
+        {gapMatch && <MatchModal issue={{ series_name: gapMatch.row.series_name || gapMatch.row.volume_name || title, issue_number: gapMatch.row.number }}
+          target={{ method: "POST", url: gapMatch.kind === "crossover" ? `/api/admin/crossovers/${gapMatch.row.linkId}/match`
+            : `/api/series/${id}/${gapMatch.kind}/${gapMatch.row.id}/match`, body: bookId => ({ bookId }) }}
+          onClose={() => setGapMatch(null)} onMatched={() => {
+            if (gapMatch.kind === "crossover") loadPlacement();
+            else if (gapMatch.kind === "annual-gaps") loadAnnualGaps();
+            else setGaps(prev => ({ ...prev, rows: prev.rows.filter(r => r.id !== gapMatch.row.id) }));
+            setGapMatch(null);
+          }} />}
         {crossAcquire && <AcquireDialog base={`/api/requests/crossover/${id}/issues/${crossAcquire.linkId}`} title={`${crossAcquire.label} · ${crossAcquire.title}`}
           issue={{ series_name: crossAcquire.series_name, issue_number: crossAcquire.number }} onClose={() => setCrossAcquire(null)} onChange={loadCrossRequests} />}
         {/* ── Issues — bookshelf layout ── */}

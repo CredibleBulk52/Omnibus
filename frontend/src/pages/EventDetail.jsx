@@ -1,3 +1,5 @@
+import MatchModal from '../components/MatchModal';
+import { eventAdapter } from '../components/listEditor/adapters';
 import { PublisherLogo } from '../components/Branding';
 // ─── EventDetail ──────────────────────────────────────────────────
 // A Timeline event: hero (fanned covers, size, description, progress) and
@@ -76,7 +78,8 @@ export default function EventDetail() {
     fetch(`/api/requests/event/${id}/mine`).then(r => r.json()).then(d => setRequests(d && !d.error ? d : {})).catch(() => {});
   }, [id, canDownload]);
   useEffect(() => { loadRequests(); }, [loadRequests]);
-  const acq = { eventId: id, requests, label: canDownload ? '⬇ Get' : '✉ Request', open: i => setAcquireIssue(i), refresh: loadRequests };
+  const [matchIssue, setMatchIssue] = useState(null);
+  const acq = { find: isAdmin() ? setMatchIssue : null, eventId: id, requests, label: canDownload ? '⬇ Get' : '✉ Request', open: i => setAcquireIssue(i), refresh: loadRequests };
 
   // ?book=<id>: arrived from an issue card's event strip (EventStrip.jsx, 2026-11-19): open at that
   // issue, highlighted, even when the chosen tier view or a collapsed part would hide it.
@@ -229,6 +232,9 @@ export default function EventDetail() {
         })}
       </div>
 
+      {matchIssue && <MatchModal issue={matchIssue} target={eventAdapter.matchTarget(id, matchIssue)}
+        acquireBase={`/api/requests/event/${id}/issues/${matchIssue.id}`} onClose={() => setMatchIssue(null)}
+        onMatched={() => { setMatchIssue(null); load(); }} />}
       {acquireIssue && (
         <AcquireDialog base={`/api/requests/event/${id}/issues/${acquireIssue.id}`} issue={acquireIssue}
           onClose={() => { setAcquireIssue(null); loadRequests(); load(); }} />
@@ -276,6 +282,7 @@ function EventShelf({ issues, current, focusId = null, onRead, more, onMore, acq
                     ? <img src={`/api/books/${i.scanned_book_id}/thumbnail`} alt="" loading="lazy" onError={ev => { ev.target.style.visibility = 'hidden'; }} />
                     : <MissingCover number={i.issue_number} sub={i.series_name}
                         label={REQUEST_LABEL[acq?.requests[i.id]] || 'Not in library'} tone={acq?.requests[i.id] === 'open' ? 'requested' : 'missing'}
+                        onFind={acq?.find ? () => acq.find(i) : null}
                         actions={acq && acq.requests[i.id] !== 'open' ? <MissingAction onClick={() => acq.open(i)}>{acq.label}</MissingAction> : null} />}
                   <span className="ev-ord">{i._n}</span>
                   {done && <div className="issue-read-badge">✓</div>}
@@ -362,6 +369,7 @@ function EventRow({ issue: i, isCurrent, isFocus = false, onRead, acq }) {
       {!owned && acq && acq.requests[i.id] !== 'open' && (
         <button className="rl-match-btn" onClick={ev => { ev.stopPropagation(); acq.open(i); }}>{acq.label}</button>
       )}
+      {!owned && acq?.find && <button className="rl-match-btn" onClick={() => acq.find(i)}>⚲ Find</button>}
       {inProg && <span className="rl-pill rl-pill--reading">Reading</span>}
       {done && <span className="rl-pill rl-pill--done">Read</span>}
     </div>

@@ -20,7 +20,7 @@ Current reference, reviewed October 26, 2026. Comic is the only supported skin. 
 | Collection/list presentation | [ReadingOrderHero](src/components/ReadingOrderHero.jsx), [CuratedMast](src/components/CuratedMast.jsx) |
 | Comic titles and shelves | [ComicInkTitle](src/components/ComicInkTitle.jsx), [ReadingListShelf](src/components/ReadingListShelf.jsx), [ShelfScroller](src/components/ShelfScroller.jsx) |
 | Curated-list editing | [ListEditor](src/components/listEditor/ListEditor.jsx) and its adapters |
-| Matching missing crossovers in a series reading order | Admins can use **Find in Library** on a missing card to preview and confirm a book with the shared [IssueWindow](src/components/listEditor/IssueWindow.jsx). Library scans also check saved links against the local catalog using known Comic Vine issue IDs. |
+| Missing issue cards | [MissingCover](src/components/MissingCover.jsx) stacks Get or Request above Find. Series, reading orders, Essentials, Timeline and Top Shelf share the reading-order [Find in Library dialog](src/components/MatchModal.jsx). Selecting a result saves the match. |
 
 Inspect each component's props and existing uses before extending it. Reuse should retain focus behavior, responsive layouts, permissions and confirmation behavior.
 

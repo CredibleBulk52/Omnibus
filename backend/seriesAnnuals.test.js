@@ -69,6 +69,20 @@ test('series annuals: Find annuals on a series that is not monitored keeps the v
   assert.deepEqual(r.body.rows.map(x => [x.id, x.volume_id, x.state, x.image]), [['701', '300', 'missing', 't.jpg']]);   // the 1970 annual is another run's
 });
 
+test('a manually matched annual drops out of the gaps while its file exists', async () => {
+  const { db, call } = setup();
+  await call('POST /api/series/:id/find-annuals', { id: 'ss1' });
+  const params = { id: 'ss1', issueId: '701' };
+  db.exec("INSERT INTO scanned_books VALUES ('untagged','ss1','Special.cbz',NULL)");
+  const match = () => call('POST /api/series/:id/annual-gaps/:issueId/match', params, { bookId: 'untagged' });
+  assert.equal((await match()).body.ok, true);
+  assert.equal((await match()).code, 409);
+  const gaps = async () => (await call('GET /api/series/:id/annual-gaps', params)).body.rows;
+  assert.equal((await gaps()).length, 0);
+  db.exec("DELETE FROM scanned_books WHERE id='untagged'");
+  assert.deepEqual((await gaps()).map(r => r.id), ['701']);
+});
+
 test('series annuals: Get adds the volume as a Fill entry with only the pick wanted; a monitored series gets it linked', async () => {
   for (const monitored of [false, true]) {
     const { db, call, calls } = setup({ monitored });

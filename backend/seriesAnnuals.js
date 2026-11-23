@@ -104,6 +104,7 @@ module.exports.createSeriesAnnuals = function createSeriesAnnuals(deps) {
       const inRun = issues.filter(i => { const d = dateOf(i); if (!d) return true; const t = Date.parse(d); return (win.from == null || t >= win.from) && (win.to == null || t <= win.to); });
       const ids = JSON.stringify(inRun.map(i => i.id));
       const owned = new Set([
+        ...db.prepare('SELECT m.cv_issue_id AS cv FROM series_gap_matches m JOIN scanned_books b ON b.id=m.book_id WHERE m.cv_issue_id IN (SELECT value FROM json_each(?))').all(ids).map(r => String(r.cv)),
         ...db.prepare('SELECT cv_issue_id AS cv FROM scanned_books WHERE cv_issue_id IN (SELECT value FROM json_each(?))').all(ids).map(r => String(r.cv)),
         ...db.prepare('SELECT cv_issue_id AS cv FROM book_ci_index WHERE cv_issue_id IN (SELECT value FROM json_each(?))').all(ids).map(r => String(r.cv)),
       ]);
@@ -127,6 +128,10 @@ module.exports.createSeriesAnnuals = function createSeriesAnnuals(deps) {
     return c;
   };
 
+  require('./seriesGapMatches')(deps, 'annual-gaps', async id => {
+    const c = await ctxFor(id);
+    return c.status ? [] : (await annualGaps(c)).rows;
+  });
   app.get('/api/series/:id/annual-gaps', requireAuth, async (req, res) => {
     try {
       const c = await ctxFor(req.params.id);

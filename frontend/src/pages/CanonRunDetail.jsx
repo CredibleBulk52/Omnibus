@@ -1,3 +1,5 @@
+import MatchModal from '../components/MatchModal';
+import { runAdapter } from '../components/listEditor/adapters';
 import { PublisherLogo } from '../components/Branding';
 import { Loading, Empty, ErrorNote } from '../components/StateMessage';
 import RunShelf, { runCoverIds } from '../components/RunShelf';
@@ -45,6 +47,7 @@ function IssueBook({ issue, index, runId, hideLabel = false, tracking = false, c
               onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
           : <MissingCover number={issue.issue_number ?? index + 1} sub={issue.series_name}
               label={REQUEST_LABEL[acq?.requests[issue.id]] || 'Not in library'} tone={acq?.requests[issue.id] === 'open' ? 'requested' : 'missing'}
+              onFind={acq?.find ? () => acq.find(issue) : null}
               actions={acq && acq.requests[issue.id] !== 'open' ? <MissingAction onClick={() => acq.open(issue)}>{acq.label}</MissingAction> : null} />}
         {owned && <div className="shelf-book-placeholder" style={{ display: 'none' }}>◈</div>}
 
@@ -105,7 +108,8 @@ export default function CanonRunDetail() {
     fetch(`/api/requests/run/${id}/mine`).then(r => r.json()).then(d => setRequests(d && !d.error ? d : {})).catch(() => {});
   }, [id, canDownload]);
   useEffect(() => { loadRequests(); }, [loadRequests]);
-  const acq = { requests, label: canDownload ? '⬇ Get' : '✉ Request', open: i => setAcquireIssue(i) };
+  const [matchIssue, setMatchIssue] = useState(null);
+  const acq = { find: isAppAdmin() ? setMatchIssue : null, requests, label: canDownload ? '⬇ Get' : '✉ Request', open: i => setAcquireIssue(i) };
 
   if (loading) return <Loading label="Loading run…" />;
   if (error && !run) return <ErrorNote title="Couldn't load this run." onRetry={load}>{error}</ErrorNote>;
@@ -179,6 +183,9 @@ export default function CanonRunDetail() {
 
       {error && <ErrorNote>{error}</ErrorNote>}
 
+      {matchIssue && <MatchModal issue={matchIssue} target={runAdapter.matchTarget(id, matchIssue)}
+        acquireBase={`/api/requests/run/${id}/issues/${matchIssue.id}`} onClose={() => setMatchIssue(null)}
+        onMatched={() => { setMatchIssue(null); load(); }} />}
       {acquireIssue && (
         <AcquireDialog base={`/api/requests/run/${id}/issues/${acquireIssue.id}`} issue={acquireIssue}
           onClose={() => { setAcquireIssue(null); loadRequests(); load(); }} />

@@ -89,6 +89,9 @@ module.exports.createMissingIssues = function createMissingIssues(deps) {
     // Owned anywhere in the library, by Comic Vine id (folder tag or ComicInfo).
     const owned = new Map();
     const note = (cvId, r) => { if (!owned.has(String(cvId))) owned.set(String(cvId), { book_id: r.book_id, folder: r.folder, here: r.series_id === scanned.id }); };
+    for (const r of db.prepare(`SELECT m.cv_issue_id AS cv, sb.id AS book_id, sb.series_id, ss.name AS folder
+      FROM series_gap_matches m JOIN scanned_books sb ON sb.id=m.book_id JOIN scanned_series ss ON ss.id=sb.series_id
+      WHERE m.cv_issue_id IN (SELECT value FROM json_each(?))`).all(ids)) note(r.cv, r);
     for (const r of db.prepare(`SELECT sb.cv_issue_id AS cv, sb.id AS book_id, sb.series_id, (ss.name || COALESCE(' (' || ss.year || ')', '')) AS folder FROM scanned_books sb JOIN scanned_series ss ON ss.id = sb.series_id
       WHERE sb.cv_issue_id IN (SELECT value FROM json_each(?))`).all(ids)) note(r.cv, r);
     for (const r of db.prepare(`SELECT ci.cv_issue_id AS cv, sb.id AS book_id, sb.series_id, (ss.name || COALESCE(' (' || ss.year || ')', '')) AS folder FROM book_ci_index ci JOIN scanned_books sb ON sb.id = ci.book_id JOIN scanned_series ss ON ss.id = sb.series_id
@@ -163,6 +166,10 @@ module.exports.createMissingIssues = function createMissingIssues(deps) {
   // Volume issue lists for these pages are fetched once; only series that may
   // still be publishing are refreshed, weekly (user, 2026-10-28). See fetchVolumeIssues.
   const GAPS_VOLUME = { cachedOnce: true };
+  require('./seriesGapMatches')(deps, 'gaps', async id => {
+    const c = await fillContext(id, GAPS_VOLUME);
+    return (c.rows || []).filter(r => r.state !== 'owned');
+  });
   const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('Comic Vine is slow to answer right now')), ms))]);
   app.get('/api/series/:id/gaps', requireAuth, async (req, res) => {
     try {

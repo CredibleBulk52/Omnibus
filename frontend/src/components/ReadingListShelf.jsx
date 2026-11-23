@@ -6,7 +6,7 @@ import MissingCover, { MissingAction, REQUEST_LABEL } from './MissingCover';
 import IssueCardMenu from './IssueCardMenu';
 // onAcquire(issue): get or request a missing issue (acquireLabel: '⬇ Get' or '✉ Request').
 // onIssueChanged(): an issue was marked read or unread from its ⋮ (2026-11-04); the page reloads.
-export default function ReadingListShelf({ issues, showSeries, current, onRead, onMatch, onAcquire, acquireLabel = '⬇ Get', expanded, onMore, requests = {}, onIssueChanged = null }) {
+export default function ReadingListShelf({ issues, showSeries, current, onRead, onMatch, canMatchIssue = i => i.id != null, onAcquire, acquireLabel = '⬇ Get', expanded, onMore, requests = {}, onIssueChanged = null }) {
   const shelfRef = useRef(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -44,12 +44,9 @@ export default function ReadingListShelf({ issues, showSeries, current, onRead, 
                       <MissingCover number={i.issue_number} sub={showSeries ? i.series_name : null}
                         label={(i.id != null && REQUEST_LABEL[requests[i.id]]) || 'Not in library'}
                         tone={i.id != null && requests[i.id] === 'open' ? 'requested' : 'missing'}
-                        actions={<>
-                          {onAcquire && i.id != null && requests[i.id] !== 'open' && <MissingAction onClick={() => onAcquire(i)}>{acquireLabel}</MissingAction>}
-                          {onMatch && i.id != null && (
-                            <button className="rl-match-btn missing-cover-action" onClick={e => { e.stopPropagation(); onMatch(i); }}>⚲ Find</button>
-                          )}
-                        </>} />
+                        onFind={onMatch && canMatchIssue(i) ? () => onMatch(i) : null}
+                        actions={onAcquire && (i.id != null || i.source_issue_id != null) && requests[i.id] !== 'open'
+                          ? <MissingAction onClick={() => onAcquire(i)}>{acquireLabel}</MissingAction> : null} />
                     )}
                   {i.completed && <div className="issue-read-badge">✓</div>}
                   {inProg && <div className="issue-progress-bar" style={{ width: `${(i.page / (i.page + 1)) * 100}%` }} />}
