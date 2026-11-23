@@ -10,7 +10,8 @@ function setup(overrides = {}) {
   const db = new Driver(':memory:');
   if (!db.transaction) db.transaction = fn => () => { db.exec('BEGIN'); try { const v=fn(); db.exec('COMMIT'); return v; } catch(e) { db.exec('ROLLBACK'); throw e; } };
   for (const t of ['event_issues','list_issues','canon_run_issues']) db.exec(`CREATE TABLE ${t} (id INTEGER PRIMARY KEY,series_name,issue_number,volume_year,cv_issue_id,scanned_book_id,manually_matched)`);
-  db.exec(`CREATE TABLE scanned_books(id TEXT PRIMARY KEY,store_date,comicinfo,cv_issue_id);
+  db.exec(`CREATE TABLE scanned_series(id TEXT PRIMARY KEY,series_json TEXT);
+    CREATE TABLE scanned_books(id TEXT PRIMARY KEY,store_date,comicinfo,cv_issue_id);
     CREATE TABLE settings(key TEXT PRIMARY KEY,value);
     CREATE TABLE crossover_links(id INTEGER PRIMARY KEY,from_series,to_series,from_book_id,to_book_id,from_issue,to_issue,from_year,to_year,from_cv_issue_id,to_cv_issue_id,hidden DEFAULT 0);
     CREATE TABLE book_ci_index(series_name,volume_year,orig_number,cv_issue_id);
@@ -36,6 +37,18 @@ test('scans accept one exact local identity, preserving ownership, existing IDs 
   assert.deepEqual(db.prepare('SELECT cv_issue_id,scanned_book_id FROM event_issues ORDER BY id').all().map(Object.values),
     [['123',null],[null,null],[null,null],[null,null]]);
   assert.equal(db.prepare('SELECT cv_issue_id FROM canon_run_issues').get().cv_issue_id,'999');
+});
+
+test('cached folder metadata identifies a volume despite a leading article and skips competing volumes', () => {
+  const {db,catalog} = setup();
+  db.exec(`INSERT INTO event_issues(id,series_name,volume_year,issue_number) VALUES (1,'Guest',2025,'3');
+    INSERT INTO monitored_series VALUES ('12','Guest',2025)`);
+  db.prepare('INSERT INTO scanned_series VALUES (?,?)').run('folder',JSON.stringify({metadata:{comicid:11,name:'The Guest',year:2025}}));
+  db.prepare('INSERT INTO cv_volume_issues_cache VALUES (?,?)').run('11',JSON.stringify([{id:345,issue_number:'3'}]));
+  assert.equal(catalog.scan(),0);
+  db.exec('DELETE FROM monitored_series');
+  assert.equal(catalog.scan(),1);
+  assert.equal(db.prepare('SELECT cv_issue_id FROM event_issues').get().cv_issue_id,'345');
 });
 
 test('manual lookup saves art from a cached volume and continues to the online phase', async () => {

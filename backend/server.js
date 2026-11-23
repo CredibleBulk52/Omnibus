@@ -11782,12 +11782,21 @@ const missingCatalog = require('./missingCatalog')({
   db, logger, hasKey: getCVKey, background: fn => cvCtx.run({ lane: 'background', caller: 'missing-catalog' }, fn),
   volumeIssues: id => fetchVolumeIssues(id, { slimOk: true, once: true }),
   async searchVolumes(name) {
-    const { data } = await cvApiGet('https://comicvine.gamespot.com/api/search', {
-      params: { api_key: getCVKey(), format: 'json', query: name, resources: 'volume', limit: 100,
-        field_list: 'id,name,start_year,publisher' }
-    });
-    if (!Array.isArray(data.results)) throw new Error('Invalid Comic Vine volume response');
-    return data.results.length < Number(data.number_of_total_results) ? [] : data.results;
+    const result = [];
+    const query = name.trim().replace(/^the\s+/i,'');
+    const useSearch = query.includes(',');
+    for (let page = 1; ; page++) {
+      const { data } = await cvApiGet(`https://comicvine.gamespot.com/api/${useSearch ? 'search' : 'volumes/'}`, {
+        params: { api_key: getCVKey(), format: 'json', limit: 100, field_list: 'id,name,start_year,publisher',
+          ...(useSearch ? { query, resources: 'volume', page } : { filter: `name:${query}`, offset: result.length }) }
+      });
+      if (Number(data.status_code) !== 1 || !Array.isArray(data.results)) throw new Error('Invalid Comic Vine volume response');
+      const total = Number(data.number_of_total_results);
+      if (data.number_of_total_results == null || !Number.isSafeInteger(total) || total < 0) throw new Error('Invalid Comic Vine result count');
+      result.push(...data.results);
+      if (result.length >= total) return result;
+      if (!data.results.length) throw new Error('Incomplete Comic Vine volume response');
+    }
   },
   async issueDetails(id) {
     const { data } = await cvApiGet(`https://comicvine.gamespot.com/api/issue/4000-${id}/`, {

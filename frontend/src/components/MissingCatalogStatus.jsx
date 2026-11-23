@@ -42,7 +42,7 @@ export default function MissingCatalogStatus() {
     </button>
     <span role="status" className="settings-section-sub">
       {error || (status?.running ? 'Running in background.' : last
-        ? `${new Date(last.at).toLocaleString()} · ${last.filled} filled · ${last.remaining} remaining · ${last.ambiguous} ambiguous. ${last.error || ''}`
+        ? `${new Date(last.at).toLocaleString()} · ${last.filled} filled · ${last.remaining} remaining · ${last.ambiguous} ambiguous. ${last.checked == null ? '' : `${last.checked} checked online · ${last.deferred} waiting to retry · ${last.covers} covers added.`} ${last.error || ''}`
         : 'Checks missing issues nightly.')}
       {status?.configured === false && ' Add a Comic Vine API key for online lookup.'}
     </span>
