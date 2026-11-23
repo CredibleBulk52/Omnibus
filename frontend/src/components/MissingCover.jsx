@@ -7,10 +7,11 @@ import '../missingCover.css';
 // number, a state line and an optional action (⬇ Get / ✉ Request / ⚲ Find).
 // image: a Comic Vine cover thumbnail when known (shown dark and grey).
 // tone: missing | wanted | requested (colours the state line).
-export default function MissingCover({ number, label = 'Not in library', tone = 'missing', image = null, sub = null, actions = null, onFind = null }) {
+export default function MissingCover({ number, label = 'Not in library', tone = 'missing', image = null, cvId = null, sub = null, actions = null, onFind = null }) {
+  image ||= /^[1-9]\d*$/.test(String(cvId)) ? `/api/catalog-issues/${cvId}/cover` : null;
   return (
     <div className="missing-cover">
-      {image && <img src={image} alt="" loading="lazy" referrerPolicy="no-referrer" onError={e => { e.target.style.display = 'none'; }} />}
+      {image && <img key={image} src={image} alt="" loading="lazy" referrerPolicy="no-referrer" onError={e => { e.target.style.display = 'none'; }} />}
       <b>#{number ?? '?'}</b>
       {sub && <span className="missing-cover-sub">{sub}</span>}
       <span className={`missing-cover-state missing-cover-state--${tone}`}>{label}</span>

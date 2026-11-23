@@ -716,7 +716,7 @@ export default function SeriesDetailComic() {
     return (
       <div key={`xgap-${m.linkId}`} className="issue-book issue-book--missing issue-book--placed" style={{ width: ISSUE_W }}>
         <div className="issue-cover" style={{ width: ISSUE_W, height: ISSUE_H }}>
-          <MissingCover number={m.number} onFind={isAdmin() ? () => setGapMatch({ row: m, kind: 'crossover' }) : null} label={label} tone={tone}
+          <MissingCover cvId={m.cv_issue_id} number={m.number} onFind={isAdmin() ? () => setGapMatch({ row: m, kind: 'crossover' }) : null} label={label} tone={tone}
             actions={!unreleased && !dlState && (canDl || !status || status === 'dismissed')
               ? <MissingAction onClick={() => setCrossAcquire(m)}>{canDl ? '⬇ Get' : '✉ Request'}</MissingAction>
               : null} />

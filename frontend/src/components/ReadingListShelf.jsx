@@ -41,7 +41,7 @@ export default function ReadingListShelf({ issues, showSeries, current, onRead, 
                   {i.owned
                     ? <img src={`/api/books/${i.book_id}/thumbnail`} alt="" loading="lazy" onError={ev => { ev.target.style.visibility = 'hidden'; }} />
                     : (
-                      <MissingCover number={i.issue_number} sub={showSeries ? i.series_name : null}
+                      <MissingCover cvId={i.cv_issue_id} number={i.issue_number} sub={showSeries ? i.series_name : null}
                         label={(i.id != null && REQUEST_LABEL[requests[i.id]]) || 'Not in library'}
                         tone={i.id != null && requests[i.id] === 'open' ? 'requested' : 'missing'}
                         onFind={onMatch && canMatchIssue(i) ? () => onMatch(i) : null}

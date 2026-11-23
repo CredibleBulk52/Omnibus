@@ -6308,6 +6308,7 @@ function scheduleReconcile(scanChanged = false) {
     // ComicInfo index first (retag-aware checks use it), then Timeline,
     // Top Shelf and reading lists.
     Promise.resolve(changed ? bookIndex.refresh() : null)
+      .then(() => { try { missingCatalog.scan(); } catch (e) { logger.warn('library', 'Local Comic Vine lookup failed', e.message); } })
       .then(() => reconcileEventIssues(changed))
       .catch(e => logger.error('events', 'Reconcile failed', { error: e.message }))
       .finally(() => Promise.resolve(canonMatch.reconcile(changed))
@@ -7521,7 +7522,9 @@ try {
 cron.schedule('45 4 * * *', () => {
   runSeriesJsonRefresh('scheduled').catch(e => logger.error('sj-refresh', 'Run failed', e.message))
     // Then pick up new issues for whole-series / range reading-list entries.
-    .finally(() => readingLists.refreshAll('scheduled'));
+    .finally(() => readingLists.refreshAll('scheduled'))
+    .finally(() => missingCatalog.start())
+    .catch(e => logger.warn('library', 'Scheduled reading-list refresh failed', e.message));
 });
 
 // Manual trigger — background; results go to the server log (sj-refresh).
@@ -11775,6 +11778,34 @@ try {
     setSetting: (k, v) => db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(k, v), logger, requireAuth, requireAdmin,
     sequence: id => seriesPlacement.sequence(id, { crossovers: false }), modelCatalog });
 } catch (e) { logger.error('crossovers', 'Crossover links unavailable', e.message); }
+const missingCatalog = require('./missingCatalog')({
+  db, logger, hasKey: getCVKey, background: fn => cvCtx.run({ lane: 'background', caller: 'missing-catalog' }, fn),
+  volumeIssues: id => fetchVolumeIssues(id, { slimOk: true, once: true }),
+  async searchVolumes(name) {
+    const { data } = await cvApiGet('https://comicvine.gamespot.com/api/search', {
+      params: { api_key: getCVKey(), format: 'json', query: name, resources: 'volume', limit: 100,
+        field_list: 'id,name,start_year,publisher' }
+    });
+    if (!Array.isArray(data.results)) throw new Error('Invalid Comic Vine volume response');
+    return data.results.length < Number(data.number_of_total_results) ? [] : data.results;
+  },
+  async issueDetails(id) {
+    const { data } = await cvApiGet(`https://comicvine.gamespot.com/api/issue/4000-${id}/`, {
+      params: { api_key: getCVKey(), format: 'json', field_list: 'id,image' }
+    });
+    return data.results;
+  }
+});
+app.get('/api/admin/missing-catalog', requireAdmin, (req,res) => res.json(missingCatalog.status()));
+app.post('/api/admin/missing-catalog', requireAdmin, (req,res) => {
+  missingCatalog.start();
+  res.status(202).json(missingCatalog.status());
+});
+app.get('/api/catalog-issues/:id/cover', requireAuth, (req,res) => {
+  const url = missingCatalog.cover(req.params.id);
+  if (!url) return res.set('Cache-Control','no-store').status(404).end();
+  res.set('Cache-Control','private, max-age=86400').redirect(url);
+});
 const recaps = require('./recaps')({ app, db, ai, logger, getPageImage: (...a) => getPageImageForAssistant(...a), modelCatalog, cvApiGet, getCVKey, readingLists, bookIndex, requireAdmin, axios, webLookup });
 // Installed synchronously before startup timers or HTTP requests can run.
 // Metron's store date for one Comic Vine issue: the metadata writer's second source when Comic Vine

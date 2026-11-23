@@ -557,7 +557,7 @@ function createCrossovers(deps = {}) {
         const other = label(l[`${side}_book_id`], l[`${side}_series`], l[`${side}_issue`]);
         const k = other.id || `${T.norm(other.series_name)}#${T.num(other.issue_number)}`;
         const cur = seen.get(k);
-        if (!cur) seen.set(k, { ...other, volume_year: l[side + '_year'], story: l.story || null, source: l.source, linkIds: [l.id] });
+        if (!cur) seen.set(k, { ...other, cv_issue_id: l[side + '_cv_issue_id'], volume_year: l[side + '_year'], story: l.story || null, source: l.source, linkIds: [l.id] });
         else { cur.story = cur.story || l.story || null; cur.linkIds.push(l.id); if (l.source === 'web') cur.source = 'web'; }
       }
       const list = [...seen.values()];
@@ -635,6 +635,7 @@ function createCrossovers(deps = {}) {
           const w = missingWhere(x.series_name, x.issue_number, bookInfo.get(anchor)?.store_date);
           out.push({ missing: { series_name: x.series_name, issue_number: x.issue_number, story: x.story || story, linkId: x.linkIds[0],
             volume_year: x.volume_year || w.volume_year,
+            cv_issue_id: x.cv_issue_id,
             status: w.status, date: w.date }, ...where, chainDate: first, seq: i });
         }
       });

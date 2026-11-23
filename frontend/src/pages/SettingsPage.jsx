@@ -1,3 +1,4 @@
+import MissingCatalogStatus from '../components/MissingCatalogStatus';
 import { BrandingEditor } from '../components/BrandingSettings';
 import { useConfirm } from '../components/Confirm';
 import '../comicSettings.css';
@@ -406,6 +407,7 @@ export function LibrariesSection({ compact = false, scanRefresh = 0, onCount } =
       </div>
 
       {/* Scan progress */}
+      <MissingCatalogStatus />
       {isScanning && (
         <div className="scan-progress">
           <div className="scan-progress-meta">

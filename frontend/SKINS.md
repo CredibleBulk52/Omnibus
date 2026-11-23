@@ -22,6 +22,8 @@ Current reference, reviewed October 26, 2026. Comic is the only supported skin. 
 | Curated-list editing | [ListEditor](src/components/listEditor/ListEditor.jsx) and its adapters |
 | Missing issue cards | [MissingCover](src/components/MissingCover.jsx) stacks Get or Request above Find. Series, reading orders, Essentials, Timeline and Top Shelf share the reading-order [Find in Library dialog](src/components/MatchModal.jsx). Selecting a result saves the match. |
 
+Library → Libraries & scanning includes **Fill missing Comic Vine IDs**. Scans check local metadata. The nightly and manual lookup search Comic Vine in batches and cache exact-issue cover URLs for greyed-out missing cards.
+
 Inspect each component's props and existing uses before extending it. Reuse should retain focus behavior, responsive layouts, permissions and confirmation behavior.
 
 ## Character and cover palettes

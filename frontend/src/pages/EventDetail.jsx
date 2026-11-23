@@ -280,7 +280,7 @@ function EventShelf({ issues, current, focusId = null, onRead, more, onMore, acq
                 <div className={`issue-cover${owned ? ' issue-cover-hoverable' : ''}`} style={{ width: ISSUE_W, height: ISSUE_H }}>
                   {owned
                     ? <img src={`/api/books/${i.scanned_book_id}/thumbnail`} alt="" loading="lazy" onError={ev => { ev.target.style.visibility = 'hidden'; }} />
-                    : <MissingCover number={i.issue_number} sub={i.series_name}
+                    : <MissingCover cvId={i.cv_issue_id} number={i.issue_number} sub={i.series_name}
                         label={REQUEST_LABEL[acq?.requests[i.id]] || 'Not in library'} tone={acq?.requests[i.id] === 'open' ? 'requested' : 'missing'}
                         onFind={acq?.find ? () => acq.find(i) : null}
                         actions={acq && acq.requests[i.id] !== 'open' ? <MissingAction onClick={() => acq.open(i)}>{acq.label}</MissingAction> : null} />}

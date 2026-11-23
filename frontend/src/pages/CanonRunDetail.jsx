@@ -45,7 +45,7 @@ function IssueBook({ issue, index, runId, hideLabel = false, tracking = false, c
         {owned
           ? <img src={`/api/books/${issue.scanned_book_id}/thumbnail`} alt=""
               onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
-          : <MissingCover number={issue.issue_number ?? index + 1} sub={issue.series_name}
+          : <MissingCover cvId={issue.cv_issue_id} number={issue.issue_number ?? index + 1} sub={issue.series_name}
               label={REQUEST_LABEL[acq?.requests[issue.id]] || 'Not in library'} tone={acq?.requests[issue.id] === 'open' ? 'requested' : 'missing'}
               onFind={acq?.find ? () => acq.find(issue) : null}
               actions={acq && acq.requests[issue.id] !== 'open' ? <MissingAction onClick={() => acq.open(issue)}>{acq.label}</MissingAction> : null} />}
