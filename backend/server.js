@@ -3731,6 +3731,7 @@ app.post('/api/books/batch/mark-read', requireAuth, (req, res) => {
     const clear = db.prepare('DELETE FROM read_progress WHERE book_id = ? AND user_id IS ?');
     const markMany = db.transaction(() => {
       for (const bookId of bookIds) completedVal ? stmt.run(bookId, userId, 999, 1, 1) : clear.run(bookId, userId);
+      if (!completedVal) readingContexts?.cleared(userId, bookIds);
     });
     markMany();
     res.json({ ok: true, count: bookIds.length });
@@ -3769,7 +3770,10 @@ app.post('/api/series/batch/mark-read', requireAuth, (req, res) => {
         updated_at = CURRENT_TIMESTAMP
     `);
     const clear = db.prepare('DELETE FROM read_progress WHERE book_id = ? AND user_id IS ?');   // unread: no trace left
-    db.transaction(() => { for (const bookId of ids) completedVal ? stmt.run(bookId, userId, 999, 1, 1) : clear.run(bookId, userId); })();
+    db.transaction(() => {
+      for (const bookId of ids) completedVal ? stmt.run(bookId, userId, 999, 1, 1) : clear.run(bookId, userId);
+      if (!completedVal) readingContexts?.cleared(userId, ids);
+    })();
     res.json({ ok: true, count: ids.size, series: seriesIds.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

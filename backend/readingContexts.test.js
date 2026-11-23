@@ -96,6 +96,19 @@ test('opening an issue (page 0) does not start a context; no access to a list â†
   assert.equal(rc.cards('u').cards.length, 0);
 });
 
+test('clearing a test read restores earlier list activity or removes the last bookmark', () => {
+  const { rc, db, read } = setup();
+  const ctx = { kind: 'list', id: '9' };
+  read('fl0', 4, false, ctx);
+  read('va21', 8, false, ctx);
+  db.prepare("DELETE FROM read_progress WHERE user_id='u' AND book_id='va21'").run();
+  rc.cleared('u', ['va21']);
+  assert.equal(rc.cards('u').cards[0].id, 'fl0');
+  db.prepare("DELETE FROM read_progress WHERE user_id='u'").run();
+  rc.cleared('u', ['fl0','va21']);
+  assert.equal(rc.cards('u').cards.length, 0);
+});
+
 test('nextIn: part-read last issue, then first unfinished after, then first unfinished anywhere', () => {
   const { rc } = setup();
   const p = m => new Map(Object.entries(m));

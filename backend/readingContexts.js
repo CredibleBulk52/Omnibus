@@ -37,6 +37,37 @@ function create({ db, readingLists }) {
   applySchema(db);
   const now = () => db.prepare("SELECT datetime('now') AS t").get().t;
 
+  // Clearing a test read also clears its resume position. Recover older dangling
+  // bookmarks on startup, using only actual reading in the same user's context.
+  const stale = db.prepare(`SELECT user_id, ctx FROM reading_contexts c
+    WHERE NOT EXISTS (SELECT 1 FROM read_progress p WHERE p.user_id=c.user_id
+      AND p.book_id=c.last_book_id AND COALESCE(p.marked,0)=0 AND (p.page>0 OR p.completed=1))`);
+  const previous = db.prepare(`SELECT book_id, updated_at FROM read_progress
+    WHERE user_id=? AND context=? AND COALESCE(marked,0)=0 AND (page>0 OR completed=1)
+    ORDER BY updated_at DESC, id DESC LIMIT 1`);
+  const move = db.prepare('UPDATE reading_contexts SET last_book_id=?, updated_at=? WHERE user_id=? AND ctx=?');
+  const drop = db.prepare('DELETE FROM reading_contexts WHERE user_id=? AND ctx=?');
+  function restore(row) {
+    const p = previous.get(row.user_id, row.ctx);
+    if (p) move.run(p.book_id, p.updated_at, row.user_id, row.ctx);
+    else drop.run(row.user_id, row.ctx);
+  }
+  db.exec('SAVEPOINT repair_reading_contexts');
+  try {
+    for (const row of stale.all()) restore(row);
+    db.exec('RELEASE repair_reading_contexts');
+  } catch (err) {
+    db.exec('ROLLBACK TO repair_reading_contexts');
+    db.exec('RELEASE repair_reading_contexts');
+    throw err;
+  }
+  const bookmarks = db.prepare('SELECT user_id,ctx,last_book_id FROM reading_contexts WHERE user_id=?');
+  function cleared(userId, bookIds) {
+    if (!userId) return;
+    const ids = new Set(Array.from(bookIds, String));
+    for (const row of bookmarks.all(userId)) if (ids.has(row.last_book_id)) restore(row);
+  }
+
   // Called by PUT /api/read-progress after the progress row is saved.
   function record(userId, bookId, ctx, { page, completed }) {
     if (!userId) return;
@@ -122,7 +153,7 @@ function create({ db, readingLists }) {
     ORDER BY rp.updated_at DESC, rp.id DESC LIMIT 1`);
   function seriesLastContext(userId, seriesId) { try { return lastCtx.get(userId, seriesId)?.context || null; } catch { return null; } }
 
-  return { record, dismiss, cards, seriesLastContext, nextIn };
+  return { record, dismiss, cards, seriesLastContext, nextIn, cleared };
 }
 
 module.exports = { create, parse, applySchema };
