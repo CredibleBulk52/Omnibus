@@ -133,6 +133,8 @@ Event shelves need Timeline events: load the starter pack on the Timeline first 
 
 **Undoing**: every action offers Undo for a few seconds; **⋯ › Undo the AI's last changes** reverses a whole AI run; series taken off a shelf wait on the **Removed** tab; on a series page, **Take it off** under the tabs puts it back in the series list. Turning shelves **Off** keeps all your shelves for when you turn them back on.
 
+On the series page, **Reading order** shows where extras belong and flags missing crossover chapters, even when those chapters are the only additions. A confirmed crossover can place an undated special. Use the cover menu’s **Read after…** or **Show on shelf only** to set its placement manually.
+
 ## Keys and services
 
 | Service | Needed? | What it adds |

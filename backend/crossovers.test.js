@@ -129,6 +129,28 @@ function addWeb(x, lib, links) {
   }
 }
 
+test('only eligible continuations compete, and series orders are reused within one lookup', () => {
+  const lib = library(), { db } = lib;
+  const calls = new Map();
+  let alreadyPlaced = [];
+  const x = create(lib, { sequence: id => {
+    calls.set(id, (calls.get(id) || 0) + 1);
+    return id === 'cw' ? alreadyPlaced : [];
+  } });
+  const add = db.prepare("INSERT INTO crossover_links (key,from_book_id,from_series,from_issue,to_book_id,to_series,to_issue,source,found_at) VALUES (?,'cw3','Catwoman','3',?,'target','1','wiki',0)");
+  add.run('near', 'cc1'); add.run('far', 'gl40');
+  assert.equal(x.nextFor('cw3').id, 'cc1');
+  alreadyPlaced = ['cc1'];
+  calls.clear();
+  assert.deepEqual(x.placementFor('cw').map(r => r.bookId), ['gl40']);
+  assert.equal(Math.max(...calls.values()), 1);
+  alreadyPlaced = [];
+  db.exec("INSERT INTO events(id,name) VALUES ('ev','Event'); INSERT INTO event_issues(event_id,scanned_book_id) VALUES ('ev','cw3'),('ev','cc1')");
+  assert.equal(x.nextFor('cw3').id, 'gl40');
+  db.exec("DELETE FROM event_issues WHERE event_id='ev'");
+  assert.equal(x.nextFor('cw3').id, 'cc1');
+});
+
 test('each issue keeps its nearest link: a collection page\'s Catwoman #1 → Cassandra Cain #1 is not shown', () => {
   const lib = library(), x = create(lib);
   const cw = n => ({ series: 'Absolute Catwoman', issue: n }), cc = { series: "Absolute Cassandra Cain: The Shadow's Hand", issue: '1' };

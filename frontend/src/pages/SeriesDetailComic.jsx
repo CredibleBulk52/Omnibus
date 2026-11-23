@@ -1033,13 +1033,14 @@ export default function SeriesDetailComic() {
                   </div>
                 )}
 
-                {placement?.placed?.length > 0 && (
+                {(placement?.placed?.length > 0 || placement?.missing?.length > 0) && (
                   <div className="series-view-toggle" role="group" aria-label="Issues view">
                     <button type="button" aria-pressed={!ordered} className={!ordered ? 'active' : ''} onClick={() => chooseView('issues')}>Issues only</button>
                     <button type="button" aria-pressed={ordered} className={ordered ? 'active' : ''} onClick={() => chooseView('reading')}>Reading order</button>
-                    <span>{(() => { const n = placement.placed.length, one = n === 1;
-                      const what = `annual${one ? '' : 's'}, special${one ? '' : 's'} or crossover issue${one ? '' : 's'}`;
-                      return `${ordered ? `${n} ${what} placed` : `Reading order adds ${n} ${what}`} where ${one ? 'it is' : 'they are'} read`; })()}</span>
+                    <span>{[
+                      placement.placed.length > 0 && `${placement.placed.length} placed issue${placement.placed.length === 1 ? '' : 's'}`,
+                      placement.missing?.length > 0 && `${placement.missing.length} missing crossover issue${placement.missing.length === 1 ? '' : 's'}`,
+                    ].filter(Boolean).join(' · ')}</span>
                   </div>
                 )}
                 {gapRows.length > 0 && (

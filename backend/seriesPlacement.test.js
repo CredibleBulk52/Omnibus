@@ -48,6 +48,24 @@ function fixture({ eventHome = false } = {}) {
 const where = (res, id) => res.placed.find(x => x.bookId === id);
 const shelved = (res, id) => res.shelf.find(x => x.bookId === id);
 
+test('a crossover can place an undated shelf member while preserving its identity and shelf overrides', () => {
+  const { db } = fixture();
+  db.exec("UPDATE scanned_books SET store_date=NULL WHERE id IN ('aa1','aa2','rep')");
+  const p = createSeriesPlacement({ db, members: id => id === 'ww' ? [{ id: 'aa' }] : [],
+    crossoversFor: () => ['aa1', 'aa1', 'rep'].map(bookId => ({ bookId, afterBookId: 'w37' })) });
+  const r = p.placement('ww');
+  assert.equal(where(r, 'aa1').afterBookId, 'w37');
+  assert.equal(where(r, 'aa1').kind, 'linked');
+  assert.equal(where(r, 'aa1').evidence, 'crossover');
+  assert.equal(p.sequence('ww').filter(id => id === 'aa1').length, 1);
+  assert.ok(!shelved(r, 'aa1'));
+  assert.equal(shelved(r, 'aa2').reason, 'no store date');
+  assert.equal(shelved(r, 'rep').reason, 'reprint');
+  p.setPin('ww', 'aa1', { mode: 'shelf' });
+  assert.equal(shelved(p.placement('ww'), 'aa1').pinned, true);
+  assert.ok(!p.sequence('ww').includes('aa1'));
+});
+
 test('place an undated linked mini as a group and still allow individual pins', () => {
   const { db, p } = fixture();
   db.exec("UPDATE scanned_books SET store_date = NULL, filename = CASE id WHEN 'aa1' THEN 'Z.cbz' ELSE 'A.cbz' END WHERE series_id = 'aa'");

@@ -237,6 +237,7 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
     const parentNames = [series.name, tag(regular[0]?.comicinfo, 'Series')].filter(Boolean);
     const runNumbers = new Set(regular.map(r => num(r.issue_number)).filter(v => v != null));
     const placed = [], shelf = [];
+    const undated = new Map();
     for (const x of extras) {
       const pin = pins.get(x.book.id);
       let pos;
@@ -252,7 +253,10 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
       } else if (eventHome) pos = { shelf: "event series: the Event page has the full order" };
       else pos = automatic(x, regular, weeks, timeline, regIndex);
       const label = extraLabel(x.book, parentNames, x.kind === 'annual' || ANNUAL_RE.test(x.book.filename), runNumbers);
-      if (pos.shelf) shelf.push({ bookId: x.book.id, reason: pos.shelf, pinned: !!pin });
+      if (pos.shelf) {
+        shelf.push({ bookId: x.book.id, reason: pos.shelf, pinned: !!pin });
+        if (pos.shelf === 'no store date' && !pin) undated.set(x.book.id, { ...label, kind: x.kind, mini: x.mini });
+      }
       else placed.push({ bookId: x.book.id, afterBookId: pos.after >= 0 ? regular[pos.after].id : null, after: pos.after,
         evidence: pos.evidence, kind: x.kind, mini: x.mini, pinned: !!pin, ...label,
         sortKey: pin && x.kind === 'linked' && x.mini
@@ -264,7 +268,7 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
     // Parts not in the library go to `missing` (shown like other missing issues; same order keys).
     const missing = [];
     if (crossovers) {
-      const taken = new Set([...placed.map(p => p.bookId), ...shelf.map(p => p.bookId), ...regIndex.keys()]);
+      const taken = new Set([...placed.map(p => p.bookId), ...shelf.filter(p => !undated.has(p.bookId)).map(p => p.bookId), ...regIndex.keys()]);
       let list = [];
       try { list = crossoversFor(seriesId) || []; } catch { list = []; }
       for (const c of list) {
@@ -292,9 +296,13 @@ function createSeriesPlacement({ db, members = () => [], crossoversFor = () => [
         const n = String(tag(book.comicinfo, 'Number') || book.issue_number || '').replace(/^0+(?=\d)/, '');
         placed.push({ bookId: c.bookId, afterBookId: after >= 0 ? regular[after].id : null, after, evidence: pin ? 'pin' : 'crossover', kind: 'crossover', mini: false,
           pinned: !!pin, label: n ? `${name} #${n}` : name, title: c.story ? `Crossover · ${c.story}` : 'Crossover', story: c.story || null,
+          ...undated.get(c.bookId),
           // One story's parts after one issue keep the story's order (crossovers.js walks the chain).
           sortKey: [c.chainDate || book.store_date || '9999-99-99', c.seq ?? 0, String(book.filename || ''), null] });
         taken.add(c.bookId);
+      }
+      for (let i = shelf.length - 1; i >= 0; i--) {
+        if (undated.has(shelf[i].bookId) && taken.has(shelf[i].bookId)) shelf.splice(i, 1);
       }
     }
     // Several extras after one issue: by date, then Timeline order, then filename (and see below).

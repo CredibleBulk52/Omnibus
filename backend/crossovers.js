@@ -421,10 +421,10 @@ function createCrossovers(deps = {}) {
   const dateOf = id => (id ? bookInfo.get(id)?.store_date : null);
 
   // Is this link the nearest one for both of its books (out of its first book, into its second)?
-  function nearestBothWays(l) {
+  function nearestBothWays(l, contains) {
     const gap = r => T.days(dateOf(r.from_book_id), dateOf(r.to_book_id));
     const g = gap(l);
-    const beats = (others) => others.every(o => o.id === l.id || samePair(o, l) || gap(o) > g || (gap(o) === g && o.id > l.id));
+    const beats = (others) => others.every(o => o.id === l.id || samePair(o, l) || gap(o) > g || (gap(o) === g && o.id > l.id) || !eligible(o, contains));
     if (l.from_book_id && !beats(linksOut.all(l.from_book_id).filter(o => o.to_book_id && sourceOn(o.source)))) return false;
     if (l.to_book_id && !beats(linksIn.all(l.to_book_id).filter(o => o.from_book_id && sourceOn(o.source)))) return false;
     return true;
@@ -445,22 +445,33 @@ function createCrossovers(deps = {}) {
       || (st.length >= 5 && T.norm(r.name).length >= 5 && (T.norm(r.name).includes(st) || st.includes(T.norm(r.name)))));
   }
 
-  function shown(l) {
+  function eligible(l, contains) {
     if (!sourceOn(l.source)) return false;
     if (!l.from_book_id || !l.to_book_id) {
       const side = l.from_book_id ? 'to' : 'from';
       return !inOwnersEvent(l.from_book_id || l.to_book_id, l[`${side}_series`], l[`${side}_issue`], l.story);
     }
     {
-      if (!nearestBothWays(l)) return false;
       try { if (sharedEvent.get(l.from_book_id, l.to_book_id)) return false; } catch { /* no events table */ }
       const a = bookInfo.get(l.from_book_id), b = bookInfo.get(l.to_book_id);
       if (!a || !b) return false;
       try {
-        if ((sequence(a.series_id) || []).includes(b.id) || (sequence(b.series_id) || []).includes(a.id)) return false;
+        if (contains(a.series_id, b.id) || contains(b.series_id, a.id)) return false;
       } catch { /* placement unavailable: show */ }
     }
     return true;
+  }
+
+  function shown(l, contains) {
+    return eligible(l, contains) && (!l.from_book_id || !l.to_book_id || nearestBothWays(l, contains));
+  }
+
+  function sequenceLookup() {
+    const orders = new Map();
+    return (seriesId, bookId) => {
+      if (!orders.has(seriesId)) orders.set(seriesId, new Set(sequence(seriesId) || []));
+      return orders.get(seriesId).has(bookId);
+    };
   }
 
   const label = (bookId, series, issue) => {
@@ -481,12 +492,12 @@ function createCrossovers(deps = {}) {
   const enabled = () => codeOn() || aiOn();
 
   // { continuesIn: [...], continuedFrom: [...] } for one book; owned issues first, one entry per issue.
-  function forBook(bookId) {
+  function forBook(bookId, contains = sequenceLookup()) {
     if (!enabled()) return { continuesIn: [], continuedFrom: [] };
     const pick = (rows, side) => {
       const seen = new Map();
       for (const l of rows) {
-        if (!shown(l)) continue;
+        if (!shown(l, contains)) continue;
         const other = label(l[`${side}_book_id`], l[`${side}_series`], l[`${side}_issue`]);
         const k = other.id || `${T.norm(other.series_name)}#${T.num(other.issue_number)}`;
         const cur = seen.get(k);
@@ -511,6 +522,7 @@ function createCrossovers(deps = {}) {
     WHERE l.hidden = 0 AND (l.from_book_id IS NULL OR l.to_book_id IS NULL) AND b.series_id IN (?, ?)`);
   function placementFor(seriesId) {
     if (!enabled()) return [];
+    const contains = sequenceLookup();
     const series = id => bookInfo.get(id)?.series_id;
     // The whole story, not just the neighbouring parts (user, 2026-11-22: Green Lantern #65 and The Siege of
     // the Zi Charam): from an issue of this series, follow the next part through other series until the
@@ -519,7 +531,7 @@ function createCrossovers(deps = {}) {
     // A part not in the library ends the walk; it is shown as a missing issue (user, 2026-11-22: "the way we
     // do other missing issues in a series"), with Get / Request (downloadRequests 'crossover').
     const stepOf = (id, dir) => {
-      const list = dir === 'in' ? forBook(id).continuesIn : forBook(id).continuedFrom;
+      const list = dir === 'in' ? forBook(id, contains).continuesIn : forBook(id, contains).continuedFrom;
       return list.find(x => x.owned && x.id) || (list[0] && !list[0].owned ? list[0] : null);
     };
     const out = [], seen = new Set();
@@ -544,7 +556,7 @@ function createCrossovers(deps = {}) {
           const id = pair?.to_book_id;
           if (id && !visited.has(id) && series(id) === series(n.id) && series(id) !== seriesId
             && !sharedEvent.get(cur, id) && !sharedEvent.get(n.id, id)
-            && !(sequence(seriesId) || []).includes(id)) {
+            && !contains(seriesId, id)) {
             chain.push({ ...label(id, pair.to_series, pair.to_issue), story: pair.story, linkIds: [pair.id] });
             visited.add(id);
             cur = id;
@@ -573,14 +585,14 @@ function createCrossovers(deps = {}) {
     const anchors = new Set();
     // Links with a part not in the library: the owned side is an anchor too.
     for (const l of linksHalfOfSeries.all(seriesId, seriesId)) {
-      if (!shown(l)) continue;
+      if (!shown(l, contains)) continue;
       const own = l.from_book_id || l.to_book_id, dir = l.from_book_id ? 'in' : 'from';
       if (series(own) !== seriesId || anchors.has(`${own}|${dir}`)) continue;
       anchors.add(`${own}|${dir}`);
       walk(own, dir);
     }
     for (const l of linksOfSeries.all(seriesId, seriesId)) {
-      if (!shown(l)) continue;
+      if (!shown(l, contains)) continue;
       const mine = series(l.from_book_id) === seriesId;
       const k = `${mine ? l.from_book_id : l.to_book_id}|${mine ? 'in' : 'from'}`;
       if (anchors.has(k)) continue;
