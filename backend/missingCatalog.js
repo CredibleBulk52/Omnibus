@@ -143,6 +143,10 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
     return filled;
   }
   const scan = db.transaction(local);
+  function lookupFailed(key, error) {
+    if (error.code !== 'CV_RATE_LIMIT') later.run(key,Date.now()+86400000,'retry');
+    throw error;
+  }
   const identityKey = r => JSON.stringify([!r.year && r.near ? 'crossover-date' : 'volume',titleKey(r.name),r.year,number(r.num),r.near || '',norm(r.publisher)]);
   async function online(report) {
     const pending = rows();
@@ -157,7 +161,7 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
         if (!volumes.has(title)) {
           if (volumes.size >= 25) continue;
           try { volumes.set(title,await searchVolumes(r.name)); }
-          catch (e) { later.run(k,Date.now()+86400000,'retry'); throw e; }
+          catch (e) { lookupFailed(k,e); }
         }
         matches = volumes.get(title).filter(v => realId(v.id) && agrees(v,r));
       }
@@ -168,7 +172,7 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
         if (issues.size + needed.length > 25) continue;
         for (const id of needed) {
           try { issues.set(id,await volumeIssues(id)); }
-          catch (e) { later.run(k,Date.now()+86400000,'retry'); throw e; }
+          catch (e) { lookupFailed(k,e); }
         }
         ({hit, ambiguous} = selectIssue(ids.flatMap(id => issues.get(id)), r));
       }
@@ -190,7 +194,7 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
       if (++count > 25) break;
       let i;
       try { i = await issueDetails(id); }
-      catch (e) { later.run(k,Date.now()+86400000,'retry'); throw e; }
+      catch (e) { lookupFailed(k,e); }
       if (String(i?.id) === id && cover(i)) { remember(i); finished.run(k); }
       else later.run(k,Date.now()+week,'no cover');
     }
@@ -198,8 +202,16 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
   function status() {
     return { running, last: JSON.parse(saved.get(statusKey)?.value || 'null'), configured: !!hasKey() };
   }
+  let resumeTimer;
+  function scheduleResume(at) {
+    resumeTimer = setTimeout(() => {
+      resumeTimer = null;
+      start();
+    }, Math.max(0, at - Date.now()));
+    resumeTimer.unref();
+  }
   function start() {
-    if (running) return;
+    if (running || resumeTimer) return;
     running = true;
     setImmediate(async () => {
       const report = { filled: 0, checked: 0, deferred: 0 };
@@ -209,7 +221,11 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
         report.filled = scan();
         if (hasKey()) await background(() => online(report));
       } catch (e) {
-        report.error = e.code === 'CV_RATE_LIMIT' ? e.message : 'Lookup interrupted. Remaining issues will be retried.';
+        if (e.code === 'CV_RATE_LIMIT') {
+          report.resumeAt = e.retryAt > Date.now() ? e.retryAt : Date.now() + 60000;
+        } else {
+          report.error = 'Lookup interrupted. Remaining issues will be retried.';
+        }
         logger.warn('missing-catalog','Lookup interrupted', { error: e.message });
       } finally {
         running = false;
@@ -219,9 +235,12 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
         report.at = Date.now();
         report.covers = coverCount() - before;
         db.prepare('INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)').run(statusKey,JSON.stringify(report));
+        if (report.resumeAt) scheduleResume(report.resumeAt);
         logger.info?.('missing-catalog','Lookup finished',report);
       }
     });
   }
+  const previous = JSON.parse(saved.get(statusKey)?.value || 'null');
+  if (previous?.resumeAt) scheduleResume(previous.resumeAt);
   return { scan, start, status, cover: id => art.get(String(id))?.url };
 };

@@ -4,6 +4,32 @@ const assert = require('node:assert/strict');
 const { DatabaseSync } = require('node:sqlite');
 const create = require('./missingCatalog');
 
+test('a Comic Vine limit pauses until reset and automatically retries the interrupted issue', async t => {
+  t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.UTC(2026,10,23)});
+  const reset = Date.now()+180000;
+  let calls = 0;
+  const {db,catalog,run} = setup({
+    searchVolumes: async () => {
+      if (++calls === 1) throw Object.assign(new Error('hourly limit'),{code:'CV_RATE_LIMIT',retryAt:reset});
+      return [{id:9,name:'Guest',start_year:2025}];
+    },
+    volumeIssues: async () => [{id:19,issue_number:'1',image:{thumb_url:'https://comicvine.gamespot.com/19.jpg'}}]
+  });
+  db.exec("INSERT INTO event_issues(id,series_name,volume_year,issue_number) VALUES (1,'Guest',2025,'1')");
+  await run();
+  assert.equal(catalog.status().last.resumeAt,reset);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM missing_catalog_retry').get().n,0);
+  catalog.start();
+  t.mock.timers.tick(179999);
+  assert.equal(catalog.status().running,false);
+  t.mock.timers.tick(1);
+  assert.equal(catalog.status().running,true);
+  while (catalog.status().running) await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,2);
+  assert.equal(catalog.status().last.filled,1);
+  assert.equal(catalog.status().last.resumeAt,undefined);
+});
+
 function setup(overrides = {}) {
   let Driver = DatabaseSync;
   try { Driver = require('better-sqlite3'); } catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e; }
