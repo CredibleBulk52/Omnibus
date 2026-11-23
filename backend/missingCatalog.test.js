@@ -5,8 +5,10 @@ const { DatabaseSync } = require('node:sqlite');
 const create = require('./missingCatalog');
 
 function setup(overrides = {}) {
-  const db = new DatabaseSync(':memory:');
-  db.transaction = fn => () => { db.exec('BEGIN'); try { const v=fn(); db.exec('COMMIT'); return v; } catch(e) { db.exec('ROLLBACK'); throw e; } };
+  let Driver = DatabaseSync;
+  try { Driver = require('better-sqlite3'); } catch (e) { if (e.code !== 'MODULE_NOT_FOUND') throw e; }
+  const db = new Driver(':memory:');
+  if (!db.transaction) db.transaction = fn => () => { db.exec('BEGIN'); try { const v=fn(); db.exec('COMMIT'); return v; } catch(e) { db.exec('ROLLBACK'); throw e; } };
   for (const t of ['event_issues','list_issues','canon_run_issues']) db.exec(`CREATE TABLE ${t} (id INTEGER PRIMARY KEY,series_name,issue_number,volume_year,cv_issue_id,scanned_book_id,manually_matched)`);
   db.exec(`CREATE TABLE scanned_books(id TEXT PRIMARY KEY,store_date,comicinfo,cv_issue_id);
     CREATE TABLE settings(key TEXT PRIMARY KEY,value);
@@ -34,6 +36,22 @@ test('scans accept one exact local identity, preserving ownership, existing IDs 
   assert.deepEqual(db.prepare('SELECT cv_issue_id,scanned_book_id FROM event_issues ORDER BY id').all().map(Object.values),
     [['123',null],[null,null],[null,null],[null,null]]);
   assert.equal(db.prepare('SELECT cv_issue_id FROM canon_run_issues').get().cv_issue_id,'999');
+});
+
+test('manual lookup saves art from a cached volume and continues to the online phase', async () => {
+  const searches = [];
+  const {db,catalog,run} = setup({ searchVolumes: async title => { searches.push(title); return []; } });
+  const url = 'https://comicvine.gamespot.com/guest.jpg';
+  db.exec(`INSERT INTO event_issues(id,series_name,volume_year,issue_number) VALUES
+    (1,'Guest',2025,'1'),(2,'Another',2025,'2');
+    INSERT INTO monitored_series VALUES ('vol','Guest',2025)`);
+  db.prepare('INSERT INTO cv_volume_issues_cache VALUES (?,?)').run('vol',
+    JSON.stringify([{ id: 123, issue_number: '1', image: { thumb_url: url } }]));
+  await run();
+  assert.equal(catalog.status().last.filled,1);
+  assert.equal(catalog.cover('123'),url);
+  assert.deepEqual(searches,['Another']);
+  assert.equal(catalog.scan(),0);
 });
 
 test('online passes share volume requests, keep ambiguous rows pending and cache art by issue ID',async()=>{

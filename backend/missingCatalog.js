@@ -94,12 +94,19 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
         }
       }
     }
+    // better-sqlite3 keeps the connection busy while this cursor is open.
+    // Collect only matching thumbnails, then write them after the read finishes.
+    const cachedArt = new Map();
     for (const v of db.prepare(`SELECT c.issues,s.name,s.year FROM cv_volume_issues_cache c LEFT JOIN monitored_series s ON s.id=c.vol_id`).iterate()) {
       let issues; try { issues = JSON.parse(v.issues); } catch { continue; }
       for (const i of issues || []) {
-        if (candidate(v.name,v.year,i.issue_number,i.id) || wantArt.has(String(i.id))) remember(i);
+        if (candidate(v.name,v.year,i.issue_number,i.id) || wantArt.has(String(i.id))) {
+          const url = cover(i);
+          if (url && realId(i.id)) cachedArt.set(String(i.id),url);
+        }
       }
     }
+    for (const [id,url] of cachedArt) putArt.run(id,url);
     let filled = 0;
     for (const r of pending) {
       const ids = known.get(key(r.name,r.year,r.num));
