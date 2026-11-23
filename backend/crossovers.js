@@ -50,6 +50,12 @@ function schema(db) {
     hidden INTEGER NOT NULL DEFAULT 0)`);
   db.exec('CREATE INDEX IF NOT EXISTS idx_crossover_links_from ON crossover_links(from_book_id)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_crossover_links_to ON crossover_links(to_book_id)');
+  const columns = db.prepare('PRAGMA table_info(crossover_links)').all();
+  for (const side of ['from', 'to']) {
+    if (!columns.some(c => c.name === side + '_cv_issue_id')) {
+      db.exec(`ALTER TABLE crossover_links ADD COLUMN ${side}_cv_issue_id TEXT`);
+    }
+  }
   db.exec(`CREATE TABLE IF NOT EXISTS crossover_wiki_pairs (
     book_id TEXT NOT NULL, first_key TEXT NOT NULL, second_key TEXT NOT NULL,
     PRIMARY KEY (book_id, first_key, second_key))`);
@@ -339,12 +345,31 @@ function createCrossovers(deps = {}) {
   const { app, db, ai, webLookup, readPage, axios, cron, getSetting, setSetting, logger, requireAuth, requireAdmin, sequence, modelCatalog } = deps;
   schema(db);
 
-  const insert = db.prepare(`INSERT INTO crossover_links (key, from_book_id, from_series, from_issue, from_year, to_book_id, to_series, to_issue, to_year, story, source, proof, found_at)
-    VALUES (@key, @from_book_id, @from_series, @from_issue, @from_year, @to_book_id, @to_series, @to_issue, @to_year, @story, @source, @proof, @found_at)
+  const hasCatalog = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='monitored_series'").get();
+  const catalog = hasCatalog && db.prepare(`SELECT m.id, m.issue_number, s.year, m.store_date
+    FROM monitored_series s JOIN monitored_issues m ON m.series_id=s.id
+    WHERE s.name = ? COLLATE NOCASE AND COALESCE(m.is_annual,0)=0`);
+  function catalogId(name, number, year, near) {
+    if (!catalog) return null;
+    const candidates = catalog.all(name).filter(m => T.num(m.issue_number) === T.num(number)
+      && (!year || Number(year) === Number(m.year)));
+    if (candidates.length > 1) return undefined; // competing catalog identities: leave this for the picker
+    if (!candidates.length) return null;
+    const m = candidates[0];
+    if (near && m.store_date) {
+      if (T.days(near, m.store_date) > MAX_GAP_DAYS) return null;
+    } else if (!year) return null;
+    return String(m.id);
+  }
+
+  const insert = db.prepare(`INSERT INTO crossover_links (key, from_book_id, from_cv_issue_id, from_series, from_issue, from_year, to_book_id, to_cv_issue_id, to_series, to_issue, to_year, story, source, proof, found_at)
+    VALUES (@key, @from_book_id, @from_cv_issue_id, @from_series, @from_issue, @from_year, @to_book_id, @to_cv_issue_id, @to_series, @to_issue, @to_year, @story, @source, @proof, @found_at)
     ON CONFLICT(key) DO UPDATE SET story = COALESCE(crossover_links.story, excluded.story), proof = COALESCE(crossover_links.proof, excluded.proof),
-      from_book_id = COALESCE(crossover_links.from_book_id, excluded.from_book_id), to_book_id = COALESCE(crossover_links.to_book_id, excluded.to_book_id)`);
+      from_book_id = COALESCE(crossover_links.from_book_id, CASE WHEN crossover_links.from_cv_issue_id IS NULL OR crossover_links.from_cv_issue_id=excluded.from_cv_issue_id THEN excluded.from_book_id END),
+      to_book_id = COALESCE(crossover_links.to_book_id, CASE WHEN crossover_links.to_cv_issue_id IS NULL OR crossover_links.to_cv_issue_id=excluded.to_cv_issue_id THEN excluded.to_book_id END)`);
   const rowOf = l => ({
     key: l.key, story: l.story || null, source: l.source, proof: l.proof ? String(l.proof).slice(0, 300) : null, found_at: Date.now(),
+    from_cv_issue_id: l.from?.cv_issue_id || null, to_cv_issue_id: l.to?.cv_issue_id || null,
     from_book_id: l.from?.id || null, from_series: l.from ? l.from.series : l.fromName.series, from_issue: l.from ? T.num(l.from.issue_number) : l.fromName.issue,
     from_year: l.from ? Number(l.from.year) || null : l.fromName?.year || null,
     to_book_id: l.to?.id || null, to_series: l.to ? l.to.series : l.toName.series, to_issue: l.to ? T.num(l.to.issue_number) : l.toName.issue,
@@ -353,10 +378,20 @@ function createCrossovers(deps = {}) {
 
   const published = publishedMatcher(db);
   function matchPublished(row, anchor) {
-    if (!anchor?.store_date || !!row.from_book_id === !!row.to_book_id) return;
+    if (!anchor || !!row.from_book_id === !!row.to_book_id) return;
     const side = row.from_book_id ? 'to' : 'from';
-    row[`${side}_book_id`] = published(row[`${side}_series`], row[`${side}_issue`], row[`${side}_year`], anchor);
+    const cvKey = side + '_cv_issue_id', bookKey = side + '_book_id';
+    const cv = row[cvKey] || catalogId(row[side + '_series'], row[side + '_issue'], row[side + '_year'], anchor.store_date);
+    if (cv === undefined) return;
+    row[cvKey] = cv;
+    if (row[cvKey]) {
+      row[bookKey] = exactBook.get(row[cvKey], anchor.id)?.id || null;
+    } else if (anchor.store_date) {
+      row[bookKey] = published(row[side + '_series'], row[side + '_issue'], row[side + '_year'], anchor);
+      if (row[bookKey]) row[cvKey] = db.prepare('SELECT cv_issue_id FROM scanned_books WHERE id=?').get(row[bookKey])?.cv_issue_id || null;
+    }
   }
+  const exactBook = db.prepare('SELECT MIN(id) AS id FROM scanned_books WHERE cv_issue_id=? AND id<>? HAVING COUNT(*)=1');
   function saveExternal(link) {
     const row = rowOf(link);
     matchPublished(row, link.from || link.to);
@@ -376,9 +411,6 @@ function createCrossovers(deps = {}) {
       const del = db.prepare('DELETE FROM crossover_links WHERE key = ?');
       for (const k of old) if (!keep.has(k)) { del.run(k); removed++; }
       resolved = resolvePending(lib);
-      // A web link whose book was removed from the library: forget the book (its names stay).
-      db.prepare(`UPDATE crossover_links SET from_book_id = NULL WHERE from_book_id IS NOT NULL AND from_book_id NOT IN (SELECT id FROM scanned_books)`).run();
-      db.prepare(`UPDATE crossover_links SET to_book_id = NULL WHERE to_book_id IS NOT NULL AND to_book_id NOT IN (SELECT id FROM scanned_books)`).run();
     })();
     const r = { summary: links.filter(l => l.source === 'summary').length, title: links.filter(l => l.source === 'title').length, added, removed, resolved, ms: Date.now() - t0 };
     logger.info('crossovers', 'Links from issue text refreshed', r);
@@ -387,14 +419,37 @@ function createCrossovers(deps = {}) {
 
   // Web links with an issue that was not in the library: match it now (near the other end's date).
   function resolvePending(lib) {
-    const rows = db.prepare(`SELECT * FROM crossover_links WHERE source IN ('web', 'wiki') AND (from_book_id IS NULL OR to_book_id IS NULL)`).all();
+    folderCache = null;
+    let n = 0;
+    for (const side of ['from', 'to']) {
+      const book = side + '_book_id', cv = side + '_cv_issue_id';
+      db.exec(`UPDATE crossover_links SET ${cv} = (SELECT cv_issue_id FROM scanned_books WHERE id=${book})
+        WHERE ${cv} IS NULL AND ${book} IN (SELECT id FROM scanned_books WHERE cv_issue_id IS NOT NULL);
+        UPDATE crossover_links SET ${book}=NULL WHERE ${book} IS NOT NULL AND NOT EXISTS (SELECT 1 FROM scanned_books WHERE id=${book})`);
+      const restored = db.prepare(`UPDATE crossover_links SET ${book}=(
+        SELECT MIN(id) FROM scanned_books WHERE cv_issue_id=${cv} AND id IS NOT ${side === 'to' ? 'from_book_id' : 'to_book_id'} HAVING COUNT(*)=1)
+        WHERE ${book} IS NULL AND ${cv} IS NOT NULL AND hidden=0 RETURNING ${book} AS id`).all();
+      n += restored.filter(r => r.id).length;
+    }
+    const rows = db.prepare(`SELECT * FROM crossover_links WHERE hidden=0 AND source IN ('web', 'wiki') AND (from_book_id IS NULL OR to_book_id IS NULL)`).all();
     const set = db.prepare('UPDATE crossover_links SET from_book_id = ?, to_book_id = ? WHERE id = ?');
     const drop = db.prepare('DELETE FROM crossover_links WHERE id = ?');
-    let n = 0;
     for (const r of rows) {
-      const other = lib.byId.get(r.from_book_id || r.to_book_id);
-      if (!other?.store_date) continue;
+      const anchorId = r.from_book_id || r.to_book_id;
+      const other = lib ? lib.byId.get(anchorId) : bookInfo.get(anchorId);
+      if (!other) continue;
       const side = r.from_book_id ? 'to' : 'from';
+      if (r[side + '_cv_issue_id']) continue;
+      const cv = catalogId(r[side + '_series'], r[side + '_issue'], r[side + '_year'], other.store_date);
+      if (cv === undefined) continue;
+      if (cv) {
+        const id = exactBook.get(cv, other.id)?.id || null;
+        db.prepare(`UPDATE crossover_links SET ${side}_cv_issue_id=?, ${side}_book_id=? WHERE id=?`).run(cv, id, r.id);
+        if (id) n++;
+        continue;
+      }
+      if (!other.store_date) continue;
+      lib ||= loadLibrary(db);
       const cands = lib.find(r[`${side}_series`], r[`${side}_issue`]).filter(b => b.id !== other.id);
       const b = nearest(cands, other.store_date, MAX_GAP_DAYS)
         || lib.byId.get(published(r[`${side}_series`], r[`${side}_issue`], r[`${side}_year`], other));
@@ -402,6 +457,7 @@ function createCrossovers(deps = {}) {
       if (!b && sameVolume(cands, r[`${side}_year`]).some(c => c.store_date && T.days(c.store_date, other.store_date) > MATCH_DAYS)) { drop.run(r.id); continue; }
       if (!b) continue;
       set.run(side === 'from' ? b.id : r.from_book_id, side === 'to' ? b.id : r.to_book_id, r.id);
+      if (b.cv_issue_id) db.prepare(`UPDATE crossover_links SET ${side}_cv_issue_id=? WHERE id=?`).run(String(b.cv_issue_id), r.id);
       n++;
     }
     return n;
@@ -501,7 +557,7 @@ function createCrossovers(deps = {}) {
         const other = label(l[`${side}_book_id`], l[`${side}_series`], l[`${side}_issue`]);
         const k = other.id || `${T.norm(other.series_name)}#${T.num(other.issue_number)}`;
         const cur = seen.get(k);
-        if (!cur) seen.set(k, { ...other, story: l.story || null, source: l.source, linkIds: [l.id] });
+        if (!cur) seen.set(k, { ...other, volume_year: l[side + '_year'], story: l.story || null, source: l.source, linkIds: [l.id] });
         else { cur.story = cur.story || l.story || null; cur.linkIds.push(l.id); if (l.source === 'web') cur.source = 'web'; }
       }
       const list = [...seen.values()];
@@ -578,6 +634,7 @@ function createCrossovers(deps = {}) {
         else {
           const w = missingWhere(x.series_name, x.issue_number, bookInfo.get(anchor)?.store_date);
           out.push({ missing: { series_name: x.series_name, issue_number: x.issue_number, story: x.story || story, linkId: x.linkIds[0],
+            volume_year: x.volume_year || w.volume_year,
             status: w.status, date: w.date }, ...where, chainDate: first, seq: i });
         }
       });
@@ -612,7 +669,7 @@ function createCrossovers(deps = {}) {
     const owned = bookInfo.get(l.from_book_id || l.to_book_id);
     const where = missingWhere(l[`${side}_series`], l[`${side}_issue`], owned?.store_date);
     // The library folder of that series (when there is one) lets the Get box find its monitored issue.
-    return { id: l.id, cv_issue_id: where.cv_issue_id, scanned_book_id: null, scanned_series_id: where.scanned_series_id,
+    return { id: l.id, cv_issue_id: l[side + '_cv_issue_id'] || where.cv_issue_id, scanned_book_id: null, scanned_series_id: where.scanned_series_id,
       series_name: l[`${side}_series`], issue_number: l[`${side}_issue`], volume_year: where.volume_year || l[`${side}_year`] || null };
   }
 
@@ -907,6 +964,29 @@ function createCrossovers(deps = {}) {
     res.json(status());
   });
   app.post('/api/admin/crossovers/stop', requireAdmin, (req, res) => { state.stop = true; res.json(status()); });
+  app.post('/api/admin/crossovers/:id/match', requireAdmin, (req, res) => {
+    const book = db.prepare('SELECT id,cv_issue_id FROM scanned_books WHERE id=?').get(String(req.body?.bookId || ''));
+    if (!book) return res.status(400).json({ error: 'Choose a library issue.' });
+    const result = db.transaction(() => {
+      const row = db.prepare('SELECT * FROM crossover_links WHERE id=? AND hidden=0').get(Number(req.params.id));
+      if (!row || !!row.from_book_id === !!row.to_book_id) return false;
+      const side = row.from_book_id ? 'to' : 'from', anchor = side === 'to' ? 'from_book_id' : 'to_book_id';
+      if (book.id === row[anchor]) return false;
+      const year = side + '_year', cv = side + '_cv_issue_id';
+      const peers = db.prepare(`SELECT * FROM crossover_links WHERE ${anchor}=? AND ${side}_book_id IS NULL AND hidden=0`).all(row[anchor])
+        .filter(p => T.norm(p[side + '_series']) === T.norm(row[side + '_series']) && T.num(p[side + '_issue']) === T.num(row[side + '_issue']));
+      const years = new Set(peers.map(p => p[year]).filter(Boolean));
+      const update = db.prepare(`UPDATE crossover_links SET ${side}_book_id=?, ${cv}=? WHERE id=?`);
+      for (const p of peers) {
+        if (p.id !== row.id && ((years.size > 1 && (!row[year] || p[year] !== row[year]))
+          || (p[cv] && p[cv] !== book.cv_issue_id))) continue;
+        update.run(book.id, book.cv_issue_id || null, p.id);
+      }
+      return true;
+    })();
+    if (!result) return res.status(409).json({ error: 'This crossover changed or the selected issue is its other end. Refresh the grid.' });
+    res.json({ ok: true });
+  });
   app.post('/api/admin/crossovers/refresh', requireAdmin, (req, res) => {
     try {
       if (req.body?.wiki !== true) return res.json({ ...refreshFree(), status: status() });
@@ -942,10 +1022,10 @@ function createCrossovers(deps = {}) {
     const pending = db.prepare(`SELECT l.*, b.id AS anchor_id, b.store_date FROM crossover_links l
       JOIN scanned_books b ON b.id = COALESCE(l.from_book_id, l.to_book_id)
       WHERE l.source IN ('wiki','web') AND l.hidden = 0 AND (l.from_book_id IS NULL OR l.to_book_id IS NULL)`).all();
-    const update = db.prepare('UPDATE crossover_links SET from_book_id = ?, to_book_id = ? WHERE id = ?');
+    const update = db.prepare('UPDATE crossover_links SET from_book_id=?, to_book_id=?, from_cv_issue_id=?, to_cv_issue_id=? WHERE id=?');
     for (const row of pending) {
       matchPublished(row, { id: row.anchor_id, store_date: row.store_date });
-      if (row.from_book_id && row.to_book_id) update.run(row.from_book_id, row.to_book_id, row.id);
+      update.run(row.from_book_id, row.to_book_id, row.from_cv_issue_id, row.to_cv_issue_id, row.id);
     }
   })();
   // First start after deploy: build the summary links once (a few seconds), off the startup path.
@@ -958,7 +1038,10 @@ function createCrossovers(deps = {}) {
     setTimeout(() => wikiPass().catch(e => logger.error('crossovers', 'Fan wiki pass failed', e.message)), 150000).unref?.();
   }
 
-  return { forBook, nextFor, placementFor, missingRow, refreshFree, wikiPass, wikiState, run, status, due, candidates, state, codeOn, aiOn };
+  function reconcile() {
+    if (enabled()) return db.transaction(() => resolvePending())();
+  }
+  return { forBook, nextFor, placementFor, missingRow, reconcile, refreshFree, wikiPass, wikiState, run, status, due, candidates, state, codeOn, aiOn };
 }
 
 module.exports = { createCrossovers, schema, loadLibrary, nearest, wikiRow, summaryLinks, textLinks, titleLinks, provenLinks, linkRow, bookQuestion, volumeQuestion, EXTRACT, MAX_GAP_DAYS };

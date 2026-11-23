@@ -6313,6 +6313,8 @@ function scheduleReconcile(scanChanged = false) {
       .finally(() => Promise.resolve(canonMatch.reconcile(changed))
         .catch(e => logger.error('canon', 'Reconcile failed', { error: e.message }))
         .finally(() => Promise.resolve(readingLists.reconcile(changed))
+          .then(() => { if (changed) crossovers?.reconcile(); })
+          .catch(e => logger.error('library', 'Reading-list or crossover reconcile failed', { error: e.message }))
           .finally(() => { try { seriesGrouping.run('reconcile'); } catch (e) { logger.warn('grouping', 'Rules failed', e.message); } })));
   }, 2000);
 }
@@ -11883,6 +11885,7 @@ async function runLinkReconcile() {
       await reconcileEventIssues(true, { strict: true });
       await canonMatch.reconcile(true, { strict: true });
       await readingLists.reconcile(true, { strict: true });
+      crossovers?.reconcile();
     });
     const asked = Number(getSetting(LINK_RECHECK) || 0);
     if (asked && asked <= started) db.prepare('DELETE FROM settings WHERE key = ?').run(LINK_RECHECK);

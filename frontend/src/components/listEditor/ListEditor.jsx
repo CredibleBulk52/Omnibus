@@ -925,17 +925,8 @@ function Style() {
     .le-menu button:hover:not(:disabled) { background: var(--bg-hover); }
     .le-menu button:disabled { opacity: 0.45; cursor: default; }
     .le-menu-sep { height: 1px; background: var(--border-subtle); margin: 4px 6px; }
-    .le-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.55); display: grid; place-items: center; }
     .le-dialog { width: min(640px, 92vw); max-height: 80vh; display: flex; flex-direction: column; background: var(--bg-card, #1b1b1b); border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
-    .le-dialog-head { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 6px; }
-    .le-dialog-head .le-x { margin-left: auto; }
-    .le-dialog-search { display: flex; gap: 8px; padding: 6px 16px 10px; }
-    .le-dialog-search .le-input.num { flex: 0 0 70px; }
     .le-dialog .le-notice { margin: 0 16px 8px; }
-    .le-results { overflow-y: auto; border-top: 1px solid var(--border-subtle); }
-    .le-result { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); font: inherit; font-size: 0.86rem; padding: 8px 16px; cursor: pointer; }
-    .le-result:hover:not(:disabled) { background: var(--bg-hover); }
-    .le-result .le-muted { font-size: 0.74rem; }
     .le-dialog-foot { padding: 10px 16px; border-top: 1px solid var(--border-subtle); }
     .le-narrow { padding: 24px 16px; color: var(--text-muted); }
     ${detailsCss}

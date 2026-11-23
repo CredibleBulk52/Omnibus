@@ -75,6 +75,44 @@ function create(lib, over = {}) {
 }
 const names = list => list.map(x => `${x.series_name} #${x.issue_number}${x.owned ? '' : ' (missing)'}`);
 
+test('a catalog ID survives download, removal and refiling under a different shelf', () => {
+  const lib = library(), { db } = lib;
+  db.exec(`CREATE TABLE monitored_series (id TEXT, name TEXT, year INTEGER);
+    CREATE TABLE monitored_issues (id TEXT, series_id TEXT, issue_number TEXT, store_date TEXT, is_annual INTEGER);
+    INSERT INTO monitored_series VALUES ('v','Guest Special',2026);
+    INSERT INTO monitored_issues VALUES ('117','v','1','2026-11-04',0)`);
+  const x = create(lib);
+  db.exec(`INSERT INTO crossover_links (key,from_book_id,from_series,from_issue,to_series,to_issue,source,found_at)
+    VALUES ('guest','gl40','Green Lantern','40','Guest Special','1','web',0)`);
+  const row = () => db.prepare("SELECT * FROM crossover_links WHERE key='guest'").get();
+  db.exec(`INSERT INTO monitored_series VALUES ('second','Guest Special',2025);
+    INSERT INTO monitored_issues VALUES ('118','second','1','2026-11-05',0)`);
+  x.reconcile();
+  assert.equal(row().to_cv_issue_id, null);
+  db.exec("UPDATE crossover_links SET to_year=2026 WHERE key='guest'");
+  x.reconcile();
+  assert.equal(x.missingRow(row().id).cv_issue_id, '117');
+  assert.equal(row().to_book_id, null);
+  const add = db.prepare("INSERT INTO scanned_books (id,series_id,issue_number,cv_issue_id) VALUES (?,'bat','Special','117')");
+  add.run('first'); x.reconcile();
+  assert.equal(row().to_book_id, 'first');
+  db.exec("DELETE FROM scanned_books WHERE id='first'");
+  add.run('replacement'); x.reconcile();
+  assert.equal(row().to_book_id, 'replacement');
+});
+
+test('manual match binds agreeing evidence and leaves a competing volume alone', () => {
+  const lib = library(), { db } = lib;
+  create(lib);
+  const add = db.prepare(`INSERT INTO crossover_links (key,from_book_id,from_series,from_issue,to_series,to_issue,to_year,source,found_at)
+    VALUES (?,'gl40','Green Lantern','40','Guest','1',?,?,0)`);
+  add.run('a',2026,'web'); add.run('b',2026,'wiki'); add.run('c',1990,'wiki');
+  const route = lib.app.routes['POST /api/admin/crossovers/:id/match'];
+  route({ params: { id: 1 }, body: { bookId: 'glc22' } }, { json(r) { assert.equal(r.ok, true); } });
+  assert.deepEqual(db.prepare('SELECT to_book_id,to_cv_issue_id FROM crossover_links ORDER BY id').all().map(Object.values),
+    [['glc22','cv-glc22'],['glc22','cv-glc22'],[null,null]]);
+});
+
 test('first grid after restart resolves a saved Matriarch placeholder by its published issue', () => {
   const lib = library(), { db } = lib;
   C.schema(db);

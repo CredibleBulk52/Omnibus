@@ -1,4 +1,5 @@
 import DeleteSeriesAction from '../components/DeleteSeriesAction';
+import IssueWindow, { issueWindowCss } from '../components/listEditor/IssueWindow';
 import {PullButton} from '../components/PullBox';
 import { useConfirm } from '../components/Confirm';
 import { ErrorNote } from '../components/StateMessage';
@@ -233,6 +234,7 @@ export default function SeriesDetailComic() {
   // Requests for those parts (downloadRequests 'crossover'): { linkId: status }; the Get / Request dialog.
   const [crossRequests, setCrossRequests] = useState({});
   const [crossAcquire, setCrossAcquire] = useState(null);
+  const [crossMatch, setCrossMatch] = useState(null);
   const loadCrossRequests = React.useCallback(() => fetch(`/api/requests/crossover/${id}/mine`).then(r => (r.ok ? r.json() : {}))
     .then(d => setCrossRequests(d && !d.error ? d : {})).catch(() => {}), [id]);
   const hasCrossMissing = !!(ordered && placement?.missing?.length);
@@ -721,6 +723,7 @@ export default function SeriesDetailComic() {
         </div>
         <div className="issue-number">{m.label}</div>
         <div className="issue-title">{m.title}</div>
+        {isAdmin() && <button type="button" className="btn btn-ghost" onClick={() => setCrossMatch(m)}>Find in Library</button>}
       </div>
     );
   };
@@ -1014,6 +1017,12 @@ export default function SeriesDetailComic() {
       <div className="series-body">
 
         {shelfOpen && <PutOnShelfDialog seriesId={id} seriesName={title} onClose={() => setShelfOpen(false)} onDone={reloadGrouping} />}
+        {crossMatch && <>
+          <style>{issueWindowCss}</style>
+          <IssueWindow issue={{ series_name: crossMatch.series_name, issue_number: crossMatch.number, volume_year: crossMatch.volume_year }}
+            target={{ url: `/api/admin/crossovers/${crossMatch.linkId}/match`, method: 'POST', body: bookId => ({ bookId }) }}
+            onDone={loadPlacement} onClose={() => setCrossMatch(null)} />
+        </>}
         {crossAcquire && <AcquireDialog base={`/api/requests/crossover/${id}/issues/${crossAcquire.linkId}`} title={`${crossAcquire.label} · ${crossAcquire.title}`}
           issue={{ series_name: crossAcquire.series_name, issue_number: crossAcquire.number }} onClose={() => setCrossAcquire(null)} onChange={loadCrossRequests} />}
         {/* ── Issues — bookshelf layout ── */}

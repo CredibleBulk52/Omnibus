@@ -154,6 +154,15 @@ export default function IssueWindow({ issue, target, acquire, onClose, onDone })
 }
 
 export const issueWindowCss = `
+  .le-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.55); display: grid; place-items: center; }
+  .le-dialog-head { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 6px; }
+  .le-dialog-head .le-x { margin-left: auto; }
+  .le-dialog-search { display: flex; gap: 8px; padding: 6px 16px 10px; }
+  .le-dialog-search .le-input.num { flex: 0 0 70px; }
+  .le-results { overflow-y: auto; border-top: 1px solid var(--border-subtle); }
+  .le-result { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--border-subtle); color: var(--text-primary); font: inherit; font-size: 0.86rem; padding: 8px 16px; cursor: pointer; }
+  .le-result:hover:not(:disabled) { background: var(--bg-hover); }
+  .le-result .le-muted { font-size: 0.74rem; }
   .le-iw { width: min(900px, 94vw); max-height: 86vh; display: flex; flex-direction: column; background: var(--bg-card, #1b1b1b); border: 1px solid var(--border-subtle); border-radius: 12px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
   .le-iw-body { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; padding: 6px 16px 16px; min-height: 0; flex: 1; }
   .le-iw-left { display: flex; flex-direction: column; gap: 10px; }
@@ -181,4 +190,5 @@ export const issueWindowCss = `
   .le-thumb.none { border: 1px dashed var(--border-subtle); background: transparent; color: var(--text-muted); font-size: 0.7rem; }
   .le-thumb:hover:not(:disabled) { outline: 1px solid var(--td-yellow, #f5c518); outline-offset: 1px; }
   .le-thumb:disabled { cursor: default; }
+  @media (max-width: 600px) { .le-iw-body { grid-template-columns: minmax(0, 1fr); overflow: auto; } .le-iw-cover { width: 80px; } .le-iw .le-dialog-search { flex-wrap: wrap; } }
 `;
