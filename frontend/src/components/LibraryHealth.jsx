@@ -1,5 +1,5 @@
 import { useConfirm } from './Confirm';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // ─── Library health ───────────────────────────────────────────────
@@ -322,10 +322,34 @@ export function SeriesLinksPanel() {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
-  const load = useCallback(() => fetch('/api/admin/library-health/series-links').then(r => r.json())
-    .then(d => { if (d.error) throw new Error(d.error); setData(d); })
-    .catch(e => setNotice('Could not load: ' + e.message)), []);
-  useEffect(() => { load(); }, [load]);
+  const [starting, setStarting] = useState(false);
+  const [loadError, setLoadError] = useState('');
+  const request = useRef(0);
+  const finished = useRef(undefined);
+  const load = useCallback(async () => {
+    const id = ++request.current;
+    try {
+      const response = await fetch('/api/admin/library-health/series-links', { cache: 'no-store' });
+      const d = await response.json();
+      if (!response.ok || d.error) throw new Error(d.error || 'HTTP ' + response.status);
+      if (id !== request.current) return;
+      const at = d.progress?.job?.finishedAt || null;
+      if (at && finished.current !== undefined && at !== finished.current) healthChanged();
+      finished.current = at;
+      setData(d);
+      setLoadError('');
+    } catch (e) { if (id === request.current) setLoadError('Could not load folder status: ' + e.message); }
+  }, []);
+  useEffect(() => { load(); return () => { request.current++; }; }, [load]);
+  const job = data?.progress?.job;
+  useEffect(() => {
+    let active = true, timer;
+    const schedule = () => {
+      timer = setTimeout(async () => { await load(); if (active) schedule(); }, job?.running || loadError ? 2500 : 30000);
+    };
+    schedule();
+    return () => { active = false; clearTimeout(timer); };
+  }, [load, job?.running, loadError]);
 
   const relink = async it => {
     const to = it.proposed.name ? `${it.proposed.name} (Comic Vine ${it.proposed.volumeId})` : `Comic Vine volume ${it.proposed.volumeId}`;
@@ -346,12 +370,16 @@ export function SeriesLinksPanel() {
     finally { setBusy(''); await load(); healthChanged(); }
   };
   const runNow = async () => {
-    const r = await fetch('/api/admin/library-health/series-links/run', { method: 'POST' });
-    const d = await r.json().catch(() => ({}));
-    setNotice(r.ok ? 'Checking the remaining folders now (Metron answers most of them). Results appear here as they come in; refresh in a few minutes.' : (d.error || 'HTTP ' + r.status));
+    setStarting(true); setNotice('');
+    try {
+      const r = await fetch('/api/admin/library-health/series-links/run', { method: 'POST' });
+      if (!r.ok) throw new Error((await r.json()).error || 'HTTP ' + r.status);
+      await load();
+    } catch (e) { setNotice('Could not start the check: ' + e.message); }
+    finally { setStarting(false); }
   };
 
-  if (!data) return <p style={{ color: 'var(--text-muted)' }}>{notice || 'Loading…'}</p>;
+  if (!data) return <p style={{ color: 'var(--text-muted)' }}>{loadError || 'Loading…'}</p>;
   const { items = [], progress = {} } = data;
   const c = progress.counts || {};
   const looked = (c.ok || 0) + (c.mixed || 0) + (c.mismatch || 0) + (c.unknown || 0);
@@ -360,10 +388,14 @@ export function SeriesLinksPanel() {
       <div className="lp-head">
         <span><b>{items.length ? plural(items.length, 'folder') + ' to check' : 'No wrong links found'}</b>
           <span className="lp-muted" title={`Checked every hour: Metron first, then Comic Vine (keeping some for your clicks). ${looked} looked up${c.mixed ? `; ${c.mixed} hold more than one series` : ''}.`}>
-            {progress.notYetRead > 0 ? ` · ${progress.notYetRead.toLocaleString()} folders not read yet` : ' · all folders read'}</span></span>
-        <button className="adm-btn adm-btn-ghost" onClick={runNow}>Check more now</button>
+            {progress.notYetRead > 0 ? ` · ${progress.notYetRead.toLocaleString()} folders not read yet` : ' · all eligible folders checked'}</span></span>
+        <button className="adm-btn adm-btn-ghost" disabled={starting || job?.running} onClick={runNow}>{starting || job?.running ? 'Checking folders…' : 'Check more now'}</button>
       </div>
       {notice && <p className="lp-notice">{notice}</p>}
+      {loadError && <p className="lp-notice">{loadError}</p>}
+      {job && <p role="status" className="lp-notice">{job.running
+        ? job.total ? `Checking ${job.stats.checked + job.stats.deferred + job.failed + 1} of ${job.total} · ${job.current}` : 'Finding folders to check…'
+        : `${job.error || (job.stats.rateLimited ? 'Stopped at the Comic Vine limit' : 'Check finished')} at ${when(job.finishedAt)} · ${job.total || job.error ? plural(job.stats.checked, 'folder') + ' checked' : 'No folders needed a volume lookup'}${job.stats.deferred ? ` · ${job.stats.deferred} deferred` : ''}${job.failed ? ` · ${job.failed} failed` : ''}.`}</p>}
       <div className="lp-cards">
         {items.map(it => {
           const files = it.groups[0] || {};

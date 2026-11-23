@@ -8,6 +8,30 @@ const item = { seriesId: 'ss_1', folder: 'Arkham Manor (2014)', path: '/comics/A
   current: { comicid: '81000', name: 'Arkham Manor: Endgame', year: 2015, totalIssues: 1, image: 'https://cv/img.jpg' },
   proposed: { volumeId: '77000', name: 'Arkham Manor' }, groups: [{ name: 'Arkham Manor', books: 7, volumeId: '77000' }] };
 
+test('Check more now updates live and shows completion without reopening', async () => {
+  global.IS_REACT_ACT_ENVIRONMENT = true;
+  vi.useFakeTimers();
+  const prev = global.fetch;
+  let job = null;
+  const running = {running:true, total:1, current:'Arkham Manor', failed:0, stats:{checked:0,deferred:0}};
+  global.fetch = vi.fn(async url => {
+    if (String(url).endsWith('/run')) job = running;
+    return {ok:true,json:async () => ({items:job?.finishedAt ? [item] : [],progress:{job,notYetRead:job?.finishedAt ? 0 : 1}})};
+  });
+  const host = document.createElement('div'), root = createRoot(host);
+  try {
+    await act(async () => { root.render(<MemoryRouter><SeriesLinksPanel /></MemoryRouter>); });
+    await act(async () => { host.querySelector('button').click(); });
+    expect(host.textContent).toContain('Checking 1 of 1');
+    expect(host.querySelector('button').disabled).toBe(true);
+    job = {...running,running:false,finishedAt:Date.now(),stats:{checked:1,deferred:0}};
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+    expect(host.textContent).toContain('Check finished');
+    expect(host.textContent).toContain('1 folder to check');
+    expect(host.querySelector('button').disabled).toBe(false);
+  } finally { act(() => root.unmount()); global.fetch = prev; vi.useRealTimers(); }
+});
+
 test('each wrong link shows series.json against the comics, as covers; Keep dismisses it', async () => {
   global.IS_REACT_ACT_ENVIRONMENT = true;
   const prev = global.fetch;

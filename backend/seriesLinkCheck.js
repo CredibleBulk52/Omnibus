@@ -133,13 +133,17 @@ function createSeriesLinkCheck({ db, volumeOfIssue, logger, now = Date.now, paus
     return { id: v?.id ? String(v.id) : null, name: v?.name || null, asked: true };
   }
 
-  let running = false;
+  let job = null;
   async function run({ limit = PER_RUN } = {}) {
-    if (running) return { skipped: true };
-    running = true;
+    if (job?.running) return { skipped: true };
     const stats = { checked: 0, ok: 0, mixed: 0, mismatch: 0, unknown: 0, requests: 0, deferred: 0, rateLimited: false };
+    job = { running: true, total: 0, current: '', failed: 0, stats };
     try {
-      for (const s of suspects(db, { limit, markClear })) {
+      await new Promise(resolve => setImmediate(resolve));
+      const batch = suspects(db, { limit, markClear });
+      job.total = batch.length;
+      for (const s of batch) {
+        job.current = s.path?.split(/[\\/]/).pop() || s.name;
         const groups = [];
         try {
           for (const g of s.groups.slice(0, MAX_GROUPS)) {
@@ -152,6 +156,7 @@ function createSeriesLinkCheck({ db, volumeOfIssue, logger, now = Date.now, paus
           if (e.code === 'CV_RATE_LIMIT') { stats.rateLimited = true; break; }
           if (e.code === 'CV_HEADROOM') { stats.deferred++; continue; }
           logger.warn('series-links', `Check failed for "${s.name}"`, e.message);
+          job.failed++;
           continue;
         }
         const d = decide(s.comicid, groups);
@@ -159,7 +164,14 @@ function createSeriesLinkCheck({ db, volumeOfIssue, logger, now = Date.now, paus
         stats.checked++; stats[d.status]++;
         if (d.status === 'mismatch') logger.info('series-links', `${s.name}: series.json is volume ${s.comicid}; its files are ${d.volumeName || 'volume'} ${d.volumeId}`);
       }
-    } finally { running = false; }
+    } catch (e) {
+      job.error = 'Folder check interrupted.';
+      throw e;
+    } finally {
+      job.running = false;
+      job.current = '';
+      job.finishedAt = now();
+    }
     if (stats.checked || stats.rateLimited) logger.info('series-links', 'Run complete', stats);
     return stats;
   }
@@ -181,9 +193,15 @@ function createSeriesLinkCheck({ db, volumeOfIssue, logger, now = Date.now, paus
 
   function progress() {
     const counts = Object.fromEntries(db.prepare('SELECT status, COUNT(*) AS n FROM series_link_checks GROUP BY status').all().map(r => [r.status, r.n]));
-    const total = db.prepare('SELECT COUNT(*) AS n FROM scanned_series WHERE series_json IS NOT NULL').get().n;
-    const done = Object.values(counts).reduce((a, b) => a + b, 0);
-    return { counts, notYetRead: Math.max(0, total - done) };
+    const notYetRead = db.prepare(`WITH folders AS (
+      SELECT id, book_count, CASE WHEN json_valid(series_json) THEN CAST(json_extract(series_json,'$.metadata.comicid') AS TEXT) END AS volume
+      FROM scanned_series WHERE series_json IS NOT NULL)
+      SELECT COUNT(*) AS n FROM folders f LEFT JOIN series_link_checks c ON c.series_id=f.id
+      WHERE f.volume <> '' AND f.volume NOT GLOB '*[^0-9]*'
+      AND (c.series_id IS NULL OR c.comicid <> f.volume OR (c.books IS NOT NULL AND c.books IS NOT f.book_count))
+      AND EXISTS (SELECT 1 FROM scanned_books b WHERE b.series_id=f.id AND COALESCE(b.is_special,0)=0
+        AND lower(COALESCE(b.filename,'')) NOT LIKE '%annual%')`).get().n;
+    return { counts, notYetRead, job };
   }
 
   function dismiss(seriesId) {

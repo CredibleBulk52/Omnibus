@@ -7714,7 +7714,7 @@ app.get('/api/admin/library-health/series-links', requireAdmin, (req, res) => {
 app.post('/api/admin/library-health/series-links/run', requireAdmin, (req, res) => {
   if (!anyProvider()) return res.status(400).json({ error: 'Set a Comic Vine API key or a Metron token first (Settings → Connections)' });
   // A larger batch on request: most lookups go to Metron, and Comic Vine's reserve is kept.
-  setImmediate(() => seriesLinkCheck.run({ limit: 300 }).catch(e => logger.error('series-links', 'Run failed', e.message)));
+  seriesLinkCheck.run({ limit: 300 }).catch(e => logger.error('series-links', 'Run failed', e.message));
   res.json({ ok: true });
 });
 // "Link is right": the folder's series.json stays as it is.

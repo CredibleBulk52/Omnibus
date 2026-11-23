@@ -73,7 +73,31 @@ test('the Comic Vine hourly limit stops the run without recording a result', asy
   const check = createSeriesLinkCheck({ db, logger: quiet, volumeOfIssue: async () => { throw Object.assign(new Error('limit'), { code: 'CV_RATE_LIMIT' }); } });
   const stats = await check.run();
   assert.equal(stats.rateLimited, true);
+  assert.equal(check.progress().job.running, false);
+  assert.equal(check.progress().notYetRead, 1);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM series_link_checks WHERE series_id = 'a'").get().n, 0);
+});
+
+test('reports the active folder and the finished batch, counting only eligible folders', async () => {
+  const {db, folder} = fixture();
+  folder('a', 'Guest', {name:'Wrong',comicid:9}, [['Guest','77']]);
+  folder('b', 'Unlinked', {}, [['Unlinked','7']]);
+  folder('c', 'Annuals', {comicid:5}, [['Annuals','8','Annual 1.cbz']]);
+  let resolveLookup;
+  const check = createSeriesLinkCheck({db,logger:quiet,volumeOfIssue:() => new Promise(resolve => { resolveLookup = resolve; })});
+  assert.equal(check.progress().notYetRead,1);
+  const completion = check.run();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(check.progress().job.current,'Guest');
+  assert.equal(check.progress().job.running,true);
+  assert.deepEqual(await check.run(),{skipped:true});
+  resolveLookup({id:'77',name:'Guest'});
+  await completion;
+  const {job,notYetRead} = check.progress();
+  assert.equal(notYetRead,0);
+  assert.equal(job.running,false);
+  assert.equal(job.stats.checked,1);
+  assert.equal(check.mismatches().length,1);
 });
 
 test('a folder that would need Comic Vine past the reserved allowance waits; the others go on', async () => {
