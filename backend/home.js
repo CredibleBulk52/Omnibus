@@ -302,7 +302,7 @@ module.exports.registerHome = function registerHome(deps) {
         charMapCache.set(cacheKey, { data: topCharacters, ts: Date.now() });
       }
 
-      res.set('Cache-Control', 'private, max-age=60');
+      res.set('Cache-Control', 'private, no-store');
 
       // Library stats — fast COUNT queries, library-filtered
       const statsFilter = libraryId ? 'WHERE library_id = ?' : '';
