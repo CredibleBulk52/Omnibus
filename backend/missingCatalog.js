@@ -16,15 +16,17 @@ function agrees(volume, row) {
   return titleKey(volume.name) === titleKey(row.name) && (!row.year || Number(volume.start_year) === Number(row.year))
     && (!row.publisher || !volume.publisher?.name || norm(volume.publisher.name) === norm(row.publisher));
 }
-function exactIssue(issues, row) {
-  if (!number(row.num)) return null;
-  const hits = issues.filter(i => realId(i.id) && number(i.issue_number) === number(row.num));
-  if (hits.length !== 1) return null;
-  if (!row.year) {
-    const gap = Math.abs(Date.parse(hits[0].store_date) - Date.parse(row.near));
-    if (!Number.isFinite(gap) || gap > 120 * 86400000) return null;
-  }
-  return hits[0];
+function selectIssue(issues, row) {
+  const possible = issues.filter(i => {
+    if (!number(row.num) || number(i.issue_number) !== number(row.num)) return false;
+    if (row.year) return true;
+    const gap = Math.abs(Date.parse(i.store_date) - Date.parse(row.near));
+    return !Number.isFinite(gap) || gap <= 120 * 86400000;
+  });
+  const hit = possible[0];
+  if (possible.length !== 1 || !realId(hit.id)) return { ambiguous: possible.length > 1 };
+  if (!row.year && !Number.isFinite(Date.parse(hit.store_date) - Date.parse(row.near))) return {};
+  return { hit };
 }
 
 module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues, issueDetails, hasKey, background, logger }) {
@@ -141,7 +143,7 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
     return filled;
   }
   const scan = db.transaction(local);
-  const identityKey = r => JSON.stringify(['volume',titleKey(r.name),r.year,number(r.num),r.near || '',norm(r.publisher)]);
+  const identityKey = r => JSON.stringify([!r.year && r.near ? 'crossover-date' : 'volume',titleKey(r.name),r.year,number(r.num),r.near || '',norm(r.publisher)]);
   async function online(report) {
     const pending = rows();
     const volumes = new Map(), issues = new Map();
@@ -159,15 +161,16 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
         }
         matches = volumes.get(title).filter(v => realId(v.id) && agrees(v,r));
       }
-      let hit;
-      if (matches.length === 1) {
-        const id = String(matches[0].id);
-        if (!issues.has(id)) {
-          if (issues.size >= 25) continue;
+      const ids = [...new Set(matches.map(v => String(v.id)))];
+      let hit, ambiguous = ids.length > 1;
+      if ((!r.year || ids.length === 1) && ids.length <= 25) {
+        const needed = ids.filter(id => !issues.has(id));
+        if (issues.size + needed.length > 25) continue;
+        for (const id of needed) {
           try { issues.set(id,await volumeIssues(id)); }
           catch (e) { later.run(k,Date.now()+86400000,'retry'); throw e; }
         }
-        hit = exactIssue(issues.get(id),r);
+        ({hit, ambiguous} = selectIssue(ids.flatMap(id => issues.get(id)), r));
       }
       report.checked++;
       if (hit) {
@@ -177,7 +180,7 @@ module.exports = function createMissingCatalog({ db, searchVolumes, volumeIssues
         if (changes) finished.run(k);
         else later.run(k,Date.now()+week,'conflict');
       } else {
-        later.run(k,Date.now()+week,matches.length > 1 ? 'ambiguous' : 'unresolved');
+        later.run(k,Date.now()+week,ambiguous ? 'ambiguous' : 'unresolved');
       }
     }
     let count = 0;

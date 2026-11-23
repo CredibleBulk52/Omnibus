@@ -84,3 +84,23 @@ test('online passes share volume requests, keep ambiguous rows pending and cache
   assert.deepEqual(Object.values(db.prepare('SELECT to_cv_issue_id,to_book_id FROM crossover_links').get()),['456',null]);
   assert.equal(catalog.status().last.ambiguous,1);
 });
+
+test('yearless crossovers require one dated issue across every matching guest volume',async()=>{
+  const guest = 'The Power Company: Recharged';
+  const volumes = {
+    41: ['2002-04-01','2025-03-31',null,'2002-04-01'],
+    42: ['2025-04-30','2025-04-30','2025-04-30',null]
+  };
+  const {db,catalog,run} = setup({
+    searchVolumes: async () => Object.keys(volumes).map(id => ({id,name:guest})),
+    volumeIssues: async id => volumes[id].map((store_date,index) =>
+      ({id:Number(id)*10+index,issue_number:String(index+1),store_date}))
+  });
+  db.exec("INSERT INTO scanned_books VALUES ('anchor','2025-03-12',NULL,NULL)");
+  const add = db.prepare("INSERT INTO crossover_links(from_book_id,to_series,to_issue) VALUES ('anchor',?,?)");
+  for (const num of ['1','2','3','4']) add.run(guest,num);
+  await run();
+  assert.deepEqual(db.prepare('SELECT to_cv_issue_id,to_book_id FROM crossover_links ORDER BY id').all().map(Object.values),
+    [['420',null],[null,null],[null,null],[null,null]]);
+  assert.equal(catalog.status().last.ambiguous,2);
+});

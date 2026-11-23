@@ -11784,7 +11784,7 @@ const missingCatalog = require('./missingCatalog')({
   async searchVolumes(name) {
     const result = [];
     const query = name.trim().replace(/^the\s+/i,'');
-    const useSearch = query.includes(',');
+    const useSearch = /[:,]/.test(query);
     for (let page = 1; ; page++) {
       const { data } = await cvApiGet(`https://comicvine.gamespot.com/api/${useSearch ? 'search' : 'volumes/'}`, {
         params: { api_key: getCVKey(), format: 'json', limit: 100, field_list: 'id,name,start_year,publisher',
