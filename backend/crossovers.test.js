@@ -219,6 +219,17 @@ test('not shown: books in the same Timeline event, a missing issue the event lis
   assert.deepEqual(names(x.forBook('gl40').continuesIn), ['Green Lantern Corps #22']);
 });
 
+test('after a scan, a missing part matched only by name and date waits for the nightly refresh', () => {
+  // The name-and-date match loads the whole library (seconds on a large one), so scans skip it.
+  const lib = library(), x = create(lib);
+  addWeb(x, lib, [[{ series: 'Green Lantern Corps', issue: '22' }, { series: 'Green Lantern', issue: '41' }, 'First Light', '2026-11-11']]);
+  lib.db.prepare('INSERT INTO scanned_books (id, series_id, issue_number, comicinfo, store_date) VALUES (?,?,?,?,?)').run('gl41', 'gl', '41', '<ComicInfo/>', '2026-11-25');
+  x.reconcile();
+  assert.equal(x.nextFor('glc22').id, null);   // still shown as missing
+  assert.equal(x.refreshFree().resolved, 1);
+  assert.equal(x.nextFor('glc22').id, 'gl41');
+});
+
 test('a missing issue gets its book when it arrives; a hidden link stays hidden', () => {
   const lib = library(), x = create(lib);
   addWeb(x, lib, [[{ series: 'Green Lantern Corps', issue: '22' }, { series: 'Green Lantern', issue: '41' }, 'First Light', '2026-11-11']]);

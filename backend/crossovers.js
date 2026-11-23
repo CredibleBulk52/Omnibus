@@ -418,7 +418,9 @@ function createCrossovers(deps = {}) {
   }
 
   // Web links with an issue that was not in the library: match it now (near the other end's date).
-  function resolvePending(lib) {
+  // quick (after scans): only indexed lookups. The name-and-date match loads the whole library,
+  // which blocks the server for seconds, so it waits for the nightly refresh.
+  function resolvePending(lib, { quick = false } = {}) {
     folderCache = null;
     let n = 0;
     for (const side of ['from', 'to']) {
@@ -449,6 +451,15 @@ function createCrossovers(deps = {}) {
         continue;
       }
       if (!other.store_date) continue;
+      if (quick) {
+        const id = published(r[`${side}_series`], r[`${side}_issue`], r[`${side}_year`], other);
+        if (!id) continue;
+        set.run(side === 'from' ? id : r.from_book_id, side === 'to' ? id : r.to_book_id, r.id);
+        const cvId = db.prepare('SELECT cv_issue_id FROM scanned_books WHERE id=?').get(id)?.cv_issue_id;
+        if (cvId) db.prepare(`UPDATE crossover_links SET ${side}_cv_issue_id=? WHERE id=?`).run(String(cvId), r.id);
+        n++;
+        continue;
+      }
       lib ||= loadLibrary(db);
       const cands = lib.find(r[`${side}_series`], r[`${side}_issue`]).filter(b => b.id !== other.id);
       const b = nearest(cands, other.store_date, MAX_GAP_DAYS)
@@ -1040,7 +1051,7 @@ function createCrossovers(deps = {}) {
   }
 
   function reconcile() {
-    if (enabled()) return db.transaction(() => resolvePending())();
+    if (enabled()) return db.transaction(() => resolvePending(null, { quick: true }))();
   }
   return { forBook, nextFor, placementFor, missingRow, reconcile, refreshFree, wikiPass, wikiState, run, status, due, candidates, state, codeOn, aiOn };
 }
