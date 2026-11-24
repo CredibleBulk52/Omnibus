@@ -266,6 +266,65 @@ test('a web check run: asks about new issues only, keeps page-proven links, reco
   assert.ok(lib.settings.get('crossover_check_last_run'));
 });
 
+test('the monthly web search limit stops a run and blocks the next; 0 means no limit', async () => {
+  const lib = library();
+  const webLookup = { lookup: async () => ({ grounded: true, cost: 0.0007, notes: 'notes', queries: ['a', 'b', 'c'], sources: [] }) };
+  const ai = { complete: async () => ({ model: 'm', usage: {}, text: '{"stories":[]}' }) };
+  const x = create(lib, { webLookup, ai });
+  lib.db.prepare(`UPDATE scanned_books SET store_date = date('now', '-400 days')`).run();
+  lib.db.prepare(`UPDATE scanned_books SET store_date = date('now', '-5 days') WHERE id IN ('gl40', 'glc22', 'cw4')`).run();
+  lib.settings.set('crossover_monthly_searches', '5');
+  await x.run('manual');
+  while (x.state.running) await new Promise(r => setTimeout(r, 5));
+  assert.equal(x.state.done, 2);          // 3 + 3 searches reach the limit of 5; the third issue waits
+  assert.equal(x.state.capped, true);
+  assert.deepEqual([x.status().searches.month, x.status().searches.cap, x.status().pending], [6, 5, 1]);
+  await assert.rejects(x.run('manual'), /limit of 5 web searches is used up/);
+  lib.app.routes['POST /api/admin/crossovers/settings']({ body: { monthlySearches: 0 } }, { json() {}, status() { return this; } });
+  await x.run('manual');
+  while (x.state.running) await new Promise(r => setTimeout(r, 5));
+  assert.equal(x.status().pending, 0);
+});
+
+test('an owned copy without a Comic Vine ID still matches a part the catalog knows', () => {
+  const lib = library(), { db } = lib;
+  db.exec(`CREATE TABLE monitored_series (id TEXT, name TEXT, year INTEGER);
+    CREATE TABLE monitored_issues (id TEXT, series_id TEXT, issue_number TEXT, store_date TEXT, is_annual INTEGER);
+    INSERT INTO monitored_series VALUES ('v','Green Lantern',2023);
+    INSERT INTO monitored_issues VALUES ('cv-41','v','41','2026-11-25',0)`);
+  const x = create(lib);
+  db.exec(`INSERT INTO crossover_links (key,from_book_id,from_series,from_issue,to_series,to_issue,source,found_at)
+    VALUES ('k','glc22','Green Lantern Corps','22','Green Lantern','41','wiki',0)`);
+  db.prepare('INSERT INTO scanned_books (id, series_id, issue_number, comicinfo, store_date) VALUES (?,?,?,?,?)').run('gl41', 'gl', '41', '<ComicInfo/>', '2026-11-25');
+  x.refreshFree();
+  const row = db.prepare("SELECT to_book_id, to_cv_issue_id FROM crossover_links WHERE key='k'").get();
+  assert.deepEqual([row.to_book_id, row.to_cv_issue_id], ['gl41', 'cv-41']);
+  // A copy tagged as a different issue is not taken.
+  db.exec("UPDATE crossover_links SET to_book_id = NULL WHERE key='k'; UPDATE scanned_books SET cv_issue_id = 'cv-other' WHERE id='gl41'");
+  x.refreshFree();
+  assert.equal(db.prepare("SELECT to_book_id FROM crossover_links WHERE key='k'").get().to_book_id, null);
+});
+
+test('a manual match teaches the source name, used only when that name finds nothing', () => {
+  const lib = library(), { db } = lib;
+  db.exec(`CREATE TABLE book_ci_index (book_id TEXT, series_name TEXT, volume_year INTEGER, orig_number TEXT, cv_issue_id TEXT);
+    INSERT INTO scanned_series VALUES ('ann','Green Lantern Annual',2026);
+    INSERT INTO scanned_books (id,series_id,issue_number,store_date,cv_issue_id) VALUES ('ann1','ann','1','2026-11-18','cv-ann1'),('ann2','ann','2','2027-01-20','cv-ann2');
+    INSERT INTO book_ci_index VALUES ('ann1','Green Lantern 2026 Annual',2026,'1','cv-ann1'),('ann2','Green Lantern 2026 Annual',2026,'2','cv-ann2')`);
+  const x = create(lib);
+  db.exec(`INSERT INTO crossover_links (key,from_book_id,from_series,from_issue,to_series,to_issue,source,found_at)
+    VALUES ('one','gl40','Green Lantern','40','GL Annual','1','web',0)`);
+  const id = db.prepare("SELECT id FROM crossover_links WHERE key='one'").get().id;
+  lib.app.routes['POST /api/admin/crossovers/:id/match']({ params: { id }, body: { bookId: 'ann1' } }, { json(r) { assert.equal(r.ok, true); }, status() { return this; } });
+  assert.equal(db.prepare('SELECT catalog FROM crossover_aliases').get().catalog, 'Green Lantern 2026 Annual');
+  // The next part named the same way now matches by itself.
+  db.exec(`UPDATE scanned_books SET store_date='2026-12-16' WHERE id='glc22';
+    INSERT INTO crossover_links (key,from_book_id,from_series,from_issue,to_series,to_issue,source,found_at)
+    VALUES ('two','glc22','Green Lantern Corps','22','GL Annual','2','web',0)`);
+  x.reconcile();
+  assert.equal(db.prepare("SELECT to_book_id FROM crossover_links WHERE key='two'").get().to_book_id, 'ann2');
+});
+
 test('schedule: off by default; weekly is due a week after the last run', () => {
   const lib = library(), x = create(lib);
   assert.equal(x.status().frequency, 'off');

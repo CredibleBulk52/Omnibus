@@ -35,6 +35,9 @@ const NEEDS = ['app', 'db', 'ai', 'webLookup', 'readPage', 'axios', 'cron', 'get
 const MAX_GAP_DAYS = 120;          // the two books of a link
 const MATCH_DAYS = 150;            // a part named by the AI → a library book released this near the asked issue
 const LOOKBACK_DAYS = 180;         // web check: issues released this recently
+// Monthly ceiling on the web check's searches (2026-11-23). Gemini's Google searches are free up to 5,000 a
+// month across the whole app; 3,000 leaves room for the other features. 0 = no limit.
+const SEARCH_CAP_DEFAULT = 3000;
 const COST_PER_BOOK = 0.0011;      // USD, the pilot's average; replaced by the measured average once there are runs
 // Daily (2026-11-22): each issue is still asked once, so it costs the same as weekly and checks sooner.
 const FREQUENCIES = { off: null, daily: 1, weekly: 7, monthly: 30 };
@@ -56,11 +59,17 @@ function schema(db) {
       db.exec(`ALTER TABLE crossover_links ADD COLUMN ${side}_cv_issue_id TEXT`);
     }
   }
+  db.exec(`CREATE TABLE IF NOT EXISTS crossover_aliases (
+    source_key TEXT PRIMARY KEY, source TEXT NOT NULL, catalog TEXT NOT NULL, added_at INTEGER NOT NULL)`);
   db.exec(`CREATE TABLE IF NOT EXISTS crossover_wiki_pairs (
     book_id TEXT NOT NULL, first_key TEXT NOT NULL, second_key TEXT NOT NULL,
     PRIMARY KEY (book_id, first_key, second_key))`);
   db.exec(`CREATE TABLE IF NOT EXISTS crossover_checks (
     book_id TEXT PRIMARY KEY, checked_at INTEGER NOT NULL, result TEXT, cost REAL)`);
+  // Web searches per check, for the monthly limit (2026-11-23).
+  if (!db.prepare('PRAGMA table_info(crossover_checks)').all().some(c => c.name === 'searches')) {
+    db.exec('ALTER TABLE crossover_checks ADD COLUMN searches INTEGER NOT NULL DEFAULT 0');
+  }
   // Fan wikis (crossoverWiki.js): each series' wiki volume (vol 0 = not found) and each issue read.
   db.exec(`CREATE TABLE IF NOT EXISTS crossover_wiki_series (
     key TEXT PRIMARY KEY, wiki TEXT NOT NULL, name TEXT NOT NULL, vol INTEGER NOT NULL, checked_at INTEGER NOT NULL)`);
@@ -103,6 +112,8 @@ function loadLibrary(db) {
 }
 
 // Full title variants seen in crossover sources. Keep qualifiers such as Annual and Special.
+// Built in; an admin's manual match adds more (crossover_aliases). An alias is tried only when the
+// source's own name finds nothing, so a one-off match can't redirect a title that exists.
 const crossoverAliases = new Map([
   ['Trinity of Sin: The Phantom Stranger', 'The Phantom Stranger'],
   ['DCU: Rebirth', 'DC Universe: Rebirth'],
@@ -113,12 +124,27 @@ const crossoverAliases = new Map([
 ].map(([source, catalog]) => [T.norm(source), catalog]));
 const publishedKey = name => T.norm(String(name).replace(/\bthe\b/gi, ' '));
 
-function publishedMatcher(db) {
+function aliasesOf(db) {
+  let learned = null;
+  const of = name => {
+    learned ||= new Map(db.prepare('SELECT source_key, catalog FROM crossover_aliases').all().map(r => [r.source_key, r.catalog]));
+    const k = T.norm(name);
+    return learned.get(k) || crossoverAliases.get(k) || null;
+  };
+  of.learn = (source, catalog) => {
+    if (!source || !catalog || publishedKey(source) === publishedKey(catalog)) return;
+    db.prepare(`INSERT INTO crossover_aliases (source_key, source, catalog, added_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(source_key) DO UPDATE SET catalog = excluded.catalog, added_at = excluded.added_at`).run(T.norm(source), source, catalog, Date.now());
+    learned = null;
+  };
+  return of;
+}
+
+function publishedMatcher(db, aliasOf = () => null) {
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='book_ci_index'").get()) return () => null;
   const lookup = db.prepare('SELECT book_id, series_name, volume_year, cv_issue_id FROM book_ci_index WHERE orig_number = ?');
   const dates = db.prepare(`SELECT b.store_date, ${CI_FIELD('Year')} AS pub_year FROM scanned_books b WHERE b.id = ?`);
-  return (name, number, year, anchor) => {
-    const catalog = crossoverAliases.get(T.norm(name)) || name;
+  const match = (name, catalog, number, year, anchor) => {
     const key = publishedKey(catalog);
     const candidates = lookup.all(T.num(number)).filter(b => b.series_name && publishedKey(b.series_name) === key
       && (!year || Number(b.volume_year) === Number(year)));
@@ -130,6 +156,10 @@ function publishedMatcher(db) {
         && T.norm(name) === T.norm(b.series_name) && date.pub_year === anchor.store_date.slice(0, 4);
     });
     return matches.length === 1 ? matches[0].book_id : null;
+  };
+  return (name, number, year, anchor) => {
+    const alias = aliasOf(name);
+    return match(name, name, number, year, anchor) || (alias ? match(name, alias, number, year, anchor) : null);
   };
 }
 
@@ -345,14 +375,17 @@ function createCrossovers(deps = {}) {
   const { app, db, ai, webLookup, readPage, axios, cron, getSetting, setSetting, logger, requireAuth, requireAdmin, sequence, modelCatalog } = deps;
   schema(db);
 
+  const aliasOf = aliasesOf(db);
   const hasCatalog = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='monitored_series'").get();
   const catalog = hasCatalog && db.prepare(`SELECT m.id, m.issue_number, s.year, m.store_date
     FROM monitored_series s JOIN monitored_issues m ON m.series_id=s.id
     WHERE s.name = ? COLLATE NOCASE AND COALESCE(m.is_annual,0)=0`);
   function catalogId(name, number, year, near) {
     if (!catalog) return null;
-    const candidates = catalog.all(name).filter(m => T.num(m.issue_number) === T.num(number)
+    const pick = n => catalog.all(n).filter(m => T.num(m.issue_number) === T.num(number)
       && (!year || Number(year) === Number(m.year)));
+    let candidates = pick(name);
+    if (!candidates.length && aliasOf(name)) candidates = pick(aliasOf(name));
     if (candidates.length > 1) return undefined; // competing catalog identities: leave this for the picker
     if (!candidates.length) return null;
     const m = candidates[0];
@@ -376,7 +409,7 @@ function createCrossovers(deps = {}) {
     to_year: l.to ? Number(l.to.year) || null : l.toName?.year || null,
   });
 
-  const published = publishedMatcher(db);
+  const published = publishedMatcher(db, aliasOf);
   function matchPublished(row, anchor) {
     if (!anchor || !!row.from_book_id === !!row.to_book_id) return;
     const side = row.from_book_id ? 'to' : 'from';
@@ -384,14 +417,22 @@ function createCrossovers(deps = {}) {
     const cv = row[cvKey] || catalogId(row[side + '_series'], row[side + '_issue'], row[side + '_year'], anchor.store_date);
     if (cv === undefined) return;
     row[cvKey] = cv;
-    if (row[cvKey]) {
-      row[bookKey] = exactBook.get(row[cvKey], anchor.id)?.id || null;
-    } else if (anchor.store_date) {
-      row[bookKey] = published(row[side + '_series'], row[side + '_issue'], row[side + '_year'], anchor);
-      if (row[bookKey]) row[cvKey] = db.prepare('SELECT cv_issue_id FROM scanned_books WHERE id=?').get(row[bookKey])?.cv_issue_id || null;
+    if (row[cvKey]) row[bookKey] = exactBook.get(row[cvKey], anchor.id)?.id || null;
+    // No owned book carries the Comic Vine ID: an owned copy may still be untagged (fits()).
+    if (!row[bookKey] && anchor.store_date) {
+      const id = published(row[side + '_series'], row[side + '_issue'], row[side + '_year'], anchor);
+      const b = id && cvOfBook.get(id);
+      if (b && fits(b, row[cvKey])) {
+        row[bookKey] = id;
+        if (b.cv_issue_id) row[cvKey] = String(b.cv_issue_id);
+      }
     }
   }
   const exactBook = db.prepare('SELECT MIN(id) AS id FROM scanned_books WHERE cv_issue_id=? AND id<>? HAVING COUNT(*)=1');
+  const cvOfBook = db.prepare('SELECT id, cv_issue_id FROM scanned_books WHERE id=?');
+  // A book found by name and date fits a link that already has a Comic Vine ID only when the book has none
+  // (not tagged yet) or the same one.
+  const fits = (b, cv) => !cv || !b.cv_issue_id || String(b.cv_issue_id) === String(cv);
   function saveExternal(link) {
     const row = rowOf(link);
     matchPublished(row, link.from || link.to);
@@ -441,31 +482,35 @@ function createCrossovers(deps = {}) {
       const other = lib ? lib.byId.get(anchorId) : bookInfo.get(anchorId);
       if (!other) continue;
       const side = r.from_book_id ? 'to' : 'from';
-      if (r[side + '_cv_issue_id']) continue;
-      const cv = catalogId(r[side + '_series'], r[side + '_issue'], r[side + '_year'], other.store_date);
-      if (cv === undefined) continue;
-      if (cv) {
-        const id = exactBook.get(cv, other.id)?.id || null;
-        db.prepare(`UPDATE crossover_links SET ${side}_cv_issue_id=?, ${side}_book_id=? WHERE id=?`).run(cv, id, r.id);
-        if (id) n++;
-        continue;
+      let cv = r[side + '_cv_issue_id'];
+      if (!cv) {
+        cv = catalogId(r[side + '_series'], r[side + '_issue'], r[side + '_year'], other.store_date);
+        if (cv === undefined) continue;
+        if (cv) {
+          const id = exactBook.get(cv, other.id)?.id || null;
+          db.prepare(`UPDATE crossover_links SET ${side}_cv_issue_id=?, ${side}_book_id=? WHERE id=?`).run(cv, id, r.id);
+          if (id) { n++; continue; }
+        }
       }
+      // From here no owned book carries this issue's Comic Vine ID; an untagged owned copy can still match.
       if (!other.store_date) continue;
       if (quick) {
         const id = published(r[`${side}_series`], r[`${side}_issue`], r[`${side}_year`], other);
-        if (!id) continue;
+        const found = id && cvOfBook.get(id);
+        if (!found || !fits(found, cv)) continue;
         set.run(side === 'from' ? id : r.from_book_id, side === 'to' ? id : r.to_book_id, r.id);
-        const cvId = db.prepare('SELECT cv_issue_id FROM scanned_books WHERE id=?').get(id)?.cv_issue_id;
-        if (cvId) db.prepare(`UPDATE crossover_links SET ${side}_cv_issue_id=? WHERE id=?`).run(String(cvId), r.id);
+        if (found.cv_issue_id) db.prepare(`UPDATE crossover_links SET ${side}_cv_issue_id=? WHERE id=?`).run(String(found.cv_issue_id), r.id);
         n++;
         continue;
       }
       lib ||= loadLibrary(db);
-      const cands = lib.find(r[`${side}_series`], r[`${side}_issue`]).filter(b => b.id !== other.id);
-      const b = nearest(cands, other.store_date, MAX_GAP_DAYS)
+      const cands = lib.find(r[`${side}_series`], r[`${side}_issue`]).filter(b => b.id !== other.id && fits(b, cv));
+      let b = nearest(cands, other.store_date, MAX_GAP_DAYS)
         || lib.byId.get(published(r[`${side}_series`], r[`${side}_issue`], r[`${side}_year`], other));
+      if (b && !fits(b, cv)) b = null;
       // Owned, but released far from the other issue: an old issue the story looks back to (see linkRow).
-      if (!b && sameVolume(cands, r[`${side}_year`]).some(c => c.store_date && T.days(c.store_date, other.store_date) > MATCH_DAYS)) { drop.run(r.id); continue; }
+      // (Not when the catalog placed the issue near the other end: then it is a different volume.)
+      if (!b && !cv && sameVolume(cands, r[`${side}_year`]).some(c => c.store_date && T.days(c.store_date, other.store_date) > MATCH_DAYS)) { drop.run(r.id); continue; }
       if (!b) continue;
       set.run(side === 'from' ? b.id : r.from_book_id, side === 'to' ? b.id : r.to_book_id, r.id);
       if (b.cv_issue_id) db.prepare(`UPDATE crossover_links SET ${side}_cv_issue_id=? WHERE id=?`).run(String(b.cv_issue_id), r.id);
@@ -839,7 +884,16 @@ function createCrossovers(deps = {}) {
 
 
   // ── Web check runs ────────────────────────────────────────────────
-  const state = { running: false, stop: false, done: 0, total: 0, found: 0, cost: 0, current: null, startedAt: null, finishedAt: null, trigger: null, errors: [] };
+  const state = { running: false, stop: false, done: 0, total: 0, found: 0, cost: 0, searches: 0, capped: false, current: null, startedAt: null, finishedAt: null, trigger: null, errors: [] };
+  const monthStart = (now = new Date()) => new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const nextMonth = (now = new Date()) => new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+  function searchCap() {
+    const v = getSetting('crossover_monthly_searches');
+    return v === null || v === undefined || v === '' ? SEARCH_CAP_DEFAULT : Math.max(0, Math.floor(Number(v)) || 0);
+  }
+  // Saved checks plus the running one's (its checks are saved as it goes, so count those once).
+  const searchesThisMonth = () => db.prepare('SELECT COALESCE(SUM(searches), 0) AS n FROM crossover_checks WHERE checked_at >= ?').get(monthStart()).n;
+  const capReached = () => { const cap = searchCap(); return cap > 0 && searchesThisMonth() >= cap; };
   const frequency = () => (Object.hasOwn(FREQUENCIES, getSetting('crossover_check_frequency') || '') ? getSetting('crossover_check_frequency') : 'off');
   const lastRun = () => Number(getSetting('crossover_check_last_run') || 0) || null;
 
@@ -858,12 +912,13 @@ function createCrossovers(deps = {}) {
     let cost = 0;
     const r = await webLookup.lookup(bookQuestion(book), { detail: 'short', source: 'crossovers', maxSources: 6 });
     cost += r.cost || 0;
-    if (!r.grounded) return { result: 'no search', cost, links: [] };
+    const searches = r.queries?.length || (r.grounded ? 1 : 0);
+    if (!r.grounded) return { result: 'no search', cost, searches, links: [] };
     const x = await ai.complete({ task: 'crossover_check', prompt: EXTRACT(r.notes), maxTokens: 1500, thinking: 'off', source: 'crossovers' });
     cost += callCost(x);
     const parsed = T.parseJson(x.text);
-    if (!parsed) return { result: 'unreadable reply', cost, links: [] };
-    if (!parsed.stories?.length) return { result: 'none', cost, links: [] };
+    if (!parsed) return { result: 'unreadable reply', cost, searches, links: [] };
+    if (!parsed.stories?.length) return { result: 'none', cost, searches, links: [] };
     const pages = [];
     for (const s of r.sources.slice(0, 6)) {
       if (!pageCache.has(s.url)) {
@@ -874,30 +929,35 @@ function createCrossovers(deps = {}) {
       pages.push(pageCache.get(s.url));
     }
     const links = provenLinks(parsed.stories, pages).map(l => linkRow(lib, l, book.store_date)).filter(Boolean);
-    return { result: links.length ? `${links.length} link${links.length === 1 ? '' : 's'}` : 'not proven', cost, links };
+    return { result: links.length ? `${links.length} link${links.length === 1 ? '' : 's'}` : 'not proven', cost, searches, links };
   }
 
   async function run(trigger = 'manual', { limit = null } = {}) {
     if (state.running) throw Object.assign(new Error('A crossover check is already running'), { status: 409 });
     if (!aiOn()) throw Object.assign(new Error('The AI web check is switched off'), { status: 409 });
+    if (capReached()) {
+      throw Object.assign(new Error(`This month's limit of ${searchCap().toLocaleString('en-US')} web searches is used up. Checks resume on ${new Date(nextMonth()).toDateString()}, or raise the limit.`), { status: 409 });
+    }
     const ids = limit > 0 ? candidates().slice(-limit) : candidates();   // a trial run: the newest issues
-    Object.assign(state, { running: true, stop: false, done: 0, total: ids.length, found: 0, cost: 0, current: null, startedAt: Date.now(), finishedAt: null, trigger, errors: [] });
+    Object.assign(state, { running: true, stop: false, done: 0, total: ids.length, found: 0, cost: 0, searches: 0, capped: false, current: null, startedAt: Date.now(), finishedAt: null, trigger, errors: [] });
     setSetting('crossover_check_last_run', String(Date.now()));
     (async () => {
       try {
         if (codeOn()) refreshFree();
         const lib = loadLibrary(db);
         const pageCache = new Map();
-        const mark = db.prepare('INSERT OR REPLACE INTO crossover_checks (book_id, checked_at, result, cost) VALUES (?, ?, ?, ?)');
+        const mark = db.prepare('INSERT OR REPLACE INTO crossover_checks (book_id, checked_at, result, cost, searches) VALUES (?, ?, ?, ?, ?)');
         for (const id of ids) {
           if (state.stop) break;
+          if (capReached()) { state.capped = true; break; }   // the rest wait for next month (still in the window)
           const book = lib.byId.get(id);
           state.current = book ? `${book.series} #${book.issue_number}` : id;
           if (!book) { state.done++; continue; }
           try {
             const r = await checkBook(lib, book, pageCache);
             state.cost += r.cost;
-            db.transaction(() => { for (const l of r.links) if (saveExternal(l).changes) state.found++; mark.run(id, Date.now(), r.result, r.cost); })();
+            state.searches += r.searches || 0;
+            db.transaction(() => { for (const l of r.links) if (saveExternal(l).changes) state.found++; mark.run(id, Date.now(), r.result, r.cost, r.searches || 0); })();
           } catch (e) {
             // Not marked: asked again next run. A missing key stops the run.
             state.errors.push({ book: state.current, error: e.message });
@@ -910,7 +970,7 @@ function createCrossovers(deps = {}) {
         logger.error('crossovers', 'Crossover check failed', e.message);
       } finally {
         Object.assign(state, { running: false, current: null, finishedAt: Date.now() });
-        logger.info('crossovers', 'Crossover check finished', { trigger, checked: state.done, of: state.total, links: state.found, cost: `${Math.round(state.cost * 10000) / 100}¢`, errors: state.errors.length || undefined });
+        logger.info('crossovers', 'Crossover check finished', { trigger, checked: state.done, of: state.total, links: state.found, cost: `${Math.round(state.cost * 10000) / 100}¢`, searches: state.searches, monthlyLimitReached: state.capped || undefined, errors: state.errors.length || undefined });
       }
     })();
     return status();
@@ -925,7 +985,9 @@ function createCrossovers(deps = {}) {
       pending: n, perBook: per, estimate: n * per, lookbackDays: LOOKBACK_DAYS,
       wiki: { ...wikiState, read: db.prepare('SELECT COUNT(*) AS n FROM crossover_wiki_books').get().n },
       links: { summary: counts.summary || 0, title: counts.title || 0, wiki: counts.wiki || 0, web: counts.web || 0, waiting: counts.waiting || 0, hidden: counts.hidden || 0 },
-      checked: checked.n, spent: checked.cost, run: { ...state, errors: state.errors.slice(-10) } };
+      checked: checked.n, spent: checked.cost,
+      searches: { month: searchesThisMonth(), cap: searchCap(), resets: nextMonth() },
+      run: { ...state, errors: state.errors.slice(-10) } };
   }
   // The scheduled check, when it is due (called daily).
   // The schedule runs at 4:35 each night: a check is due there when its interval, less 20 hours, has passed,
@@ -953,6 +1015,12 @@ function createCrossovers(deps = {}) {
   });
   app.get('/api/admin/crossovers', requireAdmin, (req, res) => res.json(status()));
   app.post('/api/admin/crossovers/settings', requireAdmin, (req, res) => {
+    if (req.body?.monthlySearches !== undefined) {
+      const n = Number(req.body.monthlySearches);
+      if (!Number.isFinite(n) || n < 0 || n > 1000000) return res.status(400).json({ error: 'The monthly search limit must be a number from 0 (no limit) up.' });
+      setSetting('crossover_monthly_searches', String(Math.floor(n)));
+      if (req.body.frequency === undefined) return res.json(status());
+    }
     const f = String(req.body?.frequency || '');
     if (!Object.hasOwn(FREQUENCIES, f)) return res.status(400).json({ error: 'frequency must be off, daily, weekly or monthly' });
     setSetting('crossover_check_frequency', f);
@@ -994,6 +1062,10 @@ function createCrossovers(deps = {}) {
           || (p[cv] && p[cv] !== book.cv_issue_id))) continue;
         update.run(book.id, book.cv_issue_id || null, p.id);
       }
+      // Remember the source's name for this title, so the next part named the same way matches by itself.
+      const hasIndex = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='book_ci_index'").get();
+      const ci = hasIndex && db.prepare('SELECT series_name FROM book_ci_index WHERE book_id=?').get(book.id);
+      aliasOf.learn(row[side + '_series'], ci?.series_name);
       return true;
     })();
     if (!result) return res.status(409).json({ error: 'This crossover changed or the selected issue is its other end. Refresh the grid.' });
@@ -1026,7 +1098,10 @@ function createCrossovers(deps = {}) {
       else if (aiOn()) db.transaction(() => resolvePending(loadLibrary(db)))();
     } catch (e) { logger.error('crossovers', 'Links from issue text failed', e.message); }
     if (codeOn()) wikiPass().catch(e => logger.error('crossovers', 'Fan wiki pass failed', e.message));
-    if (due() && !state.running) run('scheduled').catch(e => logger.error('crossovers', 'Scheduled check failed', e.message));
+    if (due() && !state.running) {
+      if (capReached()) logger.info('crossovers', 'Scheduled check skipped: this month\'s web search limit is used up');
+      else run('scheduled').catch(e => logger.error('crossovers', 'Scheduled check failed', e.message));
+    }
   });
   // Existing installs may already have summary links and never run a startup refresh.
   // Reconcile saved missing endpoints against the local catalog before serving the first grid.

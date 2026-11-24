@@ -52,6 +52,13 @@ export default function CrossoverSettings() {
           <option value="off">Only when I click Check now</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option>
         </select>
       </div>
+      <div className="xo-row">
+        <label className="form-label" htmlFor="xo-cap">Web searches a month</label>
+        <input id="xo-cap" key={st.searches?.cap} type="number" min="0" step="100" className="form-input xo-cap" defaultValue={st.searches?.cap ?? 3000}
+          onBlur={e => { const v = e.target.value.trim(); if (v !== '' && Number(v) !== st.searches?.cap) post('/settings', { monthlySearches: Number(v) }); }} />
+        <span className="form-hint">{(st.searches?.month || 0).toLocaleString()} used this month{st.searches?.cap ? '' : ' · no limit'}</span>
+      </div>
+      <p className="form-hint">The check stops at this limit and the remaining issues wait for the 1st (0 = no limit). It counts this check's searches only; Comic Book Guy and other lookups also use Gemini's 5,000 free searches.</p>
       <p className="form-hint">One Web Search question per new issue once it is tagged (released in the last {st.lookbackDays} days), once per issue however often it runs (daily costs the same as weekly, just sooner), about {money(st.perBook)} each (Gemini's Google searches are free up to 5,000 a month); a link is kept only when a source page names both issues. Last check: {when(st.lastRun)}{st.nextRun ? ` · next: ${when(st.nextRun)}` : ''} · {st.checked} issues checked so far, {money(st.spent)} spent.</p>
       {run.running ? <>
         <div className="xo-bar"><span style={{ width: `${run.total ? (run.done / run.total) * 100 : 0}%` }} /></div>
@@ -59,7 +66,7 @@ export default function CrossoverSettings() {
         <p className="form-hint">{run.found} links found · {money(run.cost)} so far{run.stop ? ' · stopping…' : ''}</p>
         <button className="adm-btn" onClick={() => post('/stop')} disabled={run.stop}>Stop</button>
       </> : <>
-        {run.finishedAt && <p className="form-hint">Last run: {run.done} of {run.total} issues, {run.found} links, {money(run.cost)}.</p>}
+        {run.finishedAt && <p className="form-hint">Last run: {run.done} of {run.total} issues, {run.found} links, {money(run.cost)}.{run.capped ? ` Stopped at the monthly search limit; the rest wait until ${when(st.searches?.resets)}.` : ''}</p>}
         {run.errors?.length > 0 && <ul className="xo-errors">{run.errors.map((e, i) => <li key={i}>{e.book ? <b>{e.book}: </b> : null}{e.error}</li>)}</ul>}
         <div className="xo-row">
           <span>{st.pending ? <>{st.pending} new issue{st.pending === 1 ? '' : 's'} not checked yet · about <b>{money(st.estimate)}</b></> : 'Every new issue has been checked.'}</span>
@@ -74,6 +81,7 @@ export default function CrossoverSettings() {
         .xo-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin: 10px 0; }
         .xo-row .form-label { margin: 0; }
         .xo-row select { width: auto; min-width: 130px; }
+        .xo-row .xo-cap { width: 110px; }
         .xo-bar { height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; margin: 10px 0; }
         .xo-bar span { display: block; height: 100%; background: var(--td-yellow); transition: width .3s; }
         .xo-errors { max-height: 120px; overflow-y: auto; font-size: 12px; color: #d9a441; padding-left: 18px; }
