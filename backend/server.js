@@ -12020,7 +12020,9 @@ app.post('/api/admin/downloads/issues/:id/resume', requireAdmin, (req, res) => {
   if (!issue) return res.status(404).json({ error: 'Issue not found' });
   if (issue.status !== 'downloaded') return res.status(409).json({ error: `Issue is '${issue.status}', not waiting for post-processing` });
   if (ddlPostProcessing.has(issue.id)) return res.status(409).json({ error: 'Issue is being processed right now' });
-  if (!issue.file_path || !fs.existsSync(issue.file_path)) return res.status(409).json({ error: 'Downloaded file is missing; reset the issue to wanted', file_path: issue.file_path });
+  const currentPath = require('./downloads/heldDownloads').currentDownloadPath(fs, issue.file_path);
+  if (!currentPath) return res.status(409).json({ error: 'Downloaded file is missing; reset the issue to wanted', file_path: issue.file_path });
+  if (currentPath !== issue.file_path) db.prepare('UPDATE monitored_issues SET file_path = ? WHERE id = ?').run(currentPath, issue.id);
   db.prepare('UPDATE monitored_issues SET retry_after = NULL WHERE id = ?').run(issue.id);
   logger.info('postprocess', `Issue ${issue.id} resumed by ${req.user?.username || 'admin'}`);
   setImmediate(() => runCompletionWatcher());

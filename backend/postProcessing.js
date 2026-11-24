@@ -13,6 +13,7 @@ const crypto = require('crypto');
 const IN = require('./issueNumber');
 const { nameKey } = require('./names');
 const { extractVolumeNumber } = require('./fileNaming');
+const { currentDownloadPath } = require('./downloads/heldDownloads');
 
 const NEEDS = ['activeDownloads', 'app', 'blacklistAndRetry', 'createSeriesJsonIfMissing', 'CV_WAIT_REASON', 'db', 'execFileAsync', 'getSetting', 'invalidateDirectoryExistsCache', 'logger', 'metadataRuntime', 'requireAdmin', 'requireAuth', 'schedulePostProcessScan', 'sqlTime'];
 module.exports.NEEDS = NEEDS;
@@ -176,6 +177,15 @@ module.exports.createPostProcessing = function createPostProcessing(deps) {
       catch (statErr) {
         // Path doesn't exist or isn't accessible — fall through to parent-dir recovery below.
         logger.warn('postprocess', `storageDir stat failed`, { storageDir, code: statErr.code });
+        // An extensionless download renamed to .cbz/.cbr by an earlier attempt (its new name was not
+        // recorded before 2026-11-23): use it rather than guessing from the shared download folder.
+        const renamedEarlier = currentDownloadPath(fs, storageDir);
+        if (renamedEarlier && renamedEarlier !== storageDir) {
+          db.prepare('UPDATE monitored_issues SET file_path = ? WHERE id = ? AND file_path = ?').run(renamedEarlier, issue.id, storageDir);
+          logger.info('postprocess', 'Found the download under its renamed name', { from: storageDir, to: renamedEarlier });
+          storageDir = renamedEarlier;
+          stat = fs.statSync(storageDir);
+        }
       }
       // Extensionless-file recovery — DDL downloads from URLs that have no
       // extension in the last path segment land here (e.g. `/downloads/omnibus/<token>__`).
@@ -197,6 +207,8 @@ module.exports.createPostProcessing = function createPostProcessing(deps) {
             const renamed = storageDir + detectedExt;
             if(fs.existsSync(renamed))throw new Error('Extension recovery destination already exists');
             fs.renameSync(storageDir, renamed);
+            // Record the new name, so a retry or a held download's View / Process anyway finds it (2026-11-23).
+            db.prepare('UPDATE monitored_issues SET file_path = ? WHERE id = ? AND file_path = ?').run(renamed, issue.id, storageDir);
             logger.info('postprocess', `Extensionless file detected as ${detectedExt}, renamed`, { from: storageDir, to: renamed });
             storageDir = renamed;
             stat = fs.statSync(storageDir); // refresh stat for the path with new name

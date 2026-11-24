@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs'), os = require('os'), path = require('path');
 const { DatabaseSync } = require('node:sqlite');
-const { registerHeldDownloads } = require('./heldDownloads');
+const { registerHeldDownloads, currentDownloadPath } = require('./heldDownloads');
 
 function setup(t, { reason = 'CV_ISSUE_MISMATCH: Download filename contradicts the intended publication', where = 'downloads' } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'held-'));
@@ -35,7 +35,7 @@ function setup(t, { reason = 'CV_ISSUE_MISMATCH: Download filename contradicts t
     routes[key]({ params: { id }, user: { username: 'admin' } }, res);
   });
   const row = () => ({ ...db.prepare("SELECT * FROM monitored_issues WHERE id = 'i1'").get() });
-  return { call, row, file, forced, watched };
+  return { call, row, file, forced, watched, db };
 }
 
 test('Process anyway marks the issue, clears its wait and runs the watcher', async t => {
@@ -77,4 +77,28 @@ test('View sends the first page of the download', async t => {
   assert.equal(r.buf.toString(), 'Justice League Quarterly 003 (1991).cbz:p001.jpg');
   assert.equal(r.headers.type, 'image/jpeg');
   assert.equal((await f.call('GET /api/admin/downloads/issues/:id/cover', 'nope')).code, 404);
+});
+
+// 2026-11-23: Gambit Gone #1 was saved as ".../nMniiE__…__" (a GetComics token), renamed to "….cbz" by
+// post-processing, and then looked missing because the new name was never recorded.
+test('a download renamed to .cbz after it was recorded is found, and the record is corrected', async t => {
+  const f = setup(t);
+  const token = path.join(path.dirname(f.file), 'nMniiE__YGHn8Gcj3MlmPBlCbKN0eg__');
+  fs.renameSync(f.file, token + '.cbz');
+  f.db.prepare("UPDATE monitored_issues SET file_path = ? WHERE id = 'i1'").run(token);
+  const r = await f.call('GET /api/admin/downloads/issues/:id/cover');
+  assert.equal(r.buf.toString(), 'nMniiE__YGHn8Gcj3MlmPBlCbKN0eg__.cbz:p001.jpg');
+  assert.equal(f.row().file_path, token + '.cbz');
+});
+
+test('currentDownloadPath: the path itself, else an added .cbz or .cbr; never a different comic', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdp-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const p = x => path.join(dir, x);
+  fs.writeFileSync(p('tok.cbr'), 'x'); fs.writeFileSync(p('Named 001.cbz'), 'x');
+  assert.equal(currentDownloadPath(fs, p('tok')), p('tok.cbr'));
+  assert.equal(currentDownloadPath(fs, p('Named 001.cbz')), p('Named 001.cbz'));
+  assert.equal(currentDownloadPath(fs, p('Named 001.cbr')), null);   // has an extension: no guessing
+  assert.equal(currentDownloadPath(fs, p('gone')), null);
+  assert.equal(currentDownloadPath(fs, null), null);
 });

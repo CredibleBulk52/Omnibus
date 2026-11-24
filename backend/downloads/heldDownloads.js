@@ -23,6 +23,17 @@ function deletableDownload({ fs, path, db, getSetting }, p) {
 }
 module.exports.deletableDownload = deletableDownload;
 
+// A download saved without an extension (a GetComics link ending in a token) is renamed to
+// <name>.cbz or .cbr by post-processing. Before 2026-11-23 that new name was not recorded, so a
+// held issue's file looked missing. Returns the path that exists now, or null.
+function currentDownloadPath(fs, p) {
+  if (!p) return null;
+  if (fs.existsSync(p)) return p;
+  if (/\.(cbz|cbr|zip|rar|7z|cb7)$/i.test(p)) return null;
+  return ['.cbz', '.cbr'].map(ext => p + ext).find(x => fs.existsSync(x)) || null;
+}
+module.exports.currentDownloadPath = currentDownloadPath;
+
 module.exports.registerHeldDownloads = function registerHeldDownloads(deps) {
   const missing = ['app', 'requireAdmin', 'db', 'fs', 'path', 'logger', 'getSetting', 'processAnyway', 'isProcessing', 'runCompletionWatcher', 'listArchiveFiles', 'filterImages', 'readArchiveMember', 'coverThumb'].filter(k => deps[k] === undefined);
   if (missing.length) throw new Error(`registerHeldDownloads: missing ${missing.join(', ')}`);
@@ -33,7 +44,12 @@ module.exports.registerHeldDownloads = function registerHeldDownloads(deps) {
     if (!issue) { res.status(404).json({ error: 'Issue not found' }); return null; }
     if (issue.status !== 'downloaded') { res.status(409).json({ error: `Issue is '${issue.status}', not waiting for post-processing` }); return null; }
     if (isProcessing(issue.id)) { res.status(409).json({ error: 'Issue is being processed right now' }); return null; }
-    if (!issue.file_path || !fs.existsSync(issue.file_path)) { res.status(409).json({ error: 'Downloaded file is missing; reset the issue to wanted' }); return null; }
+    const current = currentDownloadPath(fs, issue.file_path);
+    if (!current) { res.status(409).json({ error: 'Downloaded file is missing; reset the issue to wanted' }); return null; }
+    if (current !== issue.file_path) {
+      db.prepare('UPDATE monitored_issues SET file_path = ? WHERE id = ? AND file_path = ?').run(current, issue.id, issue.file_path);
+      issue.file_path = current;
+    }
     return issue;
   };
   // The comic file itself: the download, or the one comic in a download folder.
