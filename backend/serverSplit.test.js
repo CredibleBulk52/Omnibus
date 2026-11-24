@@ -20,7 +20,8 @@ const MODULES = { 'cbr.js': 'createCbr', 'eventGenerator.js': 'registerEventGene
   'downloadWatcher.js': 'createDownloadWatcher',
   'crossovers.js': 'createCrossovers',   // 2026-11-22
   'seriesJsonMaintenance.js': 'createSeriesJsonMaintenance', 'scheduledChecks.js': 'createScheduledChecks', 'cvRefresh.js': 'createCvRefresh',   // step 7B
-  'refreshDirectory.js': 'createRefreshDirectory', 'libraryImport.js': 'registerLibraryImport', 'weeklyReleases.js': 'registerWeeklyReleases' };
+  'refreshDirectory.js': 'createRefreshDirectory', 'libraryImport.js': 'registerLibraryImport', 'weeklyReleases.js': 'registerWeeklyReleases',
+  'eventReconcile.js': 'createEventReconcile', 'eventRoutes.js': 'registerEventRoutes' };   // events, 2026-11-24
 const needs = file => /const (?:missing|NEEDS) = \[([^\]]*)\]/.exec(fs.readFileSync(path.join(__dirname, file), 'utf8'))[1]
   .split(',').map(s => s.trim().replace(/'/g, '')).filter(Boolean);
 

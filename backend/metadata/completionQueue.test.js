@@ -3,8 +3,9 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {createCompletionQueue}=require('./completionQueue');
 const tick=()=>new Promise(r=>setImmediate(r));
 const fs=require('node:fs'),path=require('node:path');
-const serverSource=fs.readFileSync(path.join(__dirname,'../server.js'),'utf8');
-const eventCode=serverSource.slice(serverSource.indexOf('const completeEventReconcile ='),serverSource.indexOf('// ─── Monitored issue ↔ book'));
+// Timeline matching: eventReconcile.js (moved out of server.js 2026-11-24); the real module, with stand-ins.
+const {createEventReconcile}=require('../eventReconcile');
+const eventCode=fs.readFileSync(path.join(__dirname,'../eventReconcile.js'),'utf8');
 function eventFixture({broken=false,items=[]}={}){
   const errors=[];let runs=0;
   const db={prepare(sql){return {
@@ -12,8 +13,7 @@ function eventFixture({broken=false,items=[]}={}){
     all(){return sql.includes('SELECT * FROM event_issues')?items:[];},
     get(){if(broken)throw Error('per-issue failure');return {id:'book',issue_number:'1'};},
   };}};
-  const deps={db,require:()=>({createCompletionQueue}),setImmediate,bookIndex:{publishedAs:()=>false},IN:{normIssueNumber:String},logger:{error:(_,__,detail)=>errors.push(detail),info(){},warn(){}}};
-  const reconcile=new Function(...Object.keys(deps),eventCode+'\nreturn reconcileEventIssues;')(...Object.values(deps));
+  const {reconcileEventIssues:reconcile}=createEventReconcile({db,bookIndex:{publishedAs:()=>false,lookup:()=>new Map()},extractNumberFromFilename:()=>null,padIssueNumStr:String,logger:{error:(_,__,detail)=>errors.push(detail),info(){},warn(){}}});
   return {reconcile,errors,get runs(){return runs;}};
 }
 test('actual event reconciler queues callers until their own passes complete',async()=>{
