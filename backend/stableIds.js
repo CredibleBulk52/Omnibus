@@ -213,6 +213,72 @@ module.exports = function createStableIds({ db, logger, fs, path, crypto }) {
   }
 
 
+  // ── Reclaim after tagging (2026-11-24) ──────────────────────────
+  // A replaced file usually arrives untagged (a different release, another name and size), so the
+  // reclaim above finds nothing when it is first scanned: it becomes a new book, and the old record
+  // waits in missing_books with every link that pointed at it (reading orders, Timeline, Top Shelf,
+  // reading progress). 300 Hellblazer files replaced on 2026-11-24 left 41 reading-order issues and
+  // 10 read issues on the old records. Once tagging gives the new book the same Comic Vine issue ID,
+  // the old record's links move to it and the record is dropped. One-to-one only (one missing record
+  // and one library book with that ID), as above. Book-specific caches of the old record are dropped
+  // where the new book has its own; its metadata history stays as it was.
+  const MOVE = [   // [table, column, kind]: 'move' = repoint; 'cache' = repoint unless the new book has one, else drop
+    ['reading_log', 'book_id', 'move'], ['xp_events', 'book_id', 'move'], ['reading_contexts', 'last_book_id', 'move'],
+    ['list_issues', 'scanned_book_id', 'move'], ['event_issues', 'scanned_book_id', 'move'], ['canon_run_issues', 'scanned_book_id', 'move'],
+    ['series_placement_pins', 'anchor_book_id', 'move'], ['crossover_links', 'from_book_id', 'move'], ['crossover_links', 'to_book_id', 'move'],
+    ['series_gap_matches', 'book_id', 'move'], ['issue_synopses', 'book_id', 'move'],
+    ['series_placement_pins', 'book_id', 'cache'], ['crossover_checks', 'book_id', 'cache'], ['crossover_wiki_books', 'book_id', 'cache'],
+    ['crossover_wiki_pairs', 'book_id', 'cache'], ['library_health_reidentify', 'book_id', 'drop'], ['book_ci_index', 'book_id', 'drop'],
+  ];
+  const tableExists = t => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t);
+  function moveBookLinks(oldId, newId) {
+    const moved = {};
+    for (const [t, c, kind] of MOVE) {
+      if (!tableExists(t)) continue;
+      let n = 0;
+      if (kind === 'move') n = db.prepare(`UPDATE "${t}" SET "${c}" = ? WHERE "${c}" = ?`).run(newId, oldId).changes;
+      else if (kind === 'cache') { n = db.prepare(`UPDATE OR IGNORE "${t}" SET "${c}" = ? WHERE "${c}" = ?`).run(newId, oldId).changes; db.prepare(`DELETE FROM "${t}" WHERE "${c}" = ?`).run(oldId); }
+      else db.prepare(`DELETE FROM "${t}" WHERE "${c}" = ?`).run(oldId);
+      if (n) moved[t + '.' + c] = n;
+    }
+    // Reading progress: one row per reader and book. Where a reader already has a row for the new
+    // book, keep the furthest reading of the two (finished wins, then the higher page) and the later time.
+    if (tableExists('read_progress')) {
+      let n = 0;
+      for (const o of db.prepare('SELECT * FROM read_progress WHERE book_id = ?').all(oldId)) {
+        const cur = db.prepare('SELECT * FROM read_progress WHERE book_id = ? AND user_id IS ?').get(newId, o.user_id);
+        if (!cur) { db.prepare('UPDATE read_progress SET book_id = ? WHERE id = ?').run(newId, o.id); n++; continue; }
+        const better = (o.completed || 0) > (cur.completed || 0) || ((o.completed || 0) === (cur.completed || 0) && (o.page || 0) > (cur.page || 0));
+        if (better) db.prepare('UPDATE read_progress SET page = ?, completed = ?, marked = ?, context = COALESCE(?, context) WHERE id = ?').run(o.page, o.completed, o.marked, o.context, cur.id);
+        if (String(o.updated_at || '') > String(cur.updated_at || '')) db.prepare('UPDATE read_progress SET updated_at = ? WHERE id = ?').run(o.updated_at, cur.id);
+        db.prepare('DELETE FROM read_progress WHERE id = ?').run(o.id); n++;
+      }
+      if (n) moved['read_progress.book_id'] = n;
+    }
+    return moved;
+  }
+  function reclaimAfterTagging() {
+    const pairs = db.prepare(`SELECT m.id AS old_id, m.path AS old_path, b.id AS new_id, b.path AS new_path, m.cv_issue_id AS cv
+      FROM missing_books m JOIN scanned_books b ON b.cv_issue_id = m.cv_issue_id
+      WHERE m.cv_issue_id IS NOT NULL AND m.cv_issue_id != ''
+        AND (SELECT COUNT(*) FROM missing_books m2 WHERE m2.cv_issue_id = m.cv_issue_id) = 1
+        AND (SELECT COUNT(*) FROM scanned_books b2 WHERE b2.cv_issue_id = m.cv_issue_id) = 1`).all();
+    let reclaimed = 0;
+    for (const p of pairs) {
+      const moved = db.transaction(() => {
+        if (!db.prepare('SELECT 1 FROM missing_books WHERE id = ?').get(p.old_id)) return null;
+        const m = moveBookLinks(p.old_id, p.new_id);
+        db.prepare('DELETE FROM missing_books WHERE id = ?').run(p.old_id);
+        return m;
+      })();
+      if (!moved) continue;
+      reclaimed++;
+      log('book', 'reclaimed after tagging', { id: p.new_id, oldPath: p.old_path, newPath: p.new_path, key: `cv_issue:${p.cv}`, cands: [{ id: p.old_id, path: p.old_path, source: 'missing' }] });
+      if (Object.keys(moved).length) logger.info('stable-ids', `Links moved from ${p.old_id} to ${p.new_id}`, moved);
+    }
+    return { reclaimed };
+  }
+
   // Permanently drop missing records (older than N days, or all when days is null).
   // Monitored issues they held are reset to 'wanted' here — not at vanish time —
   // so a move never triggers a re-download.
@@ -285,5 +351,5 @@ module.exports = function createStableIds({ db, logger, fs, path, crypto }) {
     followMonitored(expectedPath, destination, false);
     return db.prepare('SELECT * FROM scanned_books WHERE id=?').get(bookId);
   }
-  return { hashId, resolveSeriesId, bookAtPath, resolveBookId, tombstoneBook, tombstoneSeries, purgeMissing, autoPurge, status, updatePublishedBook };
+  return { hashId, resolveSeriesId, bookAtPath, resolveBookId, tombstoneBook, tombstoneSeries, purgeMissing, autoPurge, status, updatePublishedBook, reclaimAfterTagging, moveBookLinks };
 };

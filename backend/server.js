@@ -945,16 +945,16 @@ function getCVKey()         { return getSetting('cv_api_key')                 ||
 // and also blocks clients that send too fast. The gateway:
 //   • spaces all requests at least CV_MIN_SPACING_MS apart, and background
 //     requests at least CV_BG_SPACING_MS after the previous request;
-//   • counts requests per resource the way Comic Vine does: an hour-long
-//     window that starts at the first request after the previous window ended
-//     and then resets to 0 (cv_windows). Background work stops at
-//     CV_CAP_BACKGROUND, processing downloads at CV_CAP_ARRIVAL and clicks
-//     at CV_CAP_INTERACTIVE. (Until
-//     2026-10-08 this was a rolling 60-minute count, which held back requests
-//     Comic Vine would allow right after its reset.)
-//   • pauses one resource for 60 min when Comic Vine refuses it (cv_backoff);
-//   • records who made each request; the log keeps 2 hours (enough for the
-//     rolling hour) and is shown on the Comic Vine admin page.
+//   • counts requests per resource the way Comic Vine does (cvWindow.js, 2026-11-24): one hour
+//     shared by every resource, started by the first request and restarted at 60 minutes by the
+//     first request on a resource not yet used in it; each resource's count goes back to 0 when it
+//     ends. Background work stops at CV_CAP_BACKGROUND, processing downloads at CV_CAP_ARRIVAL and
+//     clicks at CV_CAP_INTERACTIVE. (A rolling 60-minute count until 2026-10-08; one hour per
+//     resource from its first request until 2026-11-24.)
+//   • pauses one resource until Comic Vine's hour ends when Comic Vine refuses it (cv_backoff;
+//     60 min when no hour is running);
+//   • records who made each request; the log keeps 2 hours, or longer while the current hour
+//     lasts, and is shown on the Comic Vine admin page.
 // "Interactive" = anything started by a web request (a click); scheduled jobs
 // and timers are "background". Callers get err.code = 'CV_RATE_LIMIT'.
 const { AsyncLocalStorage } = require('async_hooks');
@@ -996,6 +996,9 @@ db.exec(`
     reason   TEXT
   );
 `);
+// Comic Vine's hour (cvWindow.js). Legacy rows from the one-hour-per-resource count are dropped.
+const cvWindows = require('./cvWindow').createCvWindows(db);
+try { db.prepare("DELETE FROM cv_windows WHERE resource != '*'").run(); } catch {}
 const CV_RATE_STATUSES = new Set([420, 429]);
 let cvNextSlot = 0;
 const sleepMs = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1022,30 +1025,20 @@ function cvRateLimitError(message, retryAt) {
   if (retryAt) err.retryAt = retryAt;
   return err;
 }
+// Paused until Comic Vine's hour ends (its counts go back to 0 then), or 60 min when none is running.
 function cvSetBackoff(resource, reason) {
-  const until = Date.now() + CV_BACKOFF_MS;
+  const now = Date.now();
+  const until = cvWindows.current(now)?.ends || now + CV_BACKOFF_MS;
   db.prepare(`INSERT INTO cv_backoff (resource, until, reason) VALUES (?, ?, ?)
               ON CONFLICT(resource) DO UPDATE SET until = excluded.until, reason = excluded.reason`).run(resource, until, reason);
-  logger.warn('cv', `Comic Vine refused '${resource}' requests (${reason}) — pausing that resource for 60 min`);
+  logger.warn('cv', `Comic Vine refused '${resource}' requests (${reason}) — pausing that resource for ${Math.max(1, Math.ceil((until - now) / 60000))} min, until Comic Vine's hour ends`);
+  return until;
 }
-// Current Comic Vine window for a resource: { start, resetAt, used }.
-// Read-only unless open=true, which starts a new window when none is active
-// (called just before sending a request, so the window begins at that request).
+// Current Comic Vine hour for a resource: { start, resetAt, used } (cvWindow.js).
+// Read-only unless open=true (called just before a request is sent): starts the hour when none is
+// running, or restarts it when this resource has not been used in it yet.
 function cvWindow(resource, now = Date.now(), { open = false } = {}) {
-  let row = db.prepare('SELECT start FROM cv_windows WHERE resource = ?').get(resource);
-  if (!row) {
-    // No record (first run after this change): treat the earliest request in
-    // the last hour as the window start.
-    const first = db.prepare(`SELECT MIN(ts) AS t FROM cv_api_log WHERE resource = ? AND ts > ?`).get(resource, now - CV_WINDOW_MS)?.t;
-    if (first) { db.prepare('INSERT OR REPLACE INTO cv_windows (resource, start) VALUES (?, ?)').run(resource, first); row = { start: first }; }
-  }
-  if (!row || now >= row.start + CV_WINDOW_MS) {
-    if (!open) return { start: null, resetAt: null, used: 0 };
-    db.prepare('INSERT OR REPLACE INTO cv_windows (resource, start) VALUES (?, ?)').run(resource, now);
-    row = { start: now };
-  }
-  const used = db.prepare(`SELECT COUNT(*) AS n FROM cv_api_log WHERE resource = ? AND ts >= ?`).get(resource, row.start).n;
-  return { start: row.start, resetAt: row.start + CV_WINDOW_MS, used };
+  return cvWindows.window(resource, now, { open });
 }
 
 // Comic Vine's terms suggest caching responses so duplicate requests don't
@@ -1112,16 +1105,16 @@ async function cvApiGet(url, config = {}) {
     const st = e.response?.status;
     if (CV_RATE_STATUSES.has(st)) {
       finish('refused');
-      cvSetBackoff(resource, `HTTP ${st}`);
-      throw cvRateLimitError(`Comic Vine refused '${resource}' requests (HTTP ${st}) — paused for 60 min`, Date.now() + CV_BACKOFF_MS);
+      const until = cvSetBackoff(resource, `HTTP ${st}`);
+      throw cvRateLimitError(`Comic Vine refused '${resource}' requests (HTTP ${st}) — paused for ${Math.max(1, Math.ceil((until - Date.now()) / 60000))} min`, until);
     }
     finish(st || 'error');
     throw e;
   }
   if (r.data?.status_code === 107) {
     finish('refused');
-    cvSetBackoff(resource, 'status_code 107');
-    throw cvRateLimitError(`Comic Vine refused '${resource}' requests (rate limit) — paused for 60 min`, Date.now() + CV_BACKOFF_MS);
+    const until = cvSetBackoff(resource, 'status_code 107');
+    throw cvRateLimitError(`Comic Vine refused '${resource}' requests (rate limit) — paused for ${Math.max(1, Math.ceil((until - Date.now()) / 60000))} min`, until);
   }
   finish(r.status);
   if (r.data?.status_code === 1) {
@@ -1153,20 +1146,22 @@ const CRON_JOB_NAMES = {
   };
 }
 
-// Keep 2 hours of log; drop expired pauses.
+// Keep 2 hours of log, or back to the start of Comic Vine's current hour if that is earlier (its
+// counts are read from the log); drop expired pauses.
 setInterval(() => {
   try {
-    db.prepare('DELETE FROM cv_api_log WHERE ts < ?').run(Date.now() - CV_LOG_KEEP_MS);
-    db.prepare('DELETE FROM cv_backoff WHERE until < ?').run(Date.now());
-    db.prepare('DELETE FROM cv_windows WHERE start < ?').run(Date.now() - CV_LOG_KEEP_MS);
+    const now = Date.now(), hourStart = cvWindows.keepFrom(now);
+    db.prepare('DELETE FROM cv_api_log WHERE ts < ?').run(Math.min(now - CV_LOG_KEEP_MS, hourStart ?? Infinity));
+    db.prepare('DELETE FROM cv_backoff WHERE until < ?').run(now);
   } catch (e) { logger.warn('cv', 'cv_api_log prune failed', e.message); }
 }, 10 * 60 * 1000);
 
 // Usage panel (Comic Vine admin page).
 app.get('/api/admin/cv-usage', requireAdmin, (req, res) => {
   const now = Date.now();
-  const since = now - CV_WINDOW_MS;
-  // Per resource: the current Comic Vine window (count since it started, when it resets).
+  const hour = cvWindows.current(now);   // Comic Vine's current hour, shared by every resource
+  const since = Math.min(now - CV_WINDOW_MS, hour?.start ?? Infinity);
+  // Per resource: the count in Comic Vine's current hour and when it resets.
   const resNames = db.prepare(`SELECT DISTINCT resource FROM cv_api_log WHERE ts > ?`).all(since).map(r => r.resource);
   const rows = resNames.map(resource => {
     const w = cvWindow(resource, now);
@@ -1194,7 +1189,7 @@ app.get('/api/admin/cv-usage', requireAdmin, (req, res) => {
     limits: { perHour: CV_LIMIT_PER_HOUR, interactive: CV_CAP_INTERACTIVE, background: CV_CAP_BACKGROUND, arrival: CV_CAP_ARRIVAL, spacingMs: CV_MIN_SPACING_MS, bgSpacingMs: CV_BG_SPACING_MS },
     totalLastHour: rows.reduce((a, r) => a + r.used, 0),
     cache: { hits: cvCacheStats.hits, sinceMs: cvCacheStats.since, entries: cvCache.size, ttlMin: CV_CACHE_TTL_MS / 60000 },
-    resources, callers, recent, refusals, now,
+    resources, callers, recent, refusals, now, hour: hour ? { start: hour.start, ends: hour.ends } : null,
   });
 });
 
@@ -5948,6 +5943,8 @@ function scheduleReconcile(scanChanged = false) {
     // ComicInfo index first (retag-aware checks use it), then Timeline,
     // Top Shelf and reading lists.
     Promise.resolve(changed ? bookIndex.refresh() : null)
+      // Replaced files that tagging has since given their old Comic Vine IDs take over the old records' links (stableIds.js, 2026-11-24).
+      .then(() => { if (changed) try { stableIds.reclaimAfterTagging(); } catch (e) { logger.warn('stable-ids', 'Reclaim after tagging failed', e.message); } })
       .then(() => { try { missingCatalog.scan(); } catch (e) { logger.warn('library', 'Local Comic Vine lookup failed', e.message); } })
       .then(() => reconcileEventIssues(changed))
       .catch(e => logger.error('events', 'Reconcile failed', { error: e.message }))
@@ -7244,6 +7241,8 @@ async function runLinkReconcile() {
   const timed = async (name, fn) => { const t = Date.now(); try { return await fn(); } finally { parts[name] = Number(((Date.now() - t) / 1000).toFixed(1)); } };
   try {
     await libraryAccess.run('read', async () => {
+      // A replaced file tagged in this batch takes over its old record's links first (stableIds.js, 2026-11-24).
+      await timed('reclaim', () => stableIds.reclaimAfterTagging());
       await timed('timeline', () => reconcileEventIssues(true, { strict: true }));
       await timed('topShelf', () => canonMatch.reconcile(true, { strict: true }));
       await timed('readingLists', () => readingLists.reconcile(true, { strict: true }));
@@ -7262,6 +7261,8 @@ async function runLinkReconcile() {
 }
 // A request left over from before a restart.
 setTimeout(() => { try { if (getSetting(LINK_RECHECK)) scheduleLinkReconcile(); } catch {} }, 30000);
+// Replaced files tagged before this version (stableIds.js reclaimAfterTagging, 2026-11-24): once, after startup.
+setTimeout(() => { try { const r = stableIds.reclaimAfterTagging(); if (r.reclaimed) logger.info('stable-ids', `Reclaimed ${r.reclaimed} replaced book(s) after tagging`); } catch (e) { logger.warn('stable-ids', 'Reclaim after tagging failed', e.message); } }, 40000);
 const metadataDateCacheRead=db.prepare('SELECT cv_data FROM monitored_issues WHERE id=?');
 const metadataMaintenance = require('./metadata/maintenance').createMetadataMaintenance({db,runtime:metadataRuntime,logger,
   executionWindow:require('./metadata/maintenanceWindow').maintenanceWindow,

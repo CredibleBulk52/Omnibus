@@ -1,7 +1,9 @@
 // Comic Vine usage panel (Comic Vine admin page).
-// Shows Omnibus's own Comic Vine requests over the rolling hour, per resource,
-// from GET /api/admin/cv-usage. Comic Vine allows 200 requests per resource per
-// hour; background jobs stop at the background cap so clicks still work.
+// Shows Omnibus's own Comic Vine requests in Comic Vine's current hour, per resource,
+// from GET /api/admin/cv-usage. Comic Vine allows 200 requests per resource in an
+// hour shared by every resource (started by the first request; the first request on
+// a resource not yet used in it restarts it at 60 minutes; backend/cvWindow.js);
+// background jobs stop at the background cap so clicks still work.
 // Cross-check against https://comicvine.gamespot.com/api/ while logged in.
 import React, { useState, useEffect, useCallback } from 'react';
 
@@ -44,7 +46,8 @@ export default function CvUsagePanel() {
       <div className="a-flex a-ai-b a-gap-10 a-wrap a-mb-10">
         <span className="a-text a-fw6 a-fs-15">Comic Vine usage — current hour</span>
         <span style={muted}>
-          {data.totalLastHour} requests · limit {limits.perHour} per resource per hour · background jobs stop at {limits.background}, processing downloads at {limits.arrival ?? limits.interactive},
+          {data.totalLastHour} requests · limit {limits.perHour} per resource in one hour shared by all of them
+          {data.hour ? ` (started ${fmtClock(data.hour.start)}, resets ${fmtIn(data.hour.ends)}; a resource's first request restarts it)` : ''} · background jobs stop at {limits.background}, processing downloads at {limits.arrival ?? limits.interactive},
           clicks at {limits.interactive} · at least {limits.spacingMs / 1000} s between requests ({(limits.bgSpacingMs || limits.spacingMs) / 1000} s for background jobs)
           {data.cache ? ` · ${data.cache.hits} repeat requests answered from cache since the server started (${data.cache.ttlMin} min cache)` : ''}
         </span>
@@ -60,7 +63,7 @@ export default function CvUsagePanel() {
       )}
 
       {resources.length === 0 ? (
-        <div style={muted}>No Comic Vine requests in the last hour.</div>
+        <div style={muted}>Nothing counted: no Comic Vine hour is running. The next request starts one.</div>
       ) : (
         <div className="a-grid a-ai-c" style={{ gridTemplateColumns: 'minmax(90px,140px) 1fr auto', gap: '6px 12px' }}>
           {resources.map(r => (

@@ -225,6 +225,36 @@ class CvPool:
     def resource_of(endpoint: str) -> str:
         return endpoint.strip("/").split("/")[0].lower()
 
+    # Comic Vine's hour, as the server counts it (backend/cvWindow.js, 2026-11-24): one hour shared by
+    # every resource, started by the first request and restarted at 60 minutes by the first request on
+    # a resource not yet used in it; /types is not counted. Row '*' in cv_windows: start, ends.
+    UNCOUNTED = {"types"}
+
+    def _hour(self, now):
+        try:
+            row = self.conn.execute("SELECT start, ends FROM cv_windows WHERE resource = '*'").fetchone()
+        except sqlite3.OperationalError:
+            return None   # a server from before 2026-11-24 (no 'ends' column): no shared hour yet
+        return (row[0], row[1]) if row and row[1] and now < row[1] else None
+
+    def _used(self, resource, start):
+        return self.conn.execute("SELECT COUNT(*) FROM cv_api_log WHERE resource = ? AND ts >= ?",
+                                 (resource, start)).fetchone()[0]
+
+    def _open(self, resource, now):
+        """Just before a request is sent: start the hour, or restart it for a resource new to it."""
+        if resource in self.UNCOUNTED:
+            return
+        hour = self._hour(now)
+        try:
+            if hour is None:
+                self.conn.execute("INSERT OR REPLACE INTO cv_windows (resource, start, ends) VALUES ('*', ?, ?)",
+                                  (now, now + self.WINDOW_MS))
+            elif not self._used(resource, hour[0]):
+                self.conn.execute("UPDATE cv_windows SET ends = ? WHERE resource = '*'", (now + self.WINDOW_MS,))
+        except sqlite3.OperationalError:
+            pass
+
     def _now(self) -> int:
         return int(time.time() * 1000)
 
@@ -240,23 +270,18 @@ class CvPool:
             if row and row[0] > now:
                 wait = (row[0] - now) / 1000
             else:
-                # Comic Vine-style window: starts at the first request after the
-                # previous window ended, resets to 0 an hour later (cv_windows).
-                row = self.conn.execute("SELECT start FROM cv_windows WHERE resource = ?", (resource,)).fetchone()
-                start = row[0] if row and now < row[0] + self.WINDOW_MS else None
-                used = self.conn.execute("SELECT COUNT(*) FROM cv_api_log WHERE resource = ? AND ts >= ?",
-                                         (resource, start)).fetchone()[0] if start else 0
+                # Comic Vine's shared hour (see _hour above).
+                hour = self._hour(now)
+                used = self._used(resource, hour[0]) if hour else 0
                 if used >= cap:
-                    wait = (start + self.WINDOW_MS - now) / 1000 + 1
+                    wait = (hour[1] - now) / 1000 + 1
                 else:
                     last = self.conn.execute("SELECT MAX(ts) FROM cv_api_log").fetchone()[0] or 0
                     gap = (last + self.SPACING_MS - now) / 1000
                     if gap > 0:
                         time.sleep(gap)
                         continue
-                    if start is None:
-                        self.conn.execute("INSERT OR REPLACE INTO cv_windows (resource, start) VALUES (?, ?)",
-                                          (resource, self._now()))
+                    self._open(resource, self._now())
                     cur = self.conn.execute(
                         "INSERT INTO cv_api_log (ts, resource, lane, caller) VALUES (?, ?, ?, ?)",
                         (self._now(), resource, self.lane, self.caller))
@@ -276,12 +301,10 @@ class CvPool:
             row = self.conn.execute("SELECT until FROM cv_backoff WHERE resource = ?", (resource,)).fetchone()
             if row and row[0] > now:
                 return False
-            row = self.conn.execute("SELECT start FROM cv_windows WHERE resource = ?", (resource,)).fetchone()
-            start = row[0] if row and now < row[0] + self.WINDOW_MS else None
-            if start is None:
+            hour = self._hour(now)
+            if hour is None:
                 return True
-            used = self.conn.execute("SELECT COUNT(*) FROM cv_api_log WHERE resource = ? AND ts >= ?", (resource, start)).fetchone()[0]
-            return used < self.CAPS.get(self.lane, 120)
+            return self._used(resource, hour[0]) < self.CAPS.get(self.lane, 120)
         except Exception:
             return True
 
@@ -301,7 +324,7 @@ class CvPool:
             self.conn.execute(
                 "INSERT INTO cv_backoff (resource, until, reason) VALUES (?, ?, ?) "
                 "ON CONFLICT(resource) DO UPDATE SET until = excluded.until, reason = excluded.reason",
-                (resource, self._now() + self.BACKOFF_MS, reason))
+                (resource, (self._hour(self._now()) or (0, self._now() + self.BACKOFF_MS))[1], reason))   # until the hour ends
         except Exception:
             pass
 
