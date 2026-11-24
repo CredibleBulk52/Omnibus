@@ -8187,34 +8187,40 @@ const metadataRuntime = require('./metadata/retagRuntime').createRetagRuntime({
 });
 
 // ─── Link re-check after tagging (once per batch) ─────────────────
-// Each tagged or converted file asks for it; it runs 5 s after the last request, or at most 60 s
-// after the first while a long batch keeps asking. It takes a library read lock, so it waits for the
-// file being written and never sees a half-finished one. The request is kept in settings until a run
+// Each tagged or converted file asks for it; it runs once tagging has been quiet for LINK_QUIET_MS, or
+// at most LINK_MAX_WAIT_MS after the first request while a long batch keeps asking. It takes a library
+// read lock for the whole run (about 30 s on the 2026-11 library), so it waits for the file being
+// written and never sees a half-finished one, and tagging waits for it. (Until 2026-11-24 it ran 5 s
+// after the last request, at most 60 s after the first: in a 300-issue import that was after every one
+// or two issues, ~33 s of waiting for ~5 s of tagging.) The request is kept in settings until a run
 // that started after it finishes: a restart runs it again.
 const LINK_RECHECK = 'link_reconcile_pending';
+const LINK_QUIET_MS = 30 * 1000, LINK_MAX_WAIT_MS = 10 * 60 * 1000;
 let linkTimer = null, linkFirstAt = 0, linkRunning = false, linkAgain = false;
 function scheduleLinkReconcile() {
   try { db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(LINK_RECHECK, String(Date.now())); } catch {}
   if (linkRunning) { linkAgain = true; return; }
   if (!linkFirstAt) linkFirstAt = Date.now();
   clearTimeout(linkTimer);
-  linkTimer = setTimeout(runLinkReconcile, Math.max(0, Math.min(5000, linkFirstAt + 60000 - Date.now())));
+  linkTimer = setTimeout(runLinkReconcile, Math.max(0, Math.min(LINK_QUIET_MS, linkFirstAt + LINK_MAX_WAIT_MS - Date.now())));
 }
 async function runLinkReconcile() {
   linkTimer = null; linkFirstAt = 0;
   if (linkRunning) { linkAgain = true; return; }
   linkRunning = true;
   const started = Date.now();
+  const parts = {};   // seconds per part, for the log (2026-11-24)
+  const timed = async (name, fn) => { const t = Date.now(); try { return await fn(); } finally { parts[name] = Number(((Date.now() - t) / 1000).toFixed(1)); } };
   try {
     await libraryAccess.run('read', async () => {
-      await reconcileEventIssues(true, { strict: true });
-      await canonMatch.reconcile(true, { strict: true });
-      await readingLists.reconcile(true, { strict: true });
-      crossovers?.reconcile();
+      await timed('timeline', () => reconcileEventIssues(true, { strict: true }));
+      await timed('topShelf', () => canonMatch.reconcile(true, { strict: true }));
+      await timed('readingLists', () => readingLists.reconcile(true, { strict: true }));
+      await timed('crossovers', () => crossovers?.reconcile());
     });
     const asked = Number(getSetting(LINK_RECHECK) || 0);
     if (asked && asked <= started) db.prepare('DELETE FROM settings WHERE key = ?').run(LINK_RECHECK);
-    logger.info('metadata', `Event, Top Shelf and reading-list links re-checked after tagging (${((Date.now() - started) / 1000).toFixed(1)}s)`);
+    logger.info('metadata', `Event, Top Shelf and reading-list links re-checked after tagging (${((Date.now() - started) / 1000).toFixed(1)}s: Timeline ${parts.timeline}s, Top Shelf ${parts.topShelf}s, reading lists ${parts.readingLists}s, crossovers ${parts.crossovers}s)`, parts);
   } catch (e) {
     logger.warn('metadata', 'Link re-check after tagging failed; trying again in a minute', { error: e.message, code: e.code });
     setTimeout(scheduleLinkReconcile, 60000);
