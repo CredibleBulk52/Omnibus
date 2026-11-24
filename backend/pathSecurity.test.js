@@ -4,6 +4,8 @@ const {resolveExistingWithinRoot}=require('./pathSecurity');
 const source=fs.readFileSync(require.resolve('./server'),'utf8');
 // Monitored-series routes: monitorRoutes.js (server.js split step 7A, 2026-11-19), read without the module's indent.
 const monitorSource=fs.readFileSync(require.resolve('./monitorRoutes'),'utf8').replace(/^  /gm,'');
+// Library import routes: libraryImport.js (server.js split step 7B, 2026-11-23), read the same way.
+const importSource=fs.readFileSync(require.resolve('./libraryImport'),'utf8').replace(/^  /gm,'');
 const response=()=>({code:200,status(n){this.code=n;return this},json(body){this.body=body;return this}});
 function fixture(mapping={}) {
   let listings=0;
@@ -11,10 +13,10 @@ function fixture(mapping={}) {
   const resolve=(root,target)=>resolveExistingWithinRoot(root,target,{fileSystem,paths:path.posix});
   return {fileSystem,resolve,get listings(){return listings}};
 }
-function handler(marker,f) {
-  const start=source.indexOf(marker),end=source.indexOf('\n});',start);assert.ok(start>=0&&end>start);
+function handler(marker,f,from=source) {
+  const start=from.indexOf(marker),end=from.indexOf('\n});',start);assert.ok(start>=0&&end>start);
   let route;
-  vm.runInNewContext(source.slice(start,end+4),{app:{get:(...args)=>{route=args.at(-1)}},requireDownloadAccess(){},
+  vm.runInNewContext(from.slice(start,end+4),{app:{get:(...args)=>{route=args.at(-1)}},requireDownloadAccess(){},
     require:name=>{assert.equal(name,'./pathSecurity');return {resolveExistingWithinRoot:f.resolve}},fs:f.fileSystem,path:path.posix,COMICS_PATH:'/comics',
     acquireDiskCoverSlot(){throw Error('Must not extract a denied path')}});
   return route;
@@ -34,7 +36,7 @@ test('filesystem browser denies escaped paths before listing',()=>{
   assert.equal(f.listings,0);
 });
 test('import cover denies escaped directory and symlinked comic before extraction',async()=>{
-  const f=fixture({'/comics/DC/book.cbz':'/private/book.cbz'}),cover=handler("app.get('/api/import/disk-cover'",f);
+  const f=fixture({'/comics/DC/book.cbz':'/private/book.cbz'}),cover=handler("app.get('/api/import/disk-cover'",f,importSource);
   let res=response();await cover({query:{directory:'/comics-backup'}},res);assert.equal(res.code,403);assert.equal(f.listings,0);
   res=response();await cover({query:{directory:'/comics/DC'}},res);assert.equal(res.code,403);assert.equal(f.listings,1);
 });
@@ -71,11 +73,11 @@ function postRoute(marker,f,extra={},from=source) {
 }
 test('import scan, rescan and execute refuse folders outside the comics root',async()=>{
   const f=creatable(['/comics','/private'],{links:{'/comics/link':'/private'}});
-  const scan=postRoute("app.post('/api/import/scan'",f);
+  const scan=postRoute("app.post('/api/import/scan'",f,{},importSource);
   for(const scanPath of ['/comics-backup','/comics/link']){const res=response();await scan({body:{scanPath}},res);assert.equal(res.code,403,scanPath);}
-  const rescan=postRoute("app.post('/api/import/rescan-one'",f);
+  const rescan=postRoute("app.post('/api/import/rescan-one'",f,{},importSource);
   for(const directory of ['/comics-backup/X','/comics/link/X','/etc']){const res=response();await rescan({body:{directory,query:'x'}},res);assert.equal(res.code,403,directory);}
-  const execute=postRoute("app.post('/api/import/execute'",f,{getCVKey:()=>'key'});
+  const execute=postRoute("app.post('/api/import/execute'",f,{getCVKey:()=>'key'},importSource);
   const res=response();
   await execute({body:{selections:[{directory:'/comics-backup/X',cvId:'1',name:'X'},{directory:'/comics/link/Y',cvId:'2',name:'Y'},{directory:'/tmp/Z',cvId:'3',name:'Z'}]}},res);
   assert.equal(res.code,200);
