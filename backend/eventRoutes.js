@@ -180,25 +180,29 @@ module.exports.registerEventRoutes = function registerEventRoutes(deps) {
     if (!issues || !Array.isArray(issues) || issues.length === 0)
       return res.status(400).json({ error: 'issues array required' });
 
+    // Every issue needs a series and a number (NOT NULL). A missing sort_order takes the issue's place in
+    // the list. The event and its issues are written in one transaction, so a refused issue no longer
+    // leaves an empty event behind (2026-11-25).
+    const bad = issues.map((i, n) => (!i || !String(i.series_name ?? '').trim() || !String(i.issue_number ?? '').trim()) ? n + 1 : null).filter(Boolean);
+    if (bad.length) return res.status(400).json({ error: `series_name and issue_number required (issue${bad.length > 1 ? 's' : ''} ${bad.slice(0, 10).join(', ')}${bad.length > 10 ? ' …' : ''})` });
     const id = require('crypto').randomUUID();
     try {
-      db.prepare(
-        "INSERT INTO events (id, name, publisher, year, cv_story_arc_id, description, cover_image, source, generator_sources) VALUES (?, ?, ?, ?, ?, ?, ?, 'auto', ?)"
-      ).run(id, name, publisher || null, year || null, cv_story_arc_id || null, description || null, cover_image || null,
-        generator ? JSON.stringify({ source: generator.source || null, sourceUrl: generator.sourceUrl || null, centralNarrative: generator.centralNarrative || null,
-          sourcesRead: Array.isArray(generator.sourcesRead) ? generator.sourcesRead : [], omitted: Array.isArray(generator.omitted) ? generator.omitted : [] }) : null);
-
+      const insertEvent = db.prepare(
+        "INSERT INTO events (id, name, publisher, year, cv_story_arc_id, description, cover_image, source, generator_sources) VALUES (?, ?, ?, ?, ?, ?, ?, 'auto', ?)");
       const insertIssue = db.prepare(`
       INSERT INTO event_issues (event_id, cv_issue_id, sort_order, tier, tier_note, phase, series_name, issue_number, issue_title, volume_year, sources, order_note, order_flag, tier_reason)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
       db.transaction(() => {
-        for (const i of issues) {
-          insertIssue.run(id, i.cv_issue_id || null, i.sort_order, i.tier || 'recommended',
+        insertEvent.run(id, name, publisher || null, year || null, cv_story_arc_id || null, description || null, cover_image || null,
+          generator ? JSON.stringify({ source: generator.source || null, sourceUrl: generator.sourceUrl || null, centralNarrative: generator.centralNarrative || null,
+            sourcesRead: Array.isArray(generator.sourcesRead) ? generator.sourcesRead : [], omitted: Array.isArray(generator.omitted) ? generator.omitted : [] }) : null);
+        issues.forEach((i, n) => {
+          insertIssue.run(id, i.cv_issue_id || null, i.sort_order ?? n + 1, i.tier || 'recommended',
             i.tier_note || null, i.phase || null, i.series_name, i.issue_number, i.issue_title || null,
             i.volume_year ? String(i.volume_year) : null,
             Array.isArray(i.sources) && i.sources.length ? JSON.stringify(i.sources) : null, i.order_note || null, i.order_flag || null, i.tier_reason || null);
-        }
+        });
       })();
 
       // The shared matcher first (2026-10-17), then the old background matcher for what is left.
@@ -398,12 +402,19 @@ module.exports.registerEventRoutes = function registerEventRoutes(deps) {
 
   // ─── Update event metadata ────────────────────────────────────────
   app.put('/api/events/:id', requireAdmin, (req, res) => {
-    const { name, publisher, year, description, cover_image, event_tier, sort_order } = req.body;
+    // Only the fields sent are changed (2026-11-25): a body without a name failed (events.name is
+    // NOT NULL), and every field left out was cleared. Values are converted as before.
+    const body = req.body || {};
     const event = db.prepare("SELECT id FROM events WHERE id = ?").get(req.params.id);
     if (!event) return res.status(404).json({ error: 'Event not found' });
-    db.prepare(
-      "UPDATE events SET name=?, publisher=?, year=?, description=?, cover_image=?, event_tier=?, sort_order=? WHERE id=?"
-    ).run(name, publisher || null, year || null, description || null, cover_image || null, event_tier ?? 2, sort_order != null ? parseInt(sort_order) : 0, req.params.id);
+    if ('name' in body && !String(body.name ?? '').trim()) return res.status(400).json({ error: 'name cannot be empty' });
+    const FIELDS = {
+      name: v => v, publisher: v => v || null, year: v => v || null, description: v => v || null,
+      cover_image: v => v || null, event_tier: v => v ?? 2, sort_order: v => v != null ? parseInt(v) : 0,
+    };
+    const keys = Object.keys(FIELDS).filter(k => k in body);
+    if (!keys.length) return res.status(400).json({ error: `nothing to update (fields: ${Object.keys(FIELDS).join(', ')})` });
+    db.prepare(`UPDATE events SET ${keys.map(k => `${k}=?`).join(', ')} WHERE id=?`).run(...keys.map(k => FIELDS[k](body[k])), req.params.id);
     res.json({ success: true });
   });
 
