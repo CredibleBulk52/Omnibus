@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { DatabaseSync } = require('node:sqlite');
-const { createSearch, parseQuery, scoreName, norm } = require('./search');
+const { createSearch, parseQuery, scoreName, norm, numKey } = require('./search');
 
 test('parseQuery: volume years and issue numbers', () => {
   assert.deepEqual(parseQuery('Batman 1940'), { full: 'batman 1940', title: 'batman', year: 1940, issue: null });
@@ -11,6 +11,16 @@ test('parseQuery: volume years and issue numbers', () => {
   assert.deepEqual(parseQuery('Batman 1940 497'), { full: 'batman 1940 497', title: 'batman', year: 1940, issue: '497' });
   assert.deepEqual(parseQuery('Green Lantern 2005 #001'), { full: 'green lantern 2005 001', title: 'green lantern', year: 2005, issue: '1' });
   assert.equal(parseQuery('52').issue, null);   // a one-word title stays a title
+  // Tie-in suffixes and point issues (2026-11-25): with or without "#" or a dot, one form.
+  for (const q of ['Hulk 8AU', 'Hulk 8.AU', 'Hulk #8au', 'Hulk #8.AU', 'Hulk #008AU']) assert.deepEqual([parseQuery(q).title, parseQuery(q).issue], ['hulk', '8.au'], q);
+  assert.deepEqual(parseQuery('Hulk 2013 8AU'), { full: 'hulk 2013 8au', title: 'hulk', year: 2013, issue: '8.au' });
+  assert.equal(parseQuery('Iron Man 23.NOW').issue, '23.now');
+  assert.equal(parseQuery('Amazing Spider-Man 700.1').issue, '700.1');   // was 7001
+  assert.equal(parseQuery('Batman #1A').issue, '1a');                      // a single letter stays as typed
+  assert.deepEqual([parseQuery('Batman 1st').title, parseQuery('Batman #1st').issue], ['batman 1st', null]);   // not a tie-in: title
+  assert.equal(parseQuery('Wolverine 1.HU').issue, '1.hu');                // other suffixes in the library, written with their dot
+  assert.equal(numKey('8.AU'), numKey('8AU'));
+  assert.notEqual(numKey('1A'), numKey('1'));
 });
 
 test('scoreName: forgiving matches, ordered', () => {
@@ -34,7 +44,7 @@ function setup() {
     CREATE TABLE canon_run_issues (run_id INTEGER, scanned_book_id TEXT, sort_order INTEGER);
     CREATE TABLE reading_lists (id INTEGER, name TEXT, visibility TEXT, owner_id TEXT);
     INSERT INTO scanned_series VALUES ('b40','L','Batman',1940,700),('b16','L','Batman',2016,150),('bb','L','Batman Beyond',1999,24),('sm','L','The Amazing Spider-Man',1963,800),('dc','L','Detective Comics',1937,900);
-    INSERT INTO scanned_books VALUES ('k497','b40','Knightfall Part 11','Batman 497.cbz','497','<ComicInfo><Title>Knightfall, Part 11</Title></ComicInfo>'),('n1','b16','I Am Gotham','Batman 001.cbz','1',NULL);
+    INSERT INTO scanned_books VALUES ('k497','b40','Knightfall Part 11','Batman 497.cbz','497','<ComicInfo><Title>Knightfall, Part 11</Title></ComicInfo>'),('n1','b16','I Am Gotham','Batman 001.cbz','1',NULL),('au8','b16',NULL,'Batman 008AU.cbz','8.AU',NULL),('p7001','b16',NULL,'Batman 700.1.cbz','700.1',NULL);
     INSERT INTO events VALUES ('e1','Batman: Knightfall',1993,'DC'),('e2','Infinite Crisis',2005,'DC');
     INSERT INTO event_issues VALUES ('e1','k497',1);
     INSERT INTO canon_runs VALUES (7,'Batman: Year One','Batman','approved'),(8,'Secret Run','Batman','pending');
@@ -61,6 +71,13 @@ test('search: ranking, volume year, issue jump, events, runs, lists', () => {
   const sug = s.suggest({ q: 'batman 497' });
   assert.equal(sug[0].type, 'issue');
   assert.equal(sug[0].url, '/read/k497');
+});
+
+test('a tie-in typed either way finds the issue stored either way', () => {
+  const s = setup();
+  for (const q of ['Batman 8AU', 'Batman #8.AU', 'batman 8au']) assert.deepEqual(s.search({ q }).issues.map(i => i.id), ['au8'], q);
+  assert.deepEqual(s.search({ q: 'Batman 700.1' }).issues.map(i => i.id), ['p7001']);
+  assert.deepEqual(s.search({ q: 'Batman 8' }).issues.map(i => i.id), [], 'plain #8 is a different issue');
 });
 
 test('issue jump with a year keeps to that volume', () => {

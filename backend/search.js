@@ -8,13 +8,18 @@
 // are filed in (never as series of their own); the parent series is listed with them.
 
 const { loadSubIssues } = require('./subIssues');
+const { normIssueNumber } = require('./issueNumber');
 
 const YEAR = /^(19[3-9]\d|20[0-4]\d)$/;
 const norm = s => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
   .replace(/&/g, ' and ').replace(/['’.]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const noThe = s => s.replace(/^the /, '');
 const compact = s => s.replace(/ /g, '');
-const numKey = s => String(s ?? '').trim().toLowerCase().replace(/^#/, '').replace(/^0+(?=\d)/, '');
+// Issue numbers compare in one form. Marvel's tie-in suffixes (issueNumber.js allow-list) are written
+// with or without a dot ("8AU", "8.AU", "008.AU" are one issue, 2026-11-25); anything else is compared
+// as typed, less "#" and leading zeros ("1A" stays its own issue).
+const tieIn = s => { const c = normIssueNumber(s); return c && /\.[A-Z]{2,}$/.test(c) ? c.toLowerCase() : null; };
+const numKey = s => { const k = String(s ?? '').trim().toLowerCase().replace(/^#/, '').replace(/^0+(?=\d)/, ''); return tieIn(k) || k; };
 const numSort = s => { const f = parseFloat(s); return Number.isFinite(f) ? f : 1e9; };
 const KIND_WORDS = { annual: 'annual', annuals: 'annual', special: 'special', specials: 'special' };
 
@@ -22,8 +27,15 @@ const KIND_WORDS = { annual: 'annual', annuals: 'annual', special: 'special', sp
 function parseQuery(raw) {
   let t = String(raw || '').trim();
   let issue = null, year = null;
-  const hash = t.match(/#\s*(\d+(?:\.\d+)?[a-z]?)\s*$/i);
-  if (hash) { issue = hash[1]; t = t.slice(0, hash.index).trim(); }
+  // "#497", "#1A", "#700.1", "#8AU"/"#8.AU"; without "#", a point issue ("700.1") or a tie-in
+  // ("8AU", "1.NOW") at the end is the issue too (2026-11-25: these were read as part of the title,
+  // and "700.1" as issue 7001, because the name rules drop dots).
+  const hash = t.match(/#\s*(\d+(?:\.\d+)?(?:\.?[a-z]{2,}|[a-z])?)\s*$/i);
+  const tail = !hash && t.match(/\s(\d+\.\d+|\d+\.?[a-z]{2,})\s*$/i);
+  // Letters count when they are a known tie-in or written after a dot ("1.HU", "3.LR"); "Batman 1st" stays a title.
+  const ok = m => m && (!/[a-z]{2,}$/i.test(m[1]) || tieIn(m[1]) || /\d\.[a-z]{2,}$/i.test(m[1]));
+  const found = ok(hash) ? hash : ok(tail) ? tail : null;
+  if (found) { issue = found[1]; t = t.slice(0, found.index).trim(); }
   const words = norm(t).split(' ').filter(Boolean);
   if (!issue && words.length >= 2 && /^\d+$/.test(words[words.length - 1])) {
     const last = words[words.length - 1], prev = words[words.length - 2];
