@@ -122,3 +122,19 @@ test('series reading: a crossover takes the right side over the event, reads its
   await render({ context: { kind: 'event', id: 'zh', name: 'Zero Hour' }, next, crossover, onRead, onBackContext: () => {} });
   expect(container.querySelector('.crossover-alt')).toBeNull();
 });
+
+test('reading list and Top Shelf run: the footer goes back to the list or run, the series link sits by its name', async () => {
+  for (const [kind, word] of [['list', 'list'], ['run', 'run']]) {
+    const back = vi.fn(), series = vi.fn();
+    await render({ context: { kind, id: '48', name: 'Hellblazer by Garth Ennis', position: 5, total: 49 }, next: { id: 'n', series_name: 'Hellblazer', issue_number: 46 },
+      onBackContext: back, onBackSeries: series });
+    const footer = container.querySelector('footer .secondary');
+    expect(footer.textContent).toContain(`Back to ${word}`);
+    click(footer);
+    expect(back).toHaveBeenCalledTimes(1);
+    const byName = container.querySelector('.event-context .quiet');
+    expect(byName.textContent).toContain('Back to series');
+    click(byName);
+    expect(series).toHaveBeenCalledTimes(1);
+  }
+});

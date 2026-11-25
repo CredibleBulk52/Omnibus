@@ -44,6 +44,8 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
   const hasAbout = !!(nextSolicit || nextNote);
   // Event reading: Back to series sits by the event's name and Back to event in the footer (user, 2026-10-22).
   const eventSwap = kind === 'event';
+  // Reading lists and Top Shelf runs the same way (2026-11-25: the footer said Back to series in a list).
+  const backSwap = kind !== 'series';
   // Series reading: the next issue's Timeline event (2026-11-21). Wide cards show it in the panel's
   // empty right side, with a link to the event at that issue; narrow ones as a strip under the title.
   const nextEvent = kind === 'series' && next?.events?.length ? next.events[0] : null;
@@ -69,7 +71,7 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
       {kind === 'series' && hasPosition && <div className="position-line">Library position <strong>{position} of {total}</strong></div>}
       {context && kind !== 'series' && <div className="event-context">
         <div>{eventSwap && context.path && <span>Reading path: {PATH_LABELS[context.path] || PATH_LABELS.all}</span>}<strong>{context.name}</strong>{hasPosition && <span>Stop <b>{position}</b> of {total}</span>}
-          {eventSwap
+          {backSwap
             ? (onBackSeries && <button className="quiet" onClick={onBackSeries}>Back to series ↗</button>)
             : <button className="quiet" onClick={onBackContext}>Back to {word} ↗</button>}</div>
         {hasPosition && <div className="route-track" role="progressbar" aria-label={`Position in ${word}`} aria-valuemin={0} aria-valuemax={total} aria-valuenow={position}><span style={{ width: `${Math.min(100, position / total * 100)}%` }} /></div>}
@@ -121,8 +123,8 @@ export default function ComicReaderEndCard({ completed, headline, issueTitle, bo
         {routes.map(({ label, issue }) => <button key={issue.id} className="route" onClick={() => onRead(issue)}><span>{label}</span><strong>{endIssueLabel(issue)}</strong><b>↗</b></button>)}
       </div>}
       <footer><button className="quiet" onClick={onLastPage}>‹ Last page</button>
-        {eventSwap
-          ? <button className="secondary" onClick={onBackContext}>Back to event ↗</button>
+        {backSwap
+          ? <button className="secondary" onClick={onBackContext}>Back to {word} ↗</button>
           : onBackSeries && <button className="secondary" onClick={onBackSeries}>Back to series ↗</button>}
         {assistant?.enabled && <button className="discuss" onClick={onDiscuss}><span className="speech" aria-hidden="true">?!</span><span>Discuss this issue<small>with {assistant.name || 'Comic Book Guy'}</small></span></button>}
       </footer>
