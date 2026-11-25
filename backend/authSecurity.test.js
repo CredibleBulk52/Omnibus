@@ -14,7 +14,11 @@ function fixture(t) {
 }
 function response() { return { code:200, status(code){this.code=code;return this}, json(body){this.body=body;return this}, set(){return this}, redirect(url){this.url=url;return this}, clearCookie(){}, cookie(){} }; }
 // Exercise the actual registered handlers without starting background jobs or the production DB.
-const source = fs.readFileSync(require.resolve('./server'), 'utf8');
+// Accounts and the /api gate live in userRoutes.js and auth.js since 2026-11-25 (shared core, step 0a);
+// their module indent is removed so each route still ends at "\n});".
+const serverSource = fs.readFileSync(require.resolve('./server'), 'utf8');
+const unindented = file => fs.readFileSync(require.resolve(file), 'utf8').replace(/^  /gm, '');
+const source = [serverSource, unindented('./userRoutes'), unindented('./auth')].join('\n');
 function handler(marker, globals = {}) {
   const start = source.indexOf(marker), end = source.indexOf('\n});', start);
   assert.ok(start >= 0 && end > start);
@@ -184,6 +188,7 @@ test('login refuses repeated failures with 429 before checking the password', as
 test('API is same-origin only and responses carry basic browser protections', () => {
   assert.equal(/app\.use\(cors\(/.test(source), false, 'no open CORS');
   const start = source.indexOf("res.set('X-Content-Type-Options', 'nosniff')");
-  assert.ok(start > 0 && start < source.indexOf("app.use('/api', (req, res, next) => {"), 'headers set before any API route');
+  assert.ok(start > 0 && start < serverSource.indexOf("require('./auth').createAuth("), 'headers set before the /api gate (auth.js) is registered');
+  assert.ok(source.includes("app.use('/api', (req, res, next) => {"), 'the /api gate is still registered');
   assert.ok(source.includes("res.set('X-Frame-Options', 'SAMEORIGIN')"));
 });

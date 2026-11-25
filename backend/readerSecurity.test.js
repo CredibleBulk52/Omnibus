@@ -4,7 +4,8 @@ const {DatabaseSync}=require('node:sqlite');
 const security=require('./authSecurity'),reader=require('./readerSecurity');
 function fixture(t){const db=new DatabaseSync(':memory:');t.after(()=>db.close());db.exec("CREATE TABLE users(id TEXT PRIMARY KEY,username TEXT,role TEXT); INSERT INTO users VALUES('u','reader','user')");security.initializeAuthSchema(db);const tokens=security.createTokens({db,secret:'test-secret-at-least-thirty-two-characters'});return {db,tokens};}
 function response(){return {code:200,headers:{},set(k,v){this.headers[k]=v;return this},vary(){},status(c){this.code=c;return this},json(b){this.body=b},cookie(k,v,o){this.cookieValue={k,v,o}},clearCookie(k,o){this.cleared={k,o}}};}
-const source=fs.readFileSync(require.resolve('./server'),'utf8');
+// The /api gate and the account routes live in auth.js and userRoutes.js since 2026-11-25 (shared core, step 0a); module indent removed.
+const source=['./server','./auth','./userRoutes'].map(f=>fs.readFileSync(require.resolve(f),'utf8').replace(f==='./server'?/(?!)/:/^  /gm,'')).join('\n');
 function gate(tokens){const start=source.indexOf("const PUBLIC_API_PREFIXES"),end=source.indexOf('\n});',start)+4;let handle;vm.runInNewContext(source.slice(start,end),{app:{use:(p,h)=>handle=h},readerSecurity:reader,authTokens:tokens,requireAuth:(req,res,next)=>{try{tokens.verify((req.headers.authorization||'').replace('Bearer ',''));next()}catch{res.status(401).json({})}},requireAdmin:()=>{throw Error('unexpected admin')}});return handle;}
 test('server gate protects GET/HEAD reader pages and thumbnails, with no cookie access to write APIs',t=>{
  const {tokens}=fixture(t),token=tokens.sign({sub:'u'}),handle=gate(tokens);
