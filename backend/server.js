@@ -7179,8 +7179,9 @@ const metadataRuntime = require('./metadata/retagRuntime').createRetagRuntime({
   registerArrival: require('./arrivalRegistration').createRegisterArrival({ makeScanStmts, parseComicInfo, readSeriesJson, stableIds,
     metadataMaintenance: { recordSuccess: (...a) => metadataMaintenance.recordSuccess(...a) } }),
   fetchVolume: async id => {
+    // Same fields as candidateDiscovery's folder-volume lookup, so the two share Comic Vine's 10-minute response cache.
     const response = await cvApiGet(`https://comicvine.gamespot.com/api/volume/4050-${id}/`, {
-      params: {api_key: getCVKey(), format: 'json', field_list: 'id,name,start_year,publisher'}, timeout: 15000,
+      params: {api_key: getCVKey(), format: 'json', field_list: 'id,name,start_year,publisher,count_of_issues'}, timeout: 15000,
     });
     return response.data?.results;
   },

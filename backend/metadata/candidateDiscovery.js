@@ -15,11 +15,51 @@ function createCandidateDiscovery({apiGet,getKey,readFolder}){
   // is often listed as the plain number (Iron Man 2013 #23.NOW is "23"), so that
   // is tried last. Tie-in suffixes (AU, INH) are separate issues: no fallback.
   const numberForms=n=>n==='1/2'?['1/2','½','0.5']:/^-?\d+\.[a-z]+$/i.test(n)?[n,n.replace('.',''),...(/\.now$/i.test(n)?[n.replace(/\.now$/i,'')]:[])]:[n];
+  // Issue lists by volume (2026-11-25). Each book used to cost one Comic Vine /issues request
+  // (volume + issue number), so a 300-issue import used 300 of the hourly 200 on that path.
+  // Once a volume has had as many lookups within an hour as its full list takes pages (100 issues
+  // a page), the whole list is read once and later books are matched from it. The list asks for
+  // the same fields as the single lookup, so the cover and store dates used to check the year are
+  // the same; the store date written to the file still comes from the book's own /issue request
+  // (and Metron only when that has none), which this does not touch. A number the list does not
+  // have (a new issue, an odd form) is asked as before.
+  const ISSUE_FIELDS='id,issue_number,cover_date,store_date,volume',LIST_TTL=3600000,MAX_PAGES=10;
+  const byVolume=new Map();   // volume id -> {asked: Map(number -> time), list, at, loading}
+  const sameNumber=(a,b)=>String(a??'').trim().toLowerCase()===String(b??'').trim().toLowerCase();
+  const pagesFor=volume=>{const n=Number(volume?.count_of_issues);return n>0?Math.ceil(n/100):null;};
+  async function readList(id,pages){
+    const list=[];let total=null;
+    for(let offset=0;offset<pages*100;offset+=100){
+      const data=(await get('issues/',{filter:'volume:'+id,field_list:ISSUE_FIELDS,limit:100,offset}))?.data;
+      const page=Array.isArray(data?.results)?data.results:null;
+      if(!page)return null;
+      list.push(...page);total=Number(data.number_of_total_results);
+      if(page.length<100||list.length>=total)break;
+    }
+    return Number.isFinite(total)&&list.length===total?list:null;   // incomplete: not used
+  }
+  async function volumeList(volume,number){
+    const pages=pagesFor(volume);
+    if(!pages||pages>MAX_PAGES)return null;
+    const id=String(volume.id),now=Date.now();
+    if(byVolume.size>500)byVolume.clear();
+    let v=byVolume.get(id);if(!v){v={asked:new Map(),list:null,at:0,loading:null};byVolume.set(id,v);}
+    if(v.at&&now-v.at<LIST_TTL)return v.list;
+    if(v.loading)return v.loading;
+    for(const [n,t] of v.asked)if(now-t>=LIST_TTL)v.asked.delete(n);
+    v.asked.set(String(number),now);
+    if(v.asked.size<pages)return null;
+    v.loading=readList(id,pages).then(list=>{v.list=list;v.at=Date.now();return list;},()=>null).finally(()=>{v.loading=null;});
+    return v.loading;
+  }
   async function issuesFor(volume,hint,related=false,parentStartYear=null){
     if(!volume||(!related&&!sameTitle(volume.name,hint.name)))return [];
     let rows=[];
-    for(const n of numberForms(hint.number)){
-      rows=completeRows(await get('issues/',{filter:'volume:'+volume.id+',issue_number:'+n,field_list:'id,issue_number,cover_date,store_date,volume',limit:10}));
+    const listed=await volumeList(volume,hint.number);
+    const fromList=listed&&numberForms(hint.number).map(n=>listed.filter(i=>sameNumber(i.issue_number,n))).find(r=>r.length);
+    if(fromList)rows=fromList.length>=10?null:fromList;
+    else for(const n of numberForms(hint.number)){
+      rows=completeRows(await get('issues/',{filter:'volume:'+volume.id+',issue_number:'+n,field_list:ISSUE_FIELDS,limit:10}));
       if(rows===null||rows.length)break;
     }
     return rows?.map(issue=>related?{issue,volume,relatedTitle:true,parentStartYear}:{issue,volume})??null;
@@ -39,7 +79,7 @@ function createCandidateDiscovery({apiGet,getKey,readFolder}){
     if(hit&&hit.at>Date.now()-3600000)return hit.rows;
     const rows=[];
     for(let offset=0;offset<300;offset+=100){
-      const data=(await get('volumes/',{filter:'name:'+name,field_list:'id,name,start_year,publisher',sort:'start_year:asc',limit:100,offset}))?.data;
+      const data=(await get('volumes/',{filter:'name:'+name,field_list:'id,name,start_year,publisher,count_of_issues',sort:'start_year:asc',limit:100,offset}))?.data;
       const page=Array.isArray(data?.results)?data.results:[];
       rows.push(...page);
       if(page.length<100||page.some(v=>Number(v.start_year)>Number(startYear)+RELATED_SPAN))break;
@@ -57,7 +97,7 @@ function createCandidateDiscovery({apiGet,getKey,readFolder}){
     const folder=await readFolder(book),id=parseCvIssueId(folder?.metadata?.comicid??folder?.comicid);
     let folderLacksIssue=null;
     if(id){
-      const volume=(await get('volume/4050-'+id+'/',{field_list:'id,name,start_year,publisher'}))?.data?.results;
+      const volume=(await get('volume/4050-'+id+'/',{field_list:'id,name,start_year,publisher,count_of_issues'}))?.data?.results;
       if(String(volume?.id)===id){
         const proposed=await issuesFor(volume,hint);
         const accepted=proposed?.filter(c=>candidateMatches({filename:book.filename,comicInfoXml:book.comicinfo,folderName:bookFolderName(book),...c}));
@@ -74,7 +114,7 @@ function createCandidateDiscovery({apiGet,getKey,readFolder}){
     // Common titles (Batman, Avengers) return many volumes. Keep only volumes
     // whose title matches exactly, started by the book's year, newest first;
     // number and year must still corroborate and the runtime requires one match.
-    const search=async q=>(await get('search/',{resources:'volume',query:q,field_list:'id,name,start_year,publisher',limit:50}))?.data?.results;
+    const search=async q=>(await get('search/',{resources:'volume',query:q,field_list:'id,name,start_year,publisher,count_of_issues',limit:50}))?.data?.results;
     let found=await search(hint.name);
     if(!Array.isArray(found)){trace.push('Comic Vine search returned nothing');return done([]);}
     const year=Number(hint.volumeYear||hint.year)||null;

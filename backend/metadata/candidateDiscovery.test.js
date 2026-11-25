@@ -171,3 +171,59 @@ test('a "The" after a subtitle separator and half issues written ½ are found (s
  // Not inside a title: "Batman The Dark Knight" stays different from "Batman Dark Knight".
  assert.equal(candidateMatches({filename:'Batman The Dark Knight 001 (2011).cbz',issue:{...issue,issue_number:'1',cover_date:'2011-01-01'},volume:{...volume,name:'Batman: Dark Knight',start_year:'2011'}}),false);
 });
+
+// Issue lists by volume (2026-11-25): a big import reads a volume's issues once instead of one
+// /issues request per book.
+function cvFake({vol,issues,folder={metadata:{comicid:String(vol.id)}},total=null}){
+ const calls=[];
+ const apiGet=async(url,{params})=>{
+  calls.push({url,params});
+  if(url.includes('/volume/'))return {data:{results:vol}};
+  if(url.includes('/search/'))return list([vol]);
+  const [,id,num]=/^volume:(\d+)(?:,issue_number:(.+))?$/.exec(params.filter);
+  const own=issues.filter(i=>String(i.volume.id)===id);
+  if(num!==undefined){const r=own.filter(i=>i.issue_number===num);return {data:{results:r.slice(0,params.limit),number_of_total_results:r.length}};}
+  return {data:{results:own.slice(params.offset,params.offset+params.limit),number_of_total_results:total??own.length}};
+ };
+ return {calls,discover:createCandidateDiscovery({getKey:()=>null,readFolder:()=>folder,apiGet})};
+}
+const hellblazer=(n=300)=>{
+ const vol={id:18826,name:'Hellblazer',start_year:'1988',count_of_issues:n,publisher:{id:10}};
+ const issues=Array.from({length:n},(_,k)=>({id:34000+k,issue_number:String(k+1),cover_date:`${1988+Math.floor(k/12)}-${String(k%12+1).padStart(2,'0')}-01`,store_date:k%3?`${1988+Math.floor(k/12)}-${String(k%12+1).padStart(2,'0')}-10`:null,volume:{id:18826}}));
+ return {vol,issues};
+};
+const hbBook=(k,issues)=>({filename:`Hellblazer ${String(k).padStart(3,'0')} (${issues[k-1].cover_date.slice(0,4)}) (digital-Empire).cbz`,comicinfo:null,path:`/c/Hellblazer (1988)/x${k}.cbz`});
+test('300 books of one volume: three list pages instead of 300 lookups, with the same candidates and dates',async()=>{
+ const {vol,issues}=hellblazer();
+ const now=cvFake({vol,issues}),before=cvFake({vol:{...vol,count_of_issues:undefined},issues});   // no count: the old way
+ for(let k=1;k<=300;k++){
+  const b=hbBook(k,issues);
+  const a=await now.discover(publicationHint(b.filename),b),o=await before.discover(publicationHint(b.filename),b);
+  assert.deepEqual(a.map(c=>c.issue),o.map(c=>c.issue),'book '+k);
+  assert.equal(a.length,1);assert.equal(a[0].issue.store_date,issues[k-1].store_date);   // store date passed through as Comic Vine has it (or null)
+ }
+ const issueCalls=c=>c.calls.filter(x=>x.url.includes('/issues/'));
+ assert.equal(issueCalls(before).length,300);
+ assert.equal(issueCalls(now).length,2+3,'two single lookups, then the 300-issue list in three pages');
+ assert.ok(issueCalls(now).every(x=>x.params.field_list==='id,issue_number,cover_date,store_date,volume'),'same fields as the single lookup');
+});
+test('a number missing from the list, an incomplete list and a very long volume use the single lookup',async()=>{
+ const {vol,issues}=hellblazer(150);
+ // #151 came out after the list was read: asked directly.
+ let f=cvFake({vol,issues});
+ for(const k of [1,2])await f.discover(publicationHint(hbBook(k,issues).filename),hbBook(k,issues));
+ const late={id:99151,issue_number:'151',cover_date:'2000-07-01',volume:{id:18826}};issues.push(late);
+ const b={filename:'Hellblazer 151 (2000).cbz',comicinfo:null,path:'/c/Hellblazer (1988)/x.cbz'};
+ assert.deepEqual((await f.discover(publicationHint(b.filename),b)).map(c=>c.issue.id),[99151]);
+ assert.equal(f.calls.at(-1).params.filter,'volume:18826,issue_number:151');
+ issues.pop();
+ // Comic Vine's total disagrees with what came back: the list is not trusted.
+ f=cvFake({vol,issues,total:151});
+ for(let k=1;k<=6;k++)await f.discover(publicationHint(hbBook(k,issues).filename),hbBook(k,issues));
+ assert.equal(f.calls.filter(x=>x.params.filter==='volume:18826').length,2,'read once (two pages), then not again within the hour');
+ assert.equal(f.calls.filter(x=>/issue_number/.test(x.params.filter||'')).length,6);
+ // Detective Comics sized: more than ten pages is never listed.
+ f=cvFake({vol:{...vol,count_of_issues:1100},issues});
+ for(let k=1;k<=20;k++)await f.discover(publicationHint(hbBook(k,issues).filename),hbBook(k,issues));
+ assert.ok(!f.calls.some(x=>x.params.filter==='volume:18826'));
+});
