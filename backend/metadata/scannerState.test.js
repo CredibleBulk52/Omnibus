@@ -118,7 +118,7 @@ test('inaccessible paths are never treated as missing',t=>{
 test('scan awaits thumbnail extraction and cache writes',async t=>{
   const f=fixture(t,{thumbs:false});await f.scan();assert.deepEqual(f.calls,['thumbnail']);
   assert.equal(fs.readFileSync(path.join(f.root,'one.png'),'utf8'),'image');
-  assert.equal(fs.readFileSync(path.join(f.root,'series_series.png'),'utf8'),'image');
+  assert.equal(fs.existsSync(path.join(f.root,'series_series.png')),false);   // series_<id> was never read (2026-11-26)
 });
 test('changed archive cannot leave a stale thumbnail or suppress the next scan',async t=>{
   const f=fixture(t,{thumbs:false,thumbnail:async({file})=>fs.writeFileSync(file,'changed during thumbnail')});

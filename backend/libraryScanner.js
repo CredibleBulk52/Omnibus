@@ -84,21 +84,19 @@ module.exports.createLibraryScanner = function createLibraryScanner(deps) {
       existingRow.dir_mtime === dirMtime &&
       existingRow.dir_file_count === dirFileCount;
 
-    // If disk state hasn't changed, only re-run if thumbnails are missing
+    // Disk unchanged: no rescan, but every book's cover must be in the cache (2026-11-26). Shelves show
+    // each book's own cover, and a series shows its cover book's (covers.js pickSeriesCoverBook). Covers go
+    // missing after a backup is restored on a new install or "Clear all thumbnails"; before, this only made
+    // an unused series_<id> file, so every cover was then made while someone browsed. A cover that cannot
+    // be made is tried again on the next scan; it does not force a full rescan.
     if (seriesUnchanged) {
-      const seriesThumbMissing = !findThumbCache(`series_${seriesId}`);
-      if (!seriesThumbMissing) return { skipped: true, skippedBooks: 0, changedBooks: 0 };
-      // Thumb missing but disk unchanged — warm the thumb from the first book only, skip full rescan
-      const firstComic = comicFiles[0];
-      if (firstComic) {
-        const firstPath = path.join(seriesDir, firstComic);
-        const seriesCacheKey = `series_${seriesId}`;
-        if (!await warmScannedThumbnail(firstPath, [seriesCacheKey])) {
-          db.prepare('UPDATE scanned_series SET dir_mtime=-1 WHERE id=?').run(seriesId);
-          return { skipped: true, skippedBooks: 0, changedBooks: 0, deferred: true };
-        }
+      const missing = db.prepare('SELECT id, path FROM scanned_books WHERE series_id = ?').all(seriesId).filter(b => !findThumbCache(b.id));
+      let coversMade = 0;
+      for (let i = 0; i < missing.length; i++) {
+        if (i > 0 && i % 5 === 0) await new Promise(r => setImmediate(r));
+        if (await warmScannedThumbnail(missing[i].path, [missing[i].id])) coversMade++;
       }
-      return { skipped: true, skippedBooks: 0, changedBooks: 0 };
+      return { skipped: true, skippedBooks: 0, changedBooks: 0, coversMade };
     }
 
     const folderName = path.basename(seriesDir);
@@ -146,7 +144,7 @@ module.exports.createLibraryScanner = function createLibraryScanner(deps) {
     jsonMemCache.delete(seriesId);
     db.prepare('DELETE FROM series_json_cache WHERE series_id = ?').run(seriesId);
 
-    let skippedBooks = 0, changedBooks = 0, deferred = false;
+    let skippedBooks = 0, changedBooks = 0, coversMade = 0, deferred = false;
 
     for (let i = 0; i < comicFiles.length; i++) {
       // Yield every 5 books so HTTP requests can be handled between ComicInfo extractions
@@ -167,17 +165,16 @@ module.exports.createLibraryScanner = function createLibraryScanner(deps) {
       const existingBook = pathRow;
       const bookUnchanged = existingBook && existingBook.file_mtime === fileMtime && existingBook.file_size === fileSize;
 
+      // The book's own cover (the series cover is its cover book's; the old series_<id> file was unused).
       let bookCacheKey     = bookId;
-      const seriesCacheKey = `series_${seriesId}`;
-      let bookThumbMissing     = bookId ? !findThumbCache(bookCacheKey) : true;
-      const seriesThumbMissing = i === 0 && !findThumbCache(seriesCacheKey);
+      let bookThumbMissing = bookId ? !findThumbCache(bookCacheKey) : true;
 
-      // Skip entirely if book unchanged AND thumbnails are present
-      if (bookUnchanged && !bookThumbMissing && !seriesThumbMissing) { skippedBooks++; continue; }
+      // Skip entirely if book unchanged AND its cover is cached
+      if (bookUnchanged && !bookThumbMissing) { skippedBooks++; continue; }
 
-      // If book unchanged but only thumb is missing — warm thumb without re-extracting ComicInfo
-      if (bookUnchanged && (bookThumbMissing || seriesThumbMissing)) {
-        if (!await warmScannedThumbnail(filePath, [bookThumbMissing && bookCacheKey, seriesThumbMissing && seriesCacheKey].filter(Boolean))) deferred = true;
+      // If book unchanged but only its cover is missing — make the cover without re-extracting ComicInfo
+      if (bookUnchanged && bookThumbMissing) {
+        if (await warmScannedThumbnail(filePath, [bookCacheKey])) coversMade++; else deferred = true;
         skippedBooks++;
         continue;
       }
@@ -289,8 +286,8 @@ module.exports.createLibraryScanner = function createLibraryScanner(deps) {
         }
       }
 
-      if (bookThumbMissing || seriesThumbMissing) {
-        if (!await warmScannedThumbnail(filePath, [bookThumbMissing && bookCacheKey, seriesThumbMissing && seriesCacheKey].filter(Boolean))) deferred = true;
+      if (bookThumbMissing) {
+        if (await warmScannedThumbnail(filePath, [bookCacheKey])) coversMade++; else deferred = true;
       }
     }
 
@@ -323,7 +320,7 @@ module.exports.createLibraryScanner = function createLibraryScanner(deps) {
 
     if (scannerState.reserved(seriesDir, null, true)) deferred = true;
     if (deferred) db.prepare('UPDATE scanned_series SET dir_mtime=-1 WHERE id=?').run(seriesId);
-    return { skipped: false, skippedBooks, changedBooks, deferred };
+    return { skipped: false, skippedBooks, changedBooks, coversMade, deferred };
   }
 
   async function runLibraryScan(library) {
@@ -350,7 +347,7 @@ module.exports.createLibraryScanner = function createLibraryScanner(deps) {
       logger.info('scanner', `found series dirs`, { count: seriesDirs.length });
 
       const { upsertSeries, upsertBook } = makeScanStmts();
-      let skippedSeries = 0, skippedBooks = 0, changedBooks = 0;
+      let skippedSeries = 0, skippedBooks = 0, changedBooks = 0, coversMade = 0;
 
       for (let si = 0; si < seriesDirs.length; si++) {
         const seriesDir = seriesDirs[si];
@@ -361,6 +358,7 @@ module.exports.createLibraryScanner = function createLibraryScanner(deps) {
           skippedSeries += result.skipped ? 1 : 0;
           skippedBooks  += result.skippedBooks;
           changedBooks  += result.changedBooks;
+          coversMade    += result.coversMade || 0;
         } catch (e) {
           logger.error('scanner', `series error`, { path: seriesDir, error: e.message });
           scanState.errors.push({ path: seriesDir, error: e.message });
@@ -400,7 +398,7 @@ module.exports.createLibraryScanner = function createLibraryScanner(deps) {
       setImmediate(warmLatestReleaseDateCache);
       scanState.running = false;
       scanState.completedAt = new Date().toISOString();
-      logger.info('scanner', `scan complete`, { series: seriesDirs.length, skippedSeries, skippedBooks, changedBooks, errors: scanState.errors.length });
+      logger.info('scanner', `scan complete`, { series: seriesDirs.length, skippedSeries, skippedBooks, changedBooks, coversMade, errors: scanState.errors.length });
       // Record completion time for scheduled rescan logic
       db.prepare("UPDATE libraries SET last_scanned_at = datetime('now') WHERE id = ?").run(library.id);
       // Kick off background CBR rating fetch for any uncached series
